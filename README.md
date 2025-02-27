@@ -21,7 +21,7 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 ### 1. Build From the Source
 
 ```bash
-git clone https://github.com/onkernel/containers.git
+git clone https://github.com/onkernel/kernel-containers.git
 cd containers
 docker build -t kernel -f containers/docker/Dockerfile .
 ```
