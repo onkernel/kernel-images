@@ -1,5 +1,7 @@
 # Kernel Containers
 
+[![Discord](https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA)](https://discord.gg/Q6WPxeaj)
+
 ## Overview
 
 Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` is the core technology that powers our [hosted services](https://docs.onkernel.com/introduction).
