@@ -24,7 +24,7 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 
 ```bash
 git clone https://github.com/onkernel/kernel-containers.git
-cd containers
+cd kernel-containers
 docker build -t kernel -f containers/docker/Dockerfile .
 ```
 
@@ -83,7 +83,7 @@ http://localhost:6080/vnc.html
 For a unified interface that includes Anthropic Computer Use's chat (via Streamlit) plus GUI (via noVNC), visit:
 
 ```
-http://localhost:8080/
+http://localhost:8080
 ```
 
 ## License
