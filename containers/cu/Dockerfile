@@ -13,9 +13,12 @@ COPY --chmod=0755 <<'EOL' /home/computeruse/entrypoint.sh
 #!/bin/bash
 set -o pipefail -o errexit -o nounset
 
+# riff on the anthropic entrypoint script that runs the MCP server
+# the MCP server transport is stdout/stdin, so we need to pipe all other logs to stderr
+
 ./start_all.sh >&2
 
-# Start Chromium with display :1 and remote debugging
+# Start Chromium with display :1 and remote debugging, loading our recorder extension.
 # Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
 cleanup () {
   echo "Cleaning up..."
@@ -30,6 +33,7 @@ CHROME_PORT=9222  # External port mapped in Docker
 echo "Starting Chromium on internal port $INTERNAL_PORT"
 DISPLAY=:1 chromium \
   --remote-debugging-port=$INTERNAL_PORT \
+  --load-extension=/home/computeruse/kernel/packages/recorder/dist \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
@@ -46,7 +50,13 @@ ncat \
 
 python http_server.py >&2 &
 
-STREAMLIT_SERVER_PORT=8501 python -m streamlit run computer_use_demo/streamlit.py >&2
+STREAMLIT_SERVER_PORT=8501 python -m streamlit run computer_use_demo/streamlit.py >&2 &
+
+# the viewer that receives RRWeb events from the recorder extension and exposes rrweb-replayer
+cd /home/computeruse/kernel/packages/viewer && PORT=3000 bun run server >&2 &
+
+# the mcp server
+cd /home/computeruse/kernel/packages/mcp && bun run server
 EOL
 
 WORKDIR /home/computeruse
