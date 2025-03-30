@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` is the core technology that powers our [hosted services](https://docs.onkernel.com/introduction).
+Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/cu/Dockerfile` is the core technology that powers our [hosted services](https://docs.onkernel.com/introduction).
 
 ### Key Features
 
@@ -23,7 +23,7 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 ```bash
 git clone https://github.com/onkernel/kernel-containers.git
 cd kernel-containers
-docker build -t kernel -f containers/docker/Dockerfile .
+docker build -t kernel -f containers/cu/Dockerfile .
 ```
 
 ### 2. Run the Container
@@ -84,12 +84,16 @@ For a unified interface that includes Anthropic Computer Use's chat (via Streaml
 http://localhost:8080
 ```
 
+## Contributing
+
+We welcome contributions to improve this example or add new ones! Please read our [contribution guidelines](./CONTRIBUTING.md) before submitting pull requests.
+
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/onkernel/containers/blob/main/LICENSE) file for details.
+See the [LICENSE](./LICENSE) file for details.
 
 ## Support
 
-For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/containers/issues) on this repository.
+For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-containers/issues) on this repository.
 
 To learn more about our hosted services, visit [our docs](https://docs.onkernel.com/introduction) and request an API key on [Discord](https://discord.gg/Q6WPxeaj).
