@@ -9,15 +9,6 @@ USER computeruse
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.1.44"
 ENV PATH="/home/computeruse/.bun/bin:$PATH"
 
-
-# Copy our code
-RUN mkdir -p /home/computeruse/kernel
-COPY --chown=computeruse:computeruse . /home/computeruse/kernel
-WORKDIR /home/computeruse/kernel
-
-# Install dependencies
-RUN bun install
-
 # Modify entrypoint script
 # The original can be found here: https://github.com/anthropics/anthropic-quickstarts/blob/main/computer-use-demo/image/entrypoint.sh
 COPY --chmod=0755 <<'EOL' /home/computeruse/entrypoint.sh
