@@ -4,10 +4,8 @@ USER root
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium ncat
 
-# Switch to computeruse user and install bun
+# Switch to computeruse user
 USER computeruse
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.1.44"
-ENV PATH="/home/computeruse/.bun/bin:$PATH"
 
 # Modify entrypoint script
 # The original can be found here: https://github.com/anthropics/anthropic-quickstarts/blob/main/computer-use-demo/image/entrypoint.sh
