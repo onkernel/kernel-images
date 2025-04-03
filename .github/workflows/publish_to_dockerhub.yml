@@ -24,6 +24,22 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Verify Docker setup and pull base Anthropic image
+      - name: Verify Docker and pull Anthropic image
+        run: |
+          docker info
+          docker version
+          docker ps
+          # Pull base image explicitly
+          docker pull ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
