@@ -1,0 +1,12 @@
+spec: v0.6
+
+runtime: base-compat:latest
+
+labels:
+  cloud.unikraft.v1.instances/scale_to_zero.policy: "on"
+  cloud.unikraft.v1.instances/scale_to_zero.stateful: "true"
+  cloud.unikraft.v1.instances/scale_to_zero.cooldown_time_ms: 4000
+
+rootfs: ./Dockerfile
+
+cmd: ["/wrapper.sh"]
