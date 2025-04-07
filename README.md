@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/cu/Dockerfile` is the core technology that powers our [hosted services](https://docs.onkernel.com/introduction).
+Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` is the core technology that powers our [hosted services](https://docs.onkernel.com/introduction).
 
 ### Key Features
 
@@ -23,13 +23,13 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 ```bash
 git clone https://github.com/onkernel/kernel-containers.git
 cd kernel-containers
-docker build -t kernel -f containers/cu/Dockerfile .
+docker build -t kernel-chromium -f containers/docker/Dockerfile .
 ```
 
 ### 2. Run the Container
 
 ```bash
-docker run -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel
+docker run -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium
 ```
 
 This exposes three ports:
@@ -96,4 +96,4 @@ See the [LICENSE](./LICENSE) file for details.
 
 For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-containers/issues) on this repository.
 
-To learn more about our hosted services, visit [our docs](https://docs.onkernel.com/introduction) and request an API key on [Discord](https://discord.gg/Q6WPxeaj).
+To learn more about our hosted services, visit [our docs](https://docs.onkernel.com/introduction) and request an API key on [Discord](https://discord.gg/FBrveQRcud).

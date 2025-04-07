@@ -43,8 +43,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./containers/cu
+          context: ./containers/docker
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kernel-computer-use:${{ github.event.inputs.tag }}
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/kernel-computer-use:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/kernel-computer-use:buildcache,mode=max
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kernel-chromium:${{ github.event.inputs.tag }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/kernel-chromium:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/kernel-chromium:buildcache,mode=max

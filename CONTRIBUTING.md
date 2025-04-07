@@ -83,7 +83,7 @@ By participating in this project, you are expected to uphold our [Code of Conduc
 ## Communication
 
 - GitHub Issues: Bug reports, feature requests, and discussions
-- [Discord](https://discord.gg/Q6WPxeaj): For general questions and community discussions
+- [Discord](https://discord.gg/FBrveQRcud): For general questions and community discussions
 - Email: For security concerns or Code of Conduct violations
 
 ## Recognition
