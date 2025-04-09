@@ -1,0 +1,11 @@
+{
+  "name": "kernel-containers",
+  "type": "module",
+  "scripts": {
+    "kernel:build": "docker build -t kernel-chromium -f containers/docker/Dockerfile .",
+    "kernel:run": "docker run -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
