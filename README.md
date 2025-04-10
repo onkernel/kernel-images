@@ -1,5 +1,16 @@
 # Kernel Containers
 
+## Table of Contents
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [What You Can Do With It][#what-you-can-do-with-it]
+- [Quickstart - Unikernel](#quickstart-unikernel)
+- [Quickstart - Docker](#quickstart-docker)
+- [Connecting to the Browser](#connecting-to-the-browser)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
 ## Overview
 
 Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our [hosted services](https://docs.onkernel.com/introduction).
@@ -16,7 +27,28 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 - Develop and test AI agents that need web capabilities
 - Build custom tools that require controlled browser environments
 
-## Quickstart
+`containers/docker` and `unikernels/unikraft-cu` functionally do the same thing: they pull from Anthropic's Computer Use Reference Implementation, install Chromium, and expose ports so Chrome DevTools-based frameworks (Playwright, Puppeteer) can connect to the instance. The unikernel implementation works the same but has the additional benefits of running on a unikernel: automated standby / "sleep mode" when there isn't any network activity (consuming very low resources when it does) and extremely fast restarts (<20ms). This can be useful for browser automations that involve asynchronous processing or scenarios where you want to return to the same session state hours, days, or weeks later.
+
+## Quickstart - Unikernel
+
+Our unikernel implementation can only be run on Unikraft Cloud, which requires an account. Request one [here](https://console.unikraft.cloud/signup).
+
+### 1. Install the Kraft CLI
+`curl -sSfL https://get.kraftkit.sh | sh`
+
+### 2. Add Unikraft Secret
+`export UKC_METRO=was1 and UKC_TOKEN=<secret>`
+
+### 3. Deploy the Implementation
+`./deploy.sh`
+
+Then follow [these steps](#connecting-to-the-browser) to connect to the available ports on the instance.
+
+### Unikernel / Unikraft Notes
+- The image requires 8gb of memory on the unikernels. The Unikraft default is 4gb, so request a higher limit with their team.
+- Various Computer Use services (mutter, tint) take a few seconds to start-up. Once they do, though, the standby and restart time is extremely fast. If you'd find a variant of this image useful, message us on [Discord](https://discord.gg/FBrveQRcud)!
+
+## Quickstart - Docker
 
 ### 1. Build From the Source
 
@@ -48,7 +80,12 @@ You can connect to the browser using any CDP client.
 First, fetch the browser's CDP websocket endpoint:
 
 ```typescript
-const response = await fetch("http://localhost:9222/json/version");
+/**
+ * Uncomment the relevant url
+ * const url = ""; // Unikraft deployment
+ * const url = "http://localhost:9222/json/version"; // Local Docker
+**/
+const response = await fetch(url);
 if (response.status !== 200) {
   throw new Error(
     `Failed to retrieve browser instance: ${
@@ -77,7 +114,11 @@ browser = await chromium.connectOverCDP(cdp_ws_url);
 
 For visual monitoring, access the browser via NoVNC by opening:
 
-```
+```bash
+# Unikraft deployment
+https://XXX/vnc.html
+
+# Local Docker
 http://localhost:6080/vnc.html
 ```
 
@@ -85,7 +126,10 @@ http://localhost:6080/vnc.html
 
 For a unified interface that includes Anthropic Computer Use's chat (via Streamlit) plus GUI (via noVNC), visit:
 
-```
+```bash
+# Unikraft deployment
+
+# Local Docker
 http://localhost:8080
 ```
 
