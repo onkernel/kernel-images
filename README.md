@@ -1,14 +1,13 @@
-# Kernel Images
-
 <p align="center">
   <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="55%">
+  <br/><br/>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE" alt="GitHub License">
+  <img alt="GitHub License" src="https://img.shields.io/github/license/onkernel/kernel-images">
   <a href="https://discord.gg/FBrveQRcud"><img src="https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA" alt="Discord"></a>
   <a href="https://x.com/juecd__"><img src="https://img.shields.io/twitter/follow/juecd__" alt="Follow @juecd__"></a>
-  <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rgarcia" alt="Follow @rgarcia"></a>
+  <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rfgarcia" alt="Follow @rfgarcia"></a>
 </p>
 
 ## Table of Contents
@@ -22,7 +21,7 @@
 
 ## Overview
 
-Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our [hosted services](https://onkernel.com).
+Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our hosted services.
 
 🌟[__Sign-up for the waitlist__](https://onkernel.com)🌟
 

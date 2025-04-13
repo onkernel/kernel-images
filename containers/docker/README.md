@@ -53,7 +53,7 @@ const browser = await puppeteer.connect({
 or:
 
 ```typescript
-browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
+const browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
 ```
 
 See [this repo](https://github.com/onkernel/example-playwright) for a super small Playwright implementation of how to connect to a remote browser.
