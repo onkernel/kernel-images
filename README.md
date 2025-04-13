@@ -1,10 +1,19 @@
 # Kernel Images
 
-![Kernel Logo](static/images/Kernel-Wordmark_Accent.svg)
+<div align="center" style="width: 65%; margin: 0 auto;">
+    <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" style="max-width: 100%; height: auto;">
+</div>
 
-[![Apache 2.0 License](https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE)](https://github.com/onkernel/kernel-images/blob/main/LICENSE)[![Discord](https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA)](https://discord.gg/FBrveQRcud)[![Follow @juecd__](https://img.shields.io/twitter/follow/juecd__
-)](https://x.com/juecd__)[![Follow @rgarcia](https://img.shields.io/twitter/follow/rgarcia
-)](https://x.com/rgarcia)
+```html
+<div align="center">
+
+![GitHub License](https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE)  
+[![Discord](https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA)](https://discord.gg/FBrveQRcud)  
+[![Follow @juecd__](https://img.shields.io/twitter/follow/juecd__)](https://x.com/juecd__)  
+[![Follow @rgarcia](https://img.shields.io/twitter/follow/rgarcia)](https://x.com/rgarcia)
+
+</div>
+```
 
 ## Table of Contents
 - [Overview](#overview)

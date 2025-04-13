@@ -1,4 +1,4 @@
-# Quickstart - Chromium x Docker
+# Chromium x Docker
 
 This Dockerfile extends Anthropic's [Computer Use reference implementation](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo) by: (1) installing headful Chromium (2) Exposing Chromium's port `9222` so Chrome DevTools Protocol-based frameworks (Playwright, Puppeteer) can connect to it.
 
@@ -75,4 +75,4 @@ http://localhost:8080
 ```
 
 ## License & Contributing
-See [here](../README.md) for license and contributing details.
+See [here](README.md) for license and contributing details.
