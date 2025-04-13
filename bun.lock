@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "kernel-containers",
+      "name": "kernel-images",
       "devDependencies": {
         "@types/bun": "latest",
       },

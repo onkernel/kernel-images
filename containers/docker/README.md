@@ -5,8 +5,8 @@ This Dockerfile extends Anthropic's [Computer Use reference implementation](http
 ## 1. Build From the Source
 
 ```bash
-git clone https://github.com/onkernel/kernel-containers.git
-cd kernel-containers
+git clone https://github.com/onkernel/kernel-images.git
+cd kernel-images
 docker build -t kernel-chromium -f containers/docker/Dockerfile .
 ```
 

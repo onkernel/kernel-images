@@ -12,8 +12,8 @@ By participating in this project, you are expected to uphold our [Code of Conduc
 
 1. **Fork the repository**
    - Fork the repository on GitHub to your personal account
-   - Clone your fork locally: `git clone https://github.com/YOUR_USERNAME/kernel-containers.git`
-   - Add upstream remote: `git remote add upstream https://github.com/original/kernel-containers.git`
+   - Clone your fork locally: `git clone https://github.com/YOUR_USERNAME/kernel-images.git`
+   - Add upstream remote: `git remote add upstream https://github.com/original/kernel-images.git`
 
 2. **Create a new branch**
    - Always branch from the up-to-date main branch

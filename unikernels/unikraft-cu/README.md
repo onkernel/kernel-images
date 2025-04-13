@@ -31,21 +31,23 @@ Deployed successfully!
 
 ## 4. Connect via remote GUI (noVNC)
 
-This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write on the unikernel's browser.
+This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write actions on the browser.
 
-[Image]
+![Chromium noVNC Screenshot](static/images/chromium-novnc-screenshot.png)
 
 ## 5. Connect via Chrome DevTools Protocol
 
-We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. You can also disconnect from the browser and reconnect to it; the unikernel's browser persists and goes into standby mode when you're not using it.
+We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. You can also disconnect from the browser and reconnect to it. The unikernel's browser persists and goes into standby mode when you're not using it.
 
 First, fetch the browser's CDP websocket endpoint:
 
 ```typescript
 // Use the url provided by the Unikraft deployment
-const url = "https://<service_name>.kraft.host:9222/json/version";
+const url = new URL("https://<service_name>.kraft.host:9222/json/version");
 const response = await fetch(url, {
-
+  headers: {
+    "Host": "<this can be anything>"
+  }
 });
 if (response.status !== 200) {
   throw new Error(
@@ -55,23 +57,29 @@ if (response.status !== 200) {
   );
 }
 // webSocketDebuggerUrl should look like:
+// ws:///devtools/browser/06acd5ef-9961-431d-b6a0-86b99734f816
 const { webSocketDebuggerUrl } = await response.json();
-// Concatenate the devtools path to the Unikraft deployment url, plus swap to secure websockets:
-// e.g. "wss://<service_name>.kraft.host:9222/devtools/browser/06acd5ef..."
+
+// Remove the webSocketDebuggerUrl's ws:// prefix
+const webSocketPath = webSocketDebuggerUrl.replace('ws://', '');
+// Output will be something like:
+// wss://<service_name>.kraft.host:9222/devtools/browser/06acd5ef-9961-431d-b6a0-86b99734f816
+const finalWSUrl = `wss://${url.host}${webSocketPath}`;
+console.log(finalWSUrl);
 ```
 
 Then, connect a remote Playwright or Puppeteer client to it:
 
 ```typescript
 const browser = await puppeteer.connect({
-  browserWSEndpoint: webSocketDebuggerUrl,
+  browserWSEndpoint: finalWSUrl,
 });
 ```
 
 or:
 
 ```typescript
-browser = await chromium.connectOverCDP(cdp_ws_url);
+browser = await chromium.connectOverCDP(finalWSUrl);
 ```
 
 See [this repo](https://github.com/onkernel/example-playwright) for a super small Playwright implementation of how to connect to a remote browser.
@@ -79,10 +87,11 @@ See [this repo](https://github.com/onkernel/example-playwright) for a super smal
 ## Unikernel Notes
 
 - The image requires at least 8gb of memory.
-- Various services (mutter, tint) take a few seconds to start-up. Once they do, though, the standby and restart time is extremely fast. If you'd find a variant of this image useful, message us on [Discord](https://discord.gg/FBrveQRcud)!
+- Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast. If you'd find a variant of this image useful, message us on [Discord](https://discord.gg/FBrveQRcud)!
 - The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
 - This deployment doesn't expose the ports to Anthropic's Computer Use's [other interfaces](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo#accessing-the-demo-app), but you can do so by altering [deploy.sh](./deploy.sh).
-- See this repo's [homepage](../README.md) for what Chromium on unikernels can do.
+- We're still exploring the limitations of putting a browser on a unikernel and everything described in this README is from our own observations. If you notice any interesting behavior or limitations, please share it on our [Discord](https://discord.gg/FBrveQRcud).
+- See this repo's [homepage](../README.md) for some benefits of putting Chromium on a unikernel.
 
 ## License & Contributing
 See [here](../README.md) for license and contributing details.

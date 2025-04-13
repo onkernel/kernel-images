@@ -1,5 +1,5 @@
 {
-  "name": "kernel-containers",
+  "name": "kernel-images",
   "type": "module",
   "scripts": {
     "kernel:build": "docker build -t kernel-chromium -f containers/docker/Dockerfile .",
