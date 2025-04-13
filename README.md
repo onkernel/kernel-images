@@ -1,18 +1,16 @@
 # Kernel Images
 
-<div align="center" style="width: 65%; margin: 0 auto;">
-    <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" style="max-width: 100%; height: auto;">
-</div>
+<p align="center">
+  <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="65%">
+</p>
 
 ```html
-<div align="center">
-
-![GitHub License](https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE)  
-[![Discord](https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA)](https://discord.gg/FBrveQRcud)  
-[![Follow @juecd__](https://img.shields.io/twitter/follow/juecd__)](https://x.com/juecd__)  
-[![Follow @rgarcia](https://img.shields.io/twitter/follow/rgarcia)](https://x.com/rgarcia)
-
-</div>
+<p align="center">
+  <img src="https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE" alt="GitHub License">
+  <a href="https://discord.gg/FBrveQRcud"><img src="https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA" alt="Discord"></a>
+  <a href="https://x.com/juecd__"><img src="https://img.shields.io/twitter/follow/juecd__" alt="Follow @juecd__"></a>
+  <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rgarcia" alt="Follow @rgarcia"></a>
+</p>
 ```
 
 ## Table of Contents
