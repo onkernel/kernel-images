@@ -1,17 +1,15 @@
 # Kernel Images
 
 <p align="center">
-  <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="65%">
+  <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="55%">
 </p>
 
-```html
 <p align="center">
   <img src="https://img.shields.io/github/license/onkernel/kernel-images%2Fblob%2Fmain%2FLICENSE" alt="GitHub License">
   <a href="https://discord.gg/FBrveQRcud"><img src="https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA" alt="Discord"></a>
   <a href="https://x.com/juecd__"><img src="https://img.shields.io/twitter/follow/juecd__" alt="Follow @juecd__"></a>
   <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rgarcia" alt="Follow @rgarcia"></a>
 </p>
-```
 
 ## Table of Contents
 - [Overview](#overview)

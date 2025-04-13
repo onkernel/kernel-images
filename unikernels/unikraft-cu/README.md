@@ -33,7 +33,7 @@ Deployed successfully!
 
 This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write actions on the browser.
 
-![Chromium noVNC Screenshot](https://github.com/onkernel/kernel-images/raw/main/static/images/chromium-novnc-screenshot.png)
+![Chromium noVNC Screenshot](https://github.com/onkernel/kernel-images/static/images/chromium-novnc-screenshot.png)
 
 ## 5. Connect via Chrome DevTools Protocol
 
