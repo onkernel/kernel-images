@@ -1,4 +1,4 @@
-# Chromium x Docker
+# 🐋 Chromium x Docker
 
 This Dockerfile extends Anthropic's [Computer Use reference implementation](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo) by: (1) installing headful Chromium (2) Exposing Chromium's port `9222` so Chrome DevTools Protocol-based frameworks (Playwright, Puppeteer) can connect to it.
 
@@ -23,7 +23,7 @@ This exposes three ports:
 - `9222`: Chrome DevTools Protocol for browser automation via Playwright and Puppeteer
 - `8501`: Streamlit interfaced used by Computer Use
 
-## 3. Connect via Chrome DevTools Protocol
+## 👾 Connect via Chrome DevTools Protocol
 
 We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. 
 
@@ -56,9 +56,7 @@ or:
 const browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
 ```
 
-See [this repo](https://github.com/onkernel/example-playwright) for a super small Playwright implementation of how to connect to a remote browser.
-
-## 4. Connect via remote GUI (noVNC)
+## 🧑‍💻 Connect via remote GUI (noVNC)
 
 For visual monitoring, access the browser via NoVNC by opening:
 
@@ -66,7 +64,7 @@ For visual monitoring, access the browser via NoVNC by opening:
 http://localhost:6080/vnc.html
 ```
 
-## 5. Connect via Anthropic Computer Use's web app
+## 🛜 Connect via Anthropic Computer Use's web app
 
 For a unified interface that includes Anthropic Computer Use's chat (via Streamlit) plus GUI (via noVNC), visit:
 
@@ -74,5 +72,5 @@ For a unified interface that includes Anthropic Computer Use's chat (via Streaml
 http://localhost:8080
 ```
 
-## License & Contributing
+## 🤝 License & Contributing
 See [here](/README.md) for license and contributing details.

@@ -1,5 +1,5 @@
 
-# Chromium x Unikernel
+# *️⃣ Chromium x Unikernel
 
 This deploys headful Chromium on a unikernel. It also exposes a remote GUI through noVNC so you can see and use the unikernel's live browser. This unikernel implementation can only be run on Unikraft Cloud, which requires an account. [Join our waitlist](https://onkernel.com) if you don't want to deploy / manage unikernel instances yourself.
 
@@ -29,13 +29,11 @@ Deployed successfully!
  └───────── args: /wrapper.sh
 ```
 
-## 4. Connect via remote GUI (noVNC)
+## 🧑‍💻 Connect via remote GUI (noVNC)
 
 This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write actions on the browser.
 
-![Chromium noVNC Screenshot](/static/images/chromium-novnc-screenshot.png)
-
-## 5. Connect via Chrome DevTools Protocol
+## 👾 Connect via Chrome DevTools Protocol
 
 We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. You can also disconnect from the browser and reconnect to it. The unikernel's browser persists and goes into standby mode when you're not using it.
 
@@ -82,9 +80,7 @@ or:
 const browser = await chromium.connectOverCDP(finalWSUrl);
 ```
 
-See [this repo](https://github.com/onkernel/example-playwright) for a super small Playwright implementation of how to connect to a remote browser.
-
-## Unikernel Notes
+## 📦 Unikernel Notes
 
 - The image requires at least 8gb of memory.
 - Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast. If you'd find a variant of this image useful, message us on [Discord](https://discord.gg/FBrveQRcud)!
@@ -93,5 +89,5 @@ See [this repo](https://github.com/onkernel/example-playwright) for a super smal
 - We're still exploring the limitations of putting a browser on a unikernel. Everything described in this README is from our own observations. If you notice any interesting behavior or limitations of Chromium on a unikernel, please share it on our [Discord](https://discord.gg/FBrveQRcud).
 - See this repo's [homepage](/README.md) for some benefits of putting Chromium on a unikernel.
 
-## License & Contributing
+## 🤝 License & Contributing
 See [here](/README.md) for license and contributing details.
