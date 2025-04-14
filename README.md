@@ -12,7 +12,7 @@
   <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rfgarcia" alt="Follow @rfgarcia"></a>
 </p>
 
-## 📜 Table of Contents
+### 📜 Table of Contents
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [What You Can Do With It](#what-you-can-do-with-it)
@@ -21,25 +21,25 @@
 - [License](#license)
 - [Support](#support)
 
-## 🌰 Overview
+### 🌰 Overview
 
 Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our hosted services.
 
 🌟[__Sign-up for the waitlist__](https://onkernel.com)🌟
 
-### *️⃣ Key Features
+#### *️⃣ Key Features
 
 - Pre-configured Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
 - GUI access for visual monitoring and remote control
 - Anthropic's [Computer Use](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo) agent loop & chat interface baked in
 
-### 💡 What You Can Do With It
+#### 💡 What You Can Do With It
 
 - Run automated browser-based workflows
 - Develop and test AI agents that use browsers
 - Build custom tools that require controlled browser environments
 
-### 🛜 Implementations
+#### 🛜 Implementations
 
 `containers/docker` and `unikernels/unikraft-cu` functionally do the same thing:
 1. Pull from Anthropic's Computer Use reference implementation
@@ -52,20 +52,20 @@ The unikernel implementation works the same as the Docker-only image but has the
 - When it goes into standby mode, the unikernel’s state gets snapshotted and can be restored exactly as it was when it went to sleep. This could be useful if you want to reuse a session’s state (browser auth cookies, interact with local files, browser settings, even the exact page and window zoom you were on).
 - Extremely fast cold restarts (<20ms), which could be useful for any application that requires super low latency event handlers.
 
-## 🚀 Quickstarts
+### 🚀 Quickstarts
 
 - [Unikernel](./unikernels/unikraft-cu/README.md)
 - [Docker](./containers/docker/README.md)
 
-## 🤝 Contributing
+### 🤝 Contributing
 
 We welcome contributions to improve this example or add new ones! Please read our [contribution guidelines](./CONTRIBUTING.md) before submitting pull requests.
 
-## 🫰 License
+### 🫰 License
 
 See the [LICENSE](./LICENSE) file for details.
 
-## 🏄 Support
+### 🏄 Support
 
 For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-images/issues) on this repository.
 
