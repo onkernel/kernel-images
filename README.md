@@ -27,7 +27,7 @@ Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic 
 
 🌟[__Sign-up for the waitlist__](https://onkernel.com)🌟
 
-https://github.com/user-attachments/assets/ad3ef241-acfa-4476-a52e-372be8fc3901
+![Oprah everyone gets a browser](static/images/oprah-everyone-gets-a-browser.gif)
 
 #### *️⃣ Key Features
 
