@@ -1,7 +1,7 @@
 <p align="center">
   <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="55%">
   <br/><br/>
-  Pre-packaged browsers. Run 'em anywhere
+  Deployment-ready browsers. Run 'em anywhere
   <br/><br/>
 </p>
 
@@ -41,7 +41,7 @@ Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic 
 - Develop and test AI agents that use browsers
 - Build custom tools that require controlled browser environments
 
-https://github.com/user-attachments/assets/c62b7ff8-9ba0-4463-9df4-e0dd7f1292ba
+![Chromium x Unikernel Demo](/static/images/unikernel-gh.gif)
 
 #### 🛜 Implementation
 
@@ -60,6 +60,8 @@ The unikernel implementation works the same as the Docker-only image but has the
 
 - [Unikernel](./unikernels/unikraft-cu/README.md)
 - [Docker](./containers/docker/README.md)
+
+https://github.com/user-attachments/assets/c62b7ff8-9ba0-4463-9df4-e0dd7f1292ba
 
 ### 🤝 Contributing
 
