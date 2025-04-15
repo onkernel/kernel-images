@@ -39,7 +39,7 @@ Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic 
 - Develop and test AI agents that use browsers
 - Build custom tools that require controlled browser environments
 
-<iframe src="https://screen.studio/share/59Z4Xilh" frameborder="0" allowfullscreen style="width:100%; height:500px;"></iframe>
+<iframe src="https://screen.studio/share/59Z4Xilh/embed" frameborder="0" allowfullscreen style="width:100%; height:500px;"></iframe>
 
 #### 🛜 Implementation
 
