@@ -56,7 +56,7 @@ The unikernel implementation works the same as the Docker-only image but has the
 
 ## 🚀 Quickstarts
 
-- [Unikernel](./unikernels/unikraft-cu/README.md)
+- [Unikernel ✨](./unikernels/unikraft-cu/README.md)
 - [Docker](./containers/docker/README.md)
 
 ## 🧑‍💻 Demo
