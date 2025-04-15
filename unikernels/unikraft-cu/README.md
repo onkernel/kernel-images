@@ -5,13 +5,13 @@ This deploys headful Chromium on a unikernel. It also exposes a remote GUI throu
 
 ![Chromium x Unikernel Demo](/static/images/unikernel-gh.gif)
 
-#### 1. Install the Kraft CLI
+### 1. Install the Kraft CLI
 `curl -sSfL https://get.kraftkit.sh | sh`
 
-#### 2. Add Unikraft Secret to Your CLI
+### 2. Add Unikraft Secret to Your CLI
 `export UKC_METRO=<region> and UKC_TOKEN=<secret>`
 
-#### 3. Deploy the Implementation
+### 3. Deploy the Implementation
 `./deploy.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
@@ -31,11 +31,11 @@ Deployed successfully!
  └───────── args: /wrapper.sh
 ```
 
-#### 🧑‍💻 Connect via remote GUI (noVNC)
+### 🧑‍💻 Connect via remote GUI (noVNC)
 
 This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write actions on the browser.
 
-#### 👾 Connect via Chrome DevTools Protocol
+### 👾 Connect via Chrome DevTools Protocol
 
 We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. You can also disconnect from the browser and reconnect to it. The unikernel's browser persists and goes into standby mode when you're not using it.
 
@@ -82,7 +82,7 @@ or:
 const browser = await chromium.connectOverCDP(finalWSUrl);
 ```
 
-#### 📦 Unikernel Notes
+### 📦 Unikernel Notes
 
 - The image requires at least 8gb of memory.
 - Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast. If you'd find a variant of this image useful, message us on [Discord](https://discord.gg/FBrveQRcud)!
@@ -92,5 +92,5 @@ const browser = await chromium.connectOverCDP(finalWSUrl);
 - You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
 - See this repo's [homepage](/README.md) for some benefits of putting Chromium on a unikernel.
 
-#### 🤝 License & Contributing
+### 🤝 License & Contributing
 See [here](/README.md) for license and contributing details.
