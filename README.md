@@ -27,6 +27,8 @@ Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic 
 
 🌟[__Sign-up for the waitlist__](https://onkernel.com)🌟
 
+<div style="width:360px;max-width:100%;"><div style="height:0;padding-bottom:67.78%;position:relative;"><iframe width="360" height="244" style="position:absolute;top:0;left:0;width:100%;height:100%;" frameBorder="0" src="https://imgflip.com/embed/9qu1cl"></iframe></div></div>
+
 #### *️⃣ Key Features
 
 - Pre-configured Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
