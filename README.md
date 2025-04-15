@@ -1,7 +1,7 @@
 <p align="center">
   <img src="static/images/Kernel-Wordmark_Accent.svg" alt="Kernel Logo" width="55%">
   <br/><br/>
-  Browsers, nicely packaged in containers
+  Pre-packaged browsers. Run 'em anywhere
   <br/><br/>
 </p>
 
@@ -9,7 +9,7 @@
   <img alt="GitHub License" src="https://img.shields.io/github/license/onkernel/kernel-images">
   <a href="https://discord.gg/FBrveQRcud"><img src="https://img.shields.io/discord/1342243238748225556?logo=discord&logoColor=white&color=7289DA" alt="Discord"></a>
   <a href="https://x.com/juecd__"><img src="https://img.shields.io/twitter/follow/juecd__" alt="Follow @juecd__"></a>
-  <a href="https://x.com/rgarcia"><img src="https://img.shields.io/twitter/follow/rfgarcia" alt="Follow @rfgarcia"></a>
+  <a href="https://x.com/rfgarcia"><img src="https://img.shields.io/twitter/follow/rfgarcia" alt="Follow @rfgarcia"></a>
 </p>
 
 ### 📜 Table of Contents
@@ -21,9 +21,9 @@
 - [License](#license)
 - [Support](#support)
 
-### 🌰 Overview
+### 🤙 Overview
 
-Kernel provides containerized, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our hosted services.
+Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our hosted services.
 
 🌟[__Sign-up for the waitlist__](https://onkernel.com)🌟
 
@@ -39,7 +39,9 @@ Kernel provides containerized, ready-to-use Chrome browser environments for agen
 - Develop and test AI agents that use browsers
 - Build custom tools that require controlled browser environments
 
-#### 🛜 Implementations
+<iframe src="https://screen.studio/share/59Z4Xilh" frameborder="0" allowfullscreen style="width:100%; height:500px;"></iframe>
+
+#### 🛜 Implementation
 
 `containers/docker` and `unikernels/unikraft-cu` functionally do the same thing:
 1. Pull from Anthropic's Computer Use reference implementation
