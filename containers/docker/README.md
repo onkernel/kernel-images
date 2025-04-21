@@ -7,7 +7,7 @@ This Dockerfile extends Anthropic's [Computer Use reference implementation](http
 ```bash
 git clone https://github.com/onkernel/kernel-images.git
 cd kernel-images
-docker build -t kernel-chromium -f containers/docker/Dockerfile .
+docker build -t onkernel/kernel-chromium:latest -f containers/docker/Dockerfile .
 ```
 
 ## 2. Run the Container
@@ -25,7 +25,7 @@ This exposes three ports:
 
 ## 👾 Connect via Chrome DevTools Protocol
 
-We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. 
+We expose port `9222` via ncat, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud.
 
 First, fetch the browser's CDP websocket endpoint:
 
