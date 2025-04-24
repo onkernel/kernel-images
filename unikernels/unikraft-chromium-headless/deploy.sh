@@ -1,0 +1,72 @@
+#!/bin/sh
+
+# Function to check if mkfs.erofs is available
+check_mkfs_erofs() {
+    if command -v mkfs.erofs &>/dev/null; then
+        echo "mkfs.erofs is already installed."
+        return 0
+    else
+        echo "mkfs.erofs is not installed."
+        return 1
+    fi
+}
+
+# Function to install erofs-utils package
+install_erofs_utils() {
+    if command -v apt-get &>/dev/null; then
+        echo "Detected Ubuntu/Debian-based system. Installing erofs-utils..."
+        sudo apt update
+        sudo apt install -y erofs-utils
+    elif command -v dnf &>/dev/null; then
+        echo "Detected Fedora-based system. Installing erofs-utils..."
+        sudo dnf install -y erofs-utils
+    elif command -v yum &>/dev/null; then
+        echo "Detected CentOS/RHEL-based system. Installing erofs-utils..."
+        sudo yum install -y erofs-utils
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew &>/dev/null; then
+            echo "Detected macOS. Installing erofs-utils..."
+            brew install erofs-utils
+        else
+            echo "Homebrew (brew) not found. Please install Homebrew first."
+            exit 1
+        fi
+    else
+        echo "Unsupported operating system or package manager. Please install erofs-utils manually."
+        exit 1
+    fi
+}
+
+# Stop execution on errors
+set -e
+
+check_mkfs_erofs
+if [ $? -ne 0 ]; then
+    install_erofs_utils
+fi
+
+cd image/
+
+# Build the root file system
+rm -rf ./.rootfs || true
+
+# Load configuration
+img_name="chromium-headless"
+app_name=$1
+
+docker build --platform linux/amd64 -t "$img_name" .
+docker rm cnt-"$app_name" || true
+docker create --platform linux/amd64 --name cnt-"$app_name" "$img_name" /bin/sh
+docker cp cnt-"$app_name":/ ./.rootfs
+rm -f initrd || true
+mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
+
+# Deploy an instance
+kraft cloud deploy \
+ --image "$img_name" \
+ --name "$app_name" \
+ --subdomain "$app_name" \
+ --vcpus 1 \
+ -M 1.5Gi \
+ -p 443:8080/http+tls \
+ .
