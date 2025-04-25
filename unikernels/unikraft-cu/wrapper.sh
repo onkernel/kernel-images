@@ -27,6 +27,7 @@ DISPLAY=:1 chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
+  --start-maximized \
   --disable-software-rasterizer \
   --remote-allow-origins=* \
   --no-zygote >&2 &
