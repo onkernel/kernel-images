@@ -33,9 +33,11 @@ DISPLAY=:1 chromium \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
+  --start-maximized \
   --disable-software-rasterizer \
   --remote-allow-origins=* \
   --no-zygote >&2 &
+  
 echo "Setting up ncat proxy on port $CHROME_PORT"
 ncat \
   --sh-exec "ncat localhost $INTERNAL_PORT" \
