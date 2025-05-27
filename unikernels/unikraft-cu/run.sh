@@ -1,8 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-name="kernel-cu"
+image="onkernel/kernel-cu-test:latest"
+name="kernel-cu-test"
 
-kraft cloud deploy \
+kraft cloud inst create \
+  --start 
 	-M 8192 \
 	-p 443:6080/http+tls \
     -p 9222:9222/tls \
@@ -11,4 +13,4 @@ kraft cloud deploy \
 	-e WIDTH=1024 \
 	-e HOME=/ \
 	-n "$name" \
-	.
+    $image

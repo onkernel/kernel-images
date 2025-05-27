@@ -11,8 +11,11 @@ This deploys headful Chromium on a unikernel. It also exposes a remote GUI throu
 ## 2. Add Unikraft Secret to Your CLI
 `export UKC_METRO=<region> and UKC_TOKEN=<secret>`
 
-## 3. Deploy the Implementation
-`./deploy.sh`
+## 3. Build the image
+`./build.sh`
+
+## 4. Run it
+`./run.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
 ```
