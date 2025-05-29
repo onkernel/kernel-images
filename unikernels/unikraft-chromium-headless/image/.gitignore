@@ -1,0 +1,5 @@
+/node_modules/
+/.unikraft/
+/.rootfs/
+/*.png
+/initrd
