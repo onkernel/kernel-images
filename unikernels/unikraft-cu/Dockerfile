@@ -55,6 +55,9 @@ RUN apt-get update && \
     unzip && \
     apt-get clean
 
+COPY etc-squid-ssl_cert/mitm.pem /usr/local/share/ca-certificates/squid-mitm.crt
+RUN update-ca-certificates
+
 # install chromium & ncat for proxying the remote debugging port
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium ncat
