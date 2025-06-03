@@ -30,13 +30,7 @@ CHROME_PORT=9222  # External port mapped in Docker
 echo "Starting Chromium on internal port $INTERNAL_PORT"
 DISPLAY=:1 chromium \
   --remote-debugging-port=$INTERNAL_PORT \
-  --no-sandbox \
-  --disable-dev-shm-usage \
-  --disable-gpu \
-  --start-maximized \
-  --disable-software-rasterizer \
-  --remote-allow-origins=* \
-  --no-zygote >&2 &
+  ${CHROMIUM_FLAGS:-} >&2 &
   
 echo "Setting up ncat proxy on port $CHROME_PORT"
 ncat \

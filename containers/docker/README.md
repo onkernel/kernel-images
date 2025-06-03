@@ -13,7 +13,7 @@ docker build -t onkernel/kernel-chromium:latest -f containers/docker/Dockerfile 
 ## 2. Run the Container
 
 ```bash
-docker run -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium
+docker run -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium
 ```
 
 This exposes three ports:
@@ -24,10 +24,12 @@ This exposes three ports:
 - `8501`: Streamlit interfaced used by Computer Use
 
 ## Live View Configuration
-You can set the browser width and height with the environment variables `WIDTH` and `HEIGHT` in the `docker run` command:
+You can set the browser width and height with the environment variables `WIDTH` and `HEIGHT`, and control Chromium startup flags with `CHROMIUM_FLAGS` in the `docker run` command:
 
 ```bash
-docker run -e WIDTH=1920 -e HEIGHT=1080 -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium
+docker run -e WIDTH=1920 -e HEIGHT=1080 \
+           -e CHROMIUM_FLAGS="--start-maximized --disable-gpu" \
+           -p 8501:8501 -p 8080:8080 -p 6080:6080 -p 9222:9222 kernel-chromium
 ```
 
 ## 👾 Connect via Chrome DevTools Protocol
