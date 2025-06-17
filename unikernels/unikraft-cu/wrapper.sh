@@ -2,6 +2,10 @@
 
 set -o pipefail -o errexit -o nounset
 
+# If the WITHDOCKER environment variable is not set, it means we are not running inside a Docker container.
+# Docker manages /dev/shm itself, and attempting to mount or modify it can cause permission or device errors.
+# However, in a unikernel container environment (non-Docker), we need to manually create and mount /dev/shm as a tmpfs
+# to support shared memory operations.
 if [ -z "${WITHDOCKER:-}" ]; then
   mkdir -p /dev/shm
   chmod 777 /dev/shm
