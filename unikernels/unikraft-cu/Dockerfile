@@ -95,7 +95,7 @@ ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        wget ca-certificates python2 supervisor \
+        wget ca-certificates python2 supervisor xclip \
         pulseaudio dbus-x11 xserver-xorg-video-dummy \
         libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
         gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
@@ -127,7 +127,7 @@ RUN set -eux; \
 
 # install chromium & ncat for proxying the remote debugging port
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat xclip
+RUN apt update -y && apt install -y chromium ncat
 
 # Install noVNC
 RUN git clone --branch v1.5.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
