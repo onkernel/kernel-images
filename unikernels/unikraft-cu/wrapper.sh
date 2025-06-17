@@ -16,10 +16,7 @@ export DISPLAY=:1
 
 /usr/bin/Xorg :1 -config /etc/neko/xorg.conf -noreset -nolisten tcp &
 
-sleep 2
 ./mutter_startup.sh
-
-sleep 2
 
 if [[ "${ENABLE_WEBRTC:-}" != "true" ]]; then
   ./x11vnc_startup.sh
