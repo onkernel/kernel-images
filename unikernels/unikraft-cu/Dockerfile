@@ -1,5 +1,5 @@
 # webrtc client
-FROM node:18-bullseye-slim AS client
+FROM node:22-bullseye-slim AS client
 WORKDIR /src
 COPY client/package*.json ./
 RUN npm install
