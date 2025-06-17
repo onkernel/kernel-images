@@ -1,12 +1,11 @@
+# For detailed configuration options, please refer to the Neko documentation:
+# https://neko.m1k1o.net/docs/v3/configuration#file
+
 desktop:
   screen: "1920x1080@60"
 
 member:
-  # needed for legacy API ad there is no user management
-  provider: "multiuser"
-  multiuser:
-   admin_password: "admin"
-   user_password: "neko"
+  provider: "noauth"
 
 session:
   merciful_reconnect: true
