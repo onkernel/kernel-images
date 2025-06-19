@@ -106,6 +106,24 @@ const browser = await chromium.connectOverCDP(finalWSUrl);
 - You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
 - See this repo's [homepage](/README.md) for some benefits of putting Chromium on a unikernel.
 
+## Docker
+
+You can also run the Dockerfile directly as a docker container:
+
+```sh
+docker build -t kernel-docker .
+docker run -d \
+  -p 8080:8080 \
+  -p 9222:9222 \
+  --cap-add SYS_ADMIN \
+  -p 56000-56100:56000-56100/udp \
+  -e ENABLE_WEBRTC=true \
+  -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
+  -e NEKO_WEBRTC_EPR=56000-56100 \
+  -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
+  kernel-docker
+```
+
 ## 📞 WebRTC Notes
 
 - Deploying to Unikraft Cloud requires the usage of a [TURN](https://webrtc.org/getting-started/turn-server), as direct exposure of UDP ports is not currently supported.
