@@ -46,10 +46,6 @@ ncat \
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
-  export NEKO_MEMBER_PROVIDER=noauth
-  export NEKO_PLUGINS_ENABLED=false
-  export NEKO_CHAT_ENABLED=false
-  export NEKO_FILETRANSFER_ENABLED=false
   echo "✨ Starting neko (webrtc server)."
   /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2
 else

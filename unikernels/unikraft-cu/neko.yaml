@@ -13,3 +13,12 @@ session:
   cookie:
     # needed for legacy API
     enabled: false
+
+plugins:
+  enabled: false
+
+chat:
+  enabled: false
+
+filetransfer:
+  enabled: false
