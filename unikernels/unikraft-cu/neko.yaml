@@ -9,8 +9,7 @@ member:
 
 session:
   merciful_reconnect: true
-  # default setting for legacy API
-  implicit_hosting: false
+  implicit_hosting: true
   cookie:
     # needed for legacy API
     enabled: false
