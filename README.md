@@ -75,12 +75,6 @@ Alternatively, you can run the browser on a Unikraft unikernel.
 ### 4. Run it
 `./run.sh`
 
-You can deploy the Implementation with WebRTC desktop streaming enabled instead of noVNC:
-`ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh`
-
-* `NEKO_ICESERVERS`: Describes multiple STUN and TURN server that can be used by the ICEAgent to establish a connection with a peer. e.g. `[{"urls": ["turn:turn.example.com:19302", "stun:stun.example.com:19302"], "username": "name", "credential": "password"}, {"urls": ["stun:stun.example2.com:19302"]}]`. See [notes](#unikernel-notes).
-
-
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
 ```
 Deployed successfully!
@@ -97,6 +91,15 @@ Deployed successfully!
  ├─── private ip: <ip>
  └───────── args: /wrapper.sh
 ```
+
+### Notes
+
+- The image requires at least 8gb of memory.
+- To deploy the implementation with WebRTC desktop streaming enabled instead of noVNC: `ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh`
+- Deploying to Unikraft Cloud requires the usage of a [TURN server](https://webrtc.org/getting-started/turn-server) when `ENABLE_WEBRTC=true`, as direct exposure of UDP ports is not currently supported. `NEKO_ICESERVERS`: Describes multiple STUN and TURN server that can be used by the ICEAgent to establish a connection with a peer. e.g. `[{"urls": ["turn:turn.example.com:19302", "stun:stun.example.com:19302"], "username": "name", "credential": "password"}, {"urls": ["stun:stun.example2.com:19302"]}]`.
+- Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast.
+- The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
+- You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
 
 ## Connect to the browser via Chrome DevTools Protocol
 
@@ -136,7 +139,7 @@ const browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
 
 ## Browser Remote GUI / Live View
 
-You can use the Live View to monitor and control the browser. The Live View supports both read and write access to the browser.
+You can use the embedded live view to monitor and control the browser. The live view supports both read and write access to the browser.
 
 - NoVNC: A VNC client. Read/write is supported. Maps to port `6080`.
 - WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set. Maps to port `8080`. 
@@ -145,13 +148,9 @@ Note: Audio streaming in the WebRTC implementation is currently non-functional a
 
 [Demo]
 
-## Unikernel Notes
+## Documentation
 
-- The image requires at least 8gb of memory.
-- Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast.
-- The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
-- You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
-- Deploying to Unikraft Cloud requires the usage of a [TURN server](https://webrtc.org/getting-started/turn-server), as direct exposure of UDP ports is not currently supported.
+Check out the documentation to our managed browser infrastructure [here](https://docs.onkernel.com).
 
 ## Contributing
 
@@ -163,12 +162,12 @@ See the [LICENSE](./LICENSE) file for details.
 
 ## Support
 
-For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-images/issues) on this repository.
-
-Check out our browser infrastructure-as-a-service platform [here](https://www.onkernel.com) or join our [Discord](https://discord.gg/FBrveQRcud).
+For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-images/issues) on this repository. You can also join our [Discord](https://discord.gg/FBrveQRcud).
 
 ## Colophon
 
 - Our WebRTC implementation is adapted from [Neko](https://github.com/m1k1o/neko).
 - Thank you to [xonkernel](https://github.com/xonkernel) for leading the development of our WebRTC live view.
 - Thank you to the [Unikraft Cloud](https://unikraft.cloud/) team for your help with unikernels.
+
+Made with ❤️ by the [Kernel team](https://www.onkernel.com).
