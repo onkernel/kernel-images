@@ -9,82 +9,166 @@
   <a href="https://x.com/rfgarcia"><img src="https://img.shields.io/twitter/follow/rfgarcia" alt="Follow @rfgarcia"></a>
 </p>
 
-## 📜 Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [What You Can Do With It](#what-you-can-do-with-it)
-- [Quickstarts](#quickstarts)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support](#support)
+## What's Kernel?
 
-## 🤙 Overview
+Kernel provides sandboxed, ready-to-use Chrome browsers for browser automations and web agents. This repo powers our [hosted services](https://docs.onkernel.com/introduction).
 
-Kernel provides sandboxed, ready-to-use Chrome browser environments for agentic workflows that need to access the Internet. `containers/docker/Dockerfile` and `unikernels/unikraft-cu` are the core infra that powers our hosted services.
+Sign up [here](https://www.onkernel.com/)!
 
-<br/>
+## Key Features
 
+- Sandboxed Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
+- Remote GUI access (live view streaming) for visual monitoring and remote control
+- Configurable live view settings (read-only view, browser window dimensions)
+- [Coming soon] Video replays of the browser's session
 
-★ [__Sign-up for the waitlist.__](https://onkernel.com) ★
-
-
-<br/>
-
-![Chromium x Unikernel Demo](/static/images/unikernel-gh.gif)
-
-## *️⃣ Key Features
-
-- Pre-configured Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
-- GUI access for visual monitoring and remote control
-- Anthropic's [Computer Use](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo) agent loop & chat interface baked in
-
-## 💡 What You Can Do With It
+## What You Can Do With It
 
 - Run automated browser-based workflows
 - Develop and test AI agents that use browsers
 - Build custom tools that require controlled browser environments
 
-## 🛜 Implementation
+## Implementation
 
-`containers/docker` and `unikernels/unikraft-cu` functionally do the same thing:
-1. Pull from Anthropic's Computer Use reference implementation
-2. Install Chromium
-3. Expose ports so Chrome DevTools-based frameworks (Playwright, Puppeteer) can connect to the instance
-4. Expose a remote GUI through noVNC
+This image can be used to run headful Chromium in a Docker container or with Unikraft unikernels. The unikernel implementation builds on top of the base Docker image and has the additional benefits of running on a unikernel:
 
-The unikernel implementation works the same as the Docker-only image but has the additional benefits of running on a unikernel: 
-- Automated standby / "sleep mode" when there isn't any network activity (consuming negligible resources when it does)
+- Automated standby / "sleep mode" when there is no network activity (consuming negligible resources when it does)
 - When it goes into standby mode, the unikernel’s state gets snapshotted and can be restored exactly as it was when it went to sleep. This could be useful if you want to reuse a session’s state (browser auth cookies, interact with local files, browser settings, even the exact page and window zoom you were on).
 - Extremely fast cold restarts (<20ms), which could be useful for any application that requires super low latency event handlers.
 
-## 🚀 Quickstarts
+## Demo
 
-- [Unikernel ✨](./unikernels/unikraft-cu/README.md)
-- [Docker](./containers/docker/README.md)
+[Demo here]
 
-## 🧑‍💻 Demo
+## Running in Docker
 
-https://github.com/user-attachments/assets/c62b7ff8-9ba0-4463-9df4-e0dd7f1292ba
+You can build and run the Dockerfile directly as a Docker container.
 
-## 🤝 Contributing
+```sh
+cd images
+docker build -t kernel-docker .
+docker run -d \
+  -p 8080:8080 \
+  -p 9222:9222 \
+  --cap-add SYS_ADMIN \
+  -p 56000-56100:56000-56100/udp \
+  -e ENABLE_WEBRTC=true \
+  -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
+  -e NEKO_WEBRTC_EPR=56000-56100 \
+  -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
+  kernel-docker
+```
 
-We welcome contributions to improve this example or add new ones! Please read our [contribution guidelines](./CONTRIBUTING.md) before submitting pull requests.
+## Running on a Unikernel
 
-## 🫰 License
+Alternatively, you can run the browser on a Unikraft unikernel.
+
+### 1. Install the Kraft CLI
+`curl -sSfL https://get.kraftkit.sh | sh`
+
+### 2. Add Unikraft Secret to Your CLI
+`export UKC_METRO=<region> and UKC_TOKEN=<secret>`
+
+### 3. Build the image
+`./build.sh`
+
+### 4. Run it
+`./run.sh`
+
+You can deploy the Implementation with WebRTC desktop streaming enabled instead of noVNC:
+`ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh`
+
+* `NEKO_ICESERVERS`: Describes multiple STUN and TURN server that can be used by the ICEAgent to establish a connection with a peer. e.g. `[{"urls": ["turn:turn.example.com:19302", "stun:stun.example.com:19302"], "username": "name", "credential": "password"}, {"urls": ["stun:stun.example2.com:19302"]}]`. See [notes](#unikernel-notes).
+
+
+When the deployment finishes successfully, the Kraft CLI will print out something like this:
+```
+Deployed successfully!
+ │
+ ├───────── name: kernel-cu
+ ├───────── uuid: 0cddb958...
+ ├──────── metro: <region>
+ ├──────── state: starting
+ ├─────── domain: https://<service_name>.kraft.host
+ ├──────── image: onkernel/kernel-cu@sha256:8265f3f188...
+ ├─────── memory: 8192 MiB
+ ├────── service: <service_name>
+ ├─ private fqdn: <id>
+ ├─── private ip: <ip>
+ └───────── args: /wrapper.sh
+```
+
+## Connect to the browser via Chrome DevTools Protocol
+
+Port `9222` is exposed via `ncat`, allowing you to connect Chrome DevTools Protocol-based browser frameworks like Playwright and Puppeteer (and CDP-based SDKs like Browser Use). You can use these frameworks to drive the browser in the cloud. You can also disconnect from the browser and reconnect to it.
+
+First, fetch the browser's CDP websocket endpoint:
+
+```typescript
+const url = new URL("http://localhost:9222/json/version");
+const response = await fetch(url, {
+  headers: {
+    "Host": "<this can be anything>" // Required if using a unikernel
+  }
+});
+if (response.status !== 200) {
+  throw new Error(
+    `Failed to retrieve browser instance: ${
+      response.statusText
+    } ${await response.text()}`
+  );
+}
+// webSocketDebuggerUrl should look like:
+// ws:///devtools/browser/06acd5ef-9961-431d-b6a0-86b99734f816
+const { webSocketDebuggerUrl } = await response.json();
+```
+
+Then, connect a remote Playwright or Puppeteer client to it:
+
+```typescript
+// Puppeteer
+const browser = await puppeteer.connect({
+  browserWSEndpoint: webSocketDebuggerUrl,
+});
+// Playwright
+const browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
+```
+
+## Browser Remote GUI / Live View
+
+You can use the Live View to monitor and control the browser. The Live View supports both read and write access to the browser.
+
+- NoVNC: A VNC client. Read/write is supported. Maps to port `6080`.
+- WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set. Maps to port `8080`. 
+
+Note: Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
+
+[Demo]
+
+## Unikernel Notes
+
+- The image requires at least 8gb of memory.
+- Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast.
+- The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
+- You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
+- Deploying to Unikraft Cloud requires the usage of a [TURN server](https://webrtc.org/getting-started/turn-server), as direct exposure of UDP ports is not currently supported.
+
+## Contributing
+
+Please read our [contribution guidelines](./CONTRIBUTING.md) before submitting pull requests or issues.
+
+## License
 
 See the [LICENSE](./LICENSE) file for details.
 
-## 🏅 Join Our Team
-We're hiring exceptional senior and staff backend engineers to work on the future of AI infrastructure. Full-time or contract-to-hire. Join a small team that punches well above its weight with minimal meetings and no bureaucracy.
-
-Locations: San Francisco, Cincinnati, or NYC.
-
-Things we're working on: serverless, containers/vms/unikernels, streaming, SDKs, CLIs.
-
-See our [job posts](https://docs.onkernel.com/careers/intro) for more details.
-
-## 🏄 Support
+## Support
 
 For issues, questions, or feedback, please [open an issue](https://github.com/onkernel/kernel-images/issues) on this repository.
 
-To learn more about our hosted services, [join our waitlist](https://onkernel.com) and our [Discord](https://discord.gg/FBrveQRcud).
+Check out our browser infrastructure-as-a-service platform [here](https://www.onkernel.com) or join our [Discord](https://discord.gg/FBrveQRcud).
+
+## Colophon
+
+- Our WebRTC implementation is adapted from [Neko](https://github.com/m1k1o/neko).
+- Thank you to [xonkernel](https://github.com/xonkernel) for leading the development of our WebRTC live view.
+- Thank you to the [Unikraft Cloud](https://unikraft.cloud/) team for your help with unikernels.
