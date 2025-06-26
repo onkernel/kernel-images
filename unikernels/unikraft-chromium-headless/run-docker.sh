@@ -7,5 +7,6 @@ CHROMIUM_FLAGS="--disable-field-trial-config --disable-background-networking --d
 
 docker run -it --rm \
   -p 9222:9222 \
-  -e WITH_DOCKER=true -e CHROMIUM_FLAGS="$CHROMIUM_FLAGS" \
+  -e WITH_DOCKER=true \
+  -e CHROMIUM_FLAGS="$CHROMIUM_FLAGS" \
   $IMAGE /usr/bin/wrapper.sh

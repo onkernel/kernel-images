@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-image="onkernel/chromium-headless:latest"
+source common.sh
+image="onkernel/$IMAGE:latest"
 name="chromium-headless-test"
 
 # flags taken from running playwright_stealth in headless mode
@@ -11,5 +12,7 @@ kraft cloud inst create \
 	-M 8192 \
 	-p 443:9222/http+tls \
 	-e CHROMIUM_FLAGS="$CHROMIUM_FLAGS" \
+     --vcpus 1 \
+     -M 1.5Gi \
 	-n "$name" \
     $image

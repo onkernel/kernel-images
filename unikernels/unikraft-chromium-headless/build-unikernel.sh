@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source common.sh
+
 # Function to check if mkfs.erofs is available
 check_mkfs_erofs() {
     if command -v mkfs.erofs &>/dev/null; then
@@ -51,18 +53,17 @@ cd image/
 rm -rf ./.rootfs || true
 
 # Load configuration
-img_name="chromium-headless"
 app_name=chromium-headless-test
 
-docker build --platform linux/amd64 -t "$img_name" .
+docker build --platform linux/amd64 -t "$IMAGE" .
 docker rm cnt-"$app_name" || true
-docker create --platform linux/amd64 --name cnt-"$app_name" "$img_name" /bin/sh
+docker create --platform linux/amd64 --name cnt-"$app_name" "$IMAGE" /bin/sh
 docker cp cnt-"$app_name":/ ./.rootfs
 rm -f initrd || true
 mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
 
 kraft pkg \
-  --name  index.unikraft.io/onkernel/$img_name
+  --name  index.unikraft.io/onkernel/$IMAGE
   --plat kraftcloud
   --arch x86_64 \
   --strategy overwrite \
