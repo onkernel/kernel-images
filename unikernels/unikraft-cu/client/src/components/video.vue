@@ -815,7 +815,8 @@
       const { offsetWidth, offsetHeight } = !this.fullscreen ? this._component : document.body
       this._player.style.width = `${offsetWidth}px`
       this._player.style.height = `${offsetHeight}px`
-      this._container.style.maxWidth = `${(this.horizontal / this.vertical) * offsetHeight}px`
+      const aspectPreservingMaxWidth = (this.horizontal / this.vertical) * offsetHeight
+      this._container.style.maxWidth = `${!this.fullscreen ? Math.min(this.width, aspectPreservingMaxWidth) : aspectPreservingMaxWidth}px`
       this._aspect.style.paddingBottom = `${(this.vertical / this.horizontal) * 100}%`
     }
 
