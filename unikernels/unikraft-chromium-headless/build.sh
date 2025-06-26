@@ -1,5 +1,4 @@
-#!/bin/sh
-set -euo pipefail  
+#!/usr/bin/env bash
 
 # Function to check if mkfs.erofs is available
 check_mkfs_erofs() {
@@ -38,13 +37,13 @@ install_erofs_utils() {
     fi
 }
 
-# Stop execution on errors
-set -e
-
 check_mkfs_erofs
 if [ $? -ne 0 ]; then
+    echo "mkfs.erofs is not installed. Installing erofs-utils..."
     install_erofs_utils
 fi
+
+set -euo pipefail  
 
 cd image/
 
@@ -53,7 +52,7 @@ rm -rf ./.rootfs || true
 
 # Load configuration
 img_name="chromium-headless"
-app_name=$1
+app_name=chromium-headless-test
 
 docker build --platform linux/amd64 -t "$img_name" .
 docker rm cnt-"$app_name" || true
@@ -62,12 +61,10 @@ docker cp cnt-"$app_name":/ ./.rootfs
 rm -f initrd || true
 mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
 
-# Deploy an instance
-kraft cloud deploy \
- --image "$img_name" \
- --name "$app_name" \
- --subdomain "$app_name" \
- --vcpus 1 \
- -M 1.5Gi \
- -p 443:8080/http+tls \
- .
+kraft pkg \
+  --name  index.unikraft.io/onkernel/$img_name
+  --plat kraftcloud
+  --arch x86_64 \
+  --strategy overwrite \
+  --push \
+  .

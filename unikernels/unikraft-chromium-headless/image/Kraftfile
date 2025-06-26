@@ -7,7 +7,6 @@ labels:
   cloud.unikraft.v1.instances/scale_to_zero.stateful: "true"
   cloud.unikraft.v1.instances/scale_to_zero.cooldown_time_ms: 1000
 
-#rootfs: ./Dockerfile
 rootfs: ./initrd
 
-cmd: ["/usr/bin/wrapper.sh", "/usr/bin/node", "/app/proxy.js"]
+cmd: ["/usr/bin/wrapper.sh"]
