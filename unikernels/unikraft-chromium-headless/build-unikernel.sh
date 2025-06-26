@@ -63,8 +63,8 @@ rm -f initrd || true
 mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
 
 kraft pkg \
-  --name  index.unikraft.io/onkernel/$IMAGE
-  --plat kraftcloud
+  --name  index.unikraft.io/onkernel/$IMAGE \
+  --plat kraftcloud \
   --arch x86_64 \
   --strategy overwrite \
   --push \
