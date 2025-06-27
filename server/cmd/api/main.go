@@ -63,7 +63,7 @@ func main() {
 		slogger.Error("invalid default recording parameters", "err", err)
 		os.Exit(1)
 	}
-	apiService := api.New(recorder.NewFFmpegManager(), recorder.NewFFmpegRecorderFactory(defaultParams))
+	apiService := api.New(recorder.NewFFmpegManager(), recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams))
 
 	strictHandler := oapi.NewStrictHandler(apiService, nil)
 	oapi.HandlerFromMux(strictHandler, r)

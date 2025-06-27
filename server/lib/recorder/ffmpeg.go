@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,12 +19,24 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/logger"
 )
 
+const (
+	// arbitrary value to indicate we have not yet received an exit code from the process
+	exitCodeInitValue = math.MinInt
+
+	// the exit codes returned by the stdlib:
+	// -1 if the process hasn't exited yet or was terminated by a signal
+	// 0 if the process exited successfully
+	// >0 if the process exited with a non-zero exit code
+	exitCodeProcessDoneMinValue = -1
+)
+
 // FFmpegRecorder encapsulates an FFmpeg recording session with platform-specific screen capture.
 // It manages the lifecycle of a single FFmpeg process and provides thread-safe operations.
 type FFmpegRecorder struct {
 	mu sync.Mutex
 
 	id         string
+	binaryPath string // path to the ffmpeg binary to execute. Defaults to "ffmpeg".
 	cmd        *exec.Cmd
 	params     FFmpegRecordingParams
 	outputPath string
@@ -60,14 +73,16 @@ func (p FFmpegRecordingParams) Validate() error {
 
 type FFmpegRecorderFactory func(id string, overrides FFmpegRecordingParams) (Recorder, error)
 
-func NewFFmpegRecorderFactory(config FFmpegRecordingParams) FFmpegRecorderFactory {
+// NewFFmpegRecorderFactory returns a factory that creates new recorders. The provided
+// pathToFFmpeg is used as the binary to execute; if empty it defaults to "ffmpeg" which
+// is expected to be discoverable on the host's PATH.
+func NewFFmpegRecorderFactory(pathToFFmpeg string, config FFmpegRecordingParams) FFmpegRecorderFactory {
 	return func(id string, overrides FFmpegRecordingParams) (Recorder, error) {
 		mergedParams := mergeFFmpegRecordingParams(config, overrides)
-
-		filename := filepath.Join(*config.OutputDir, fmt.Sprintf("%s.mp4", id))
 		return &FFmpegRecorder{
 			id:         id,
-			outputPath: filename,
+			binaryPath: pathToFFmpeg,
+			outputPath: filepath.Join(*mergedParams.OutputDir, fmt.Sprintf("%s.mp4", id)),
 			params:     mergedParams,
 		}, nil
 	}
@@ -112,7 +127,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 	// ensure internal state
 	fr.ffmpegErr = nil
-	fr.exitCode = -1
+	fr.exitCode = exitCodeInitValue
 	fr.startTime = time.Now()
 	fr.exited = make(chan struct{})
 
@@ -120,9 +135,9 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Info(fmt.Sprintf("ffmpeg %s", strings.Join(args, " ")))
+	log.Info(fmt.Sprintf("%s %s", fr.binaryPath, strings.Join(args, " ")))
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(fr.binaryPath, args...)
 	// create process group to ensure all processes are signaled together
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = os.Stderr
@@ -149,43 +164,25 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
-	return fr.gracefulShutdown(ctx)
+	return fr.shutdownInPhases(ctx, []shutdownPhase{
+		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
+		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+	})
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
-	log := logger.FromContext(ctx)
-
-	fr.mu.Lock()
-	defer fr.mu.Unlock()
-
-	if fr.cmd == nil {
-		return fmt.Errorf("no recording in progress")
-	}
-
-	// Check if the process has already exited
-	if fr.exitCode >= 0 {
-		log.Info("ffmpeg process has already exited, no force stop needed")
-		return nil
-	}
-
-	log.Warn("force killing ffmpeg process")
-	if err := fr.cmd.Process.Kill(); err != nil {
-		log.Error("failed to force kill ffmpeg", "err", err)
-		return fmt.Errorf("failed to force kill process: %w", err)
-	}
-
-	// block until the process exists with minimal timeout
-	waitForChan(ctx, 1*time.Second, fr.exited)
-
-	return nil
+	return fr.shutdownInPhases(ctx, []shutdownPhase{
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+	})
 }
 
 // IsRecording returns true if a recording is currently in progress.
 func (fr *FFmpegRecorder) IsRecording(ctx context.Context) bool {
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
-	return fr.cmd != nil && fr.exitCode < 0
+	return fr.cmd != nil && fr.exitCode < exitCodeProcessDoneMinValue
 }
 
 // Recording returns the recording file as an io.ReadCloser.
@@ -297,39 +294,32 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 	}
 }
 
-// gracefulShutdown performs a multi-phase shutdown of the ffmpeg process.
-func (fr *FFmpegRecorder) gracefulShutdown(ctx context.Context) error {
+type shutdownPhase struct {
+	name    string
+	signals []syscall.Signal
+	timeout time.Duration
+	desc    string
+}
+
+func (fr *FFmpegRecorder) shutdownInPhases(ctx context.Context, phases []shutdownPhase) error {
 	log := logger.FromContext(ctx)
 
 	// capture immutable references under lock
 	fr.mu.Lock()
-	if fr.exitCode >= 0 {
-		log.Info("ffmpeg process has already exited")
-		fr.mu.Unlock()
-		return nil
-	}
+	exitCode := fr.exitCode
 	cmd := fr.cmd
 	done := fr.exited
 	fr.mu.Unlock()
 
+	if exitCode >= exitCodeProcessDoneMinValue {
+		log.Info("ffmpeg process has already exited")
+		return nil
+	}
 	if cmd == nil || cmd.Process == nil {
 		return fmt.Errorf("no recording to stop")
 	}
 
 	pgid := -cmd.Process.Pid // negative PGID targets the whole group
-
-	// escalating shutdown phases (least to most aggressive)
-	phases := []struct {
-		name    string
-		signals []syscall.Signal
-		timeout time.Duration
-		desc    string
-	}{
-		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
-	}
-
 	for _, phase := range phases {
 		// short circuit: the process exited before this phase started.
 		select {
@@ -352,8 +342,7 @@ func (fr *FFmpegRecorder) gracefulShutdown(ctx context.Context) error {
 		}
 	}
 
-	// after kill there isn't much we can report, so just return
-	return nil
+	return fmt.Errorf("failed to shutdown ffmpeg")
 }
 
 // waitForChan returns nil if and only if the channel is closed

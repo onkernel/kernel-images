@@ -16,6 +16,9 @@ type Config struct {
 	DisplayNum  int    `envconfig:"DISPLAY_NUM" default:"1"`
 	MaxSizeInMB int    `envconfig:"MAX_SIZE_MB" default:"500"`
 	OutputDir   string `envconfig:"OUTPUT_DIR" default:"."`
+
+	// Absolute or relative path to the ffmpeg binary. If empty the code falls back to "ffmpeg" on $PATH.
+	PathToFFmpeg string `envconfig:"FFMPEG_PATH" default:"ffmpeg"`
 }
 
 // Load loads configuration from environment variables
@@ -43,6 +46,9 @@ func validate(config *Config) error {
 	}
 	if config.MaxSizeInMB < 0 {
 		return fmt.Errorf("MAX_SIZE_MB must be greater than 0")
+	}
+	if config.PathToFFmpeg == "" {
+		return fmt.Errorf("FFMPEG_PATH is required")
 	}
 
 	return nil
