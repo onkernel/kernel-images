@@ -816,6 +816,7 @@
           this.reqMouseDown = e
           this.reqMouseUp = null
           this.$accessor.remote.request()
+          this.syncClipboard()
         } else if (e.type === 'mouseup') {
           this.reqMouseUp = e
         }
