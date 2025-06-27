@@ -1,5 +1,6 @@
 <template>
   <ul>
+<!--KERNEL
     <li v-if="!implicitHosting && (!controlLocked || hosting)">
       <i
         :class="[
@@ -53,7 +54,6 @@
         @click.stop.prevent="toggleMedia"
       />
     </li>
-<!--KERNEL
     <li>
       <div class="volume">
         <i
