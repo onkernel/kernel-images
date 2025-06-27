@@ -10,6 +10,9 @@ if [ -z "$UKC_TOKEN" ] || [ -z "$UKC_METRO" ]; then
 fi
 source ../../shared/start-buildkit.sh
 
+# Build the API binary
+source ../../shared/build-server.sh "$(pwd)/bin"
+
 kraft pkg \
   --name index.unikraft.io/$image \
   --plat kraftcloud --arch x86_64 \

@@ -50,6 +50,8 @@ RUN apt-get update && \
     sudo \
     mutter \
     x11vnc \
+    # Recording tools
+    ffmpeg \
     # Python/pyenv reqs
     build-essential \
     libssl-dev  \
@@ -149,6 +151,10 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xor
 
 COPY image-chromium/ /
 COPY ./wrapper.sh /wrapper.sh
+
+# copy the kernel-images API binary built by build.sh
+COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
+ENV WITH_KERNEL_IMAGES_API=false
 
 ENTRYPOINT [ "/wrapper.sh" ]
 

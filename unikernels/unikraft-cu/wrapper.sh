@@ -28,10 +28,15 @@ cleanup () {
   echo "Cleaning up..."
   kill -TERM $pid
   kill -TERM $pid2
+  # Kill the API server if it was started
+  if [[ -n "${pid3:-}" ]]; then
+    kill -TERM $pid3 || true
+  fi
 }
 trap cleanup TERM INT
 pid=
 pid2=
+pid3=
 INTERNAL_PORT=9223
 CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
@@ -52,6 +57,25 @@ else
   # use novnc
   ./novnc_startup.sh
   echo "✨ noVNC demo is ready to use!"
+fi
+
+if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
+  echo "✨ Starting kernel-images API."
+
+  API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
+  API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
+  API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-${DISPLAY_NUM:-1}}"
+  API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
+  API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
+
+  mkdir -p "$API_OUTPUT_DIR"
+
+  PORT="$API_PORT" \
+  FRAME_RATE="$API_FRAME_RATE" \
+  DISPLAY_NUM="$API_DISPLAY_NUM" \
+  MAX_SIZE_MB="$API_MAX_SIZE_MB" \
+  OUTPUT_DIR="$API_OUTPUT_DIR" \
+  /usr/local/bin/kernel-images-api & pid3=$!
 fi
 
 # Keep the container running
