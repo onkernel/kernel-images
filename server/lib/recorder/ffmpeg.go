@@ -153,7 +153,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	go fr.waitForCommand(ctx)
 
 	// Check for startup errors before returning
-	if err := waitForChan(ctx, 500*time.Millisecond, fr.exited); err == nil {
+	if err := waitForChan(ctx, 250*time.Millisecond, fr.exited); err == nil {
 		fr.mu.Lock()
 		defer fr.mu.Unlock()
 		return fmt.Errorf("failed to start ffmpeg process: %w", fr.ffmpegErr)
@@ -165,16 +165,16 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	return fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 500 * time.Millisecond, "graceful stop"},
+		{"terminate", []syscall.Signal{syscall.SIGTERM}, 250 * time.Millisecond, "forceful termination"},
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 	return fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 }
 
