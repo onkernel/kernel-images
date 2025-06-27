@@ -50,8 +50,6 @@ RUN apt-get update && \
     sudo \
     mutter \
     x11vnc \
-    # Recording tools
-    ffmpeg \
     # Python/pyenv reqs
     build-essential \
     libssl-dev  \
@@ -89,6 +87,7 @@ RUN apt-get update && \
     xdg-utils \
     libvulkan1 \
     fonts-liberation \
+    ffmpeg \
     unzip && \
     apt-get clean
 

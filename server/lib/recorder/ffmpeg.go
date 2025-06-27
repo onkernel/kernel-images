@@ -165,8 +165,9 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	return fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 500 * time.Millisecond, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 250 * time.Millisecond, "forceful termination"},
+		{"wake_and_interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
+		{"retry_interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 3 * time.Second, "graceful stop"},
+		{"terminate", []syscall.Signal{syscall.SIGTERM}, 1 * time.Second, "forceful termination"},
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 }
@@ -217,6 +218,7 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 	switch runtime.GOOS {
 	case "darwin":
 		return []string{
+			"-loglevel", "debug",
 			// Input configuration - Use AVFoundation for macOS screen capture
 			"-f", "avfoundation",
 			"-framerate", strconv.Itoa(*params.FrameRate),
@@ -232,7 +234,7 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 			"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
 
 			// Error handling
-			"-xerror", // Exit on any error
+			// "-xerror", // Exit on any error
 
 			// Output configuration for data safety
 			"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
@@ -243,13 +245,14 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 		}, nil
 	case "linux":
 		return []string{
+			"-loglevel", "debug",
 			// Input configuration - Use X11 screen capture for Linux
 			"-f", "x11grab",
 			"-framerate", strconv.Itoa(*params.FrameRate),
 			"-i", fmt.Sprintf(":%d", *params.DisplayNum), // X11 display
 
 			// Video encoding
-			"-c:v", "libx264",
+			// "-c:v", "libx264",
 
 			// Timestamp handling for reliable playback
 			"-use_wallclock_as_timestamps", "1", // Use system time instead of input stream time
@@ -257,7 +260,7 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 			"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
 
 			// Error handling
-			"-xerror", // Exit on any error
+			// "-xerror", // Exit on any error
 
 			// Output configuration for data safety
 			"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
@@ -332,7 +335,9 @@ func (fr *FFmpegRecorder) shutdownInPhases(ctx context.Context, phases []shutdow
 
 		// Send the phase's signals in order.
 		for _, sig := range phase.signals {
-			_ = syscall.Kill(pgid, sig) // ignore error; process may have gone away
+			_ = syscall.Kill(pgid, sig)
+			// arbitrary delay between signals
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		// Wait for exit or timeout
