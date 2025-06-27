@@ -38,7 +38,7 @@ This image can be used to run headful Chromium in a Docker container or with Uni
 
 ## Demo
 
-[Demo here]
+https://github.com/user-attachments/assets/5888e823-5867-4c01-ad67-ec8989ba9573
 
 ## Running in Docker
 
@@ -92,7 +92,7 @@ Deployed successfully!
  └───────── args: /wrapper.sh
 ```
 
-### Notes
+### Unikernel Notes
 
 - The image requires at least 8gb of memory.
 - To deploy the implementation with WebRTC desktop streaming enabled instead of noVNC: `ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh`
@@ -144,13 +144,13 @@ You can use the embedded live view to monitor and control the browser. The live 
 - NoVNC: A VNC client. Read/write is supported. Maps to port `6080`.
 - WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set. Maps to port `8080`. 
 
-Note: Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
-
-[Demo]
+### Notes
+- Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
+- The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
 
 ## Documentation
 
-Check out the documentation to our managed browser infrastructure [here](https://docs.onkernel.com).
+This repo powers our managed [browser infrastructure](https://docs.onkernel.com).
 
 ## Contributing
 
