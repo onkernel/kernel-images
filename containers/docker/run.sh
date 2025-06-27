@@ -23,7 +23,6 @@ RUN_ARGS=(
   -e DISPLAY_NUM=1 \
   -e HEIGHT=768 \
   -e WIDTH=1024 \
-  -e HOME=/ \
   -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote"
 )
 
