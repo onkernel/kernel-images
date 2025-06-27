@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ghodss/yaml"
 	"github.com/go-chi/chi/v5"
@@ -101,13 +102,15 @@ func main() {
 	<-ctx.Done()
 	slogger.Info("shutdown signal received")
 
-	g, _ := errgroup.WithContext(ctx)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	g, _ := errgroup.WithContext(shutdownCtx)
 
 	g.Go(func() error {
-		return srv.Shutdown(context.Background())
+		return srv.Shutdown(shutdownCtx)
 	})
 	g.Go(func() error {
-		return apiService.Shutdown(ctx)
+		return apiService.Shutdown(shutdownCtx)
 	})
 
 	if err := g.Wait(); err != nil {
