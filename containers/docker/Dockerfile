@@ -49,10 +49,6 @@ ncat \
 
 ./novnc_startup.sh >&2
 
-python http_server.py >&2 &
-
-STREAMLIT_SERVER_PORT=8501 python -m streamlit run computer_use_demo/streamlit.py >&2
-
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   echo "✨ Starting kernel-images API."
 
@@ -71,6 +67,10 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   OUTPUT_DIR="$API_OUTPUT_DIR" \
   /usr/local/bin/kernel-images-api & pid3=$!
 fi
+
+python http_server.py >&2 &
+
+STREAMLIT_SERVER_PORT=8501 python -m streamlit run computer_use_demo/streamlit.py >&2
 EOL
 
 WORKDIR /home/computeruse
