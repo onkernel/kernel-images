@@ -23,15 +23,14 @@ async def run(cdp_url: str) -> None:
         # Re-use the first page if present, otherwise create a fresh one.
         page = context.pages[0] if context.pages else await context.new_page()
 
-        # Navigate to Hacker News.
-        await page.goto("https://news.ycombinator.com", wait_until="networkidle")
+        await page.goto("https://www.apple.com", wait_until="networkidle")
 
         # Ensure output directory and save screenshot.
         out_path = Path("screenshot.png")
         await page.screenshot(path=str(out_path), full_page=True)
         print(f"Screenshot saved to {out_path.resolve()}")
 
-        await context.close()
+        await browser.close()
 
 
 # ---------------- CLI entrypoint ---------------- #

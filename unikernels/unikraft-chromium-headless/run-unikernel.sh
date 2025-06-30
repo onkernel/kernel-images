@@ -8,7 +8,7 @@ kraft cloud inst rm "$name" || true
 
 kraft cloud inst create \
   --start \
-  -M 1.5Gi \
+  -M 1G \
   -p 9222:9222/tls \
   --vcpus 1 \
   -n "$name" \

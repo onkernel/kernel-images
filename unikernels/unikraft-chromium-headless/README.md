@@ -47,3 +47,5 @@ source .venv/bin/activate
 uv sync
 uv run python main.py <kraft instance https url>:9222
 ```
+
+4. Check on memory use. In shared/uk-check-stats.sh there's a script that will poll the `/stats` endpoint of Unikraft Cloud to see RSS (memory) used by the VM. This is good for tailoring the GB resource request when creating an instance.
