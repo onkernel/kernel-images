@@ -1,0 +1,24 @@
+# For detailed configuration options, please refer to the Neko documentation:
+# https://neko.m1k1o.net/docs/v3/configuration#file
+
+desktop:
+  screen: "1920x1080@60"
+
+member:
+  provider: "noauth"
+
+session:
+  merciful_reconnect: true
+  implicit_hosting: true
+  cookie:
+    # needed for legacy API
+    enabled: false
+
+plugins:
+  enabled: false
+
+chat:
+  enabled: false
+
+filetransfer:
+  enabled: false

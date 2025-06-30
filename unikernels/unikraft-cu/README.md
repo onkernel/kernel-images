@@ -34,6 +34,17 @@ Deployed successfully!
  └───────── args: /wrapper.sh
 ```
 
+### 3.1 Deploy the Implementation with WebRTC desktop streaming enabled
+```sh
+ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh
+```
+
+`NEKO_ICESERVERS`
+* Describes multiple STUN and TURN server that can be used by the ICEAgent to establish a connection with a peer.
+* e.g. `[{"urls": ["turn:turn.example.com:19302", "stun:stun.example.com:19302"], "username": "name", "credential": "password"}, {"urls": ["stun:stun.example2.com:19302"]}]`
+
+WebRTC web client will run at port `8080`.
+
 ## 🧑‍💻 Connect via remote GUI (noVNC)
 
 This implementation maps a noVNC remote GUI to the host port. You can access it by visiting the `domain` listed in Kraft's CLI output above. The remote GUI supports both read and write actions on the browser.
@@ -94,6 +105,30 @@ const browser = await chromium.connectOverCDP(finalWSUrl);
 - We're still exploring the limitations of putting a browser on a unikernel. Everything described in this README is from our own observations. If you notice any interesting behavior or limitations of Chromium on a unikernel, please share it on our [Discord](https://discord.gg/FBrveQRcud).
 - You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
 - See this repo's [homepage](/README.md) for some benefits of putting Chromium on a unikernel.
+
+## Docker
+
+You can also run the Dockerfile directly as a docker container:
+
+```sh
+docker build -t kernel-docker .
+docker run -d \
+  -p 8080:8080 \
+  -p 9222:9222 \
+  --cap-add SYS_ADMIN \
+  -p 56000-56100:56000-56100/udp \
+  -e ENABLE_WEBRTC=true \
+  -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
+  -e NEKO_WEBRTC_EPR=56000-56100 \
+  -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
+  kernel-docker
+```
+
+## 📞 WebRTC Notes
+
+- Deploying to Unikraft Cloud requires the usage of a [TURN](https://webrtc.org/getting-started/turn-server), as direct exposure of UDP ports is not currently supported.
+- WebRTC functionality is enabled through customized components of [neko](https://github.com/m1k1o/neko).
+- TODO: Audio streaming is currently non-functional and needs to be fixed.
 
 ## 🤝 License & Contributing
 See [here](/README.md) for license and contributing details.
