@@ -404,8 +404,13 @@ func (fm *FFmpegManager) RegisterRecorder(ctx context.Context, recorder Recorder
 	defer fm.mu.Unlock()
 
 	// Check for existing recorder with same ID
-	if _, exists := fm.recorders[recorder.ID()]; exists {
-		return fmt.Errorf("recorder with id '%s' already exists", recorder.ID())
+	if existingRecorder, exists := fm.recorders[recorder.ID()]; exists {
+		// If there's an existing recorder that's still recording, reject the new one
+		if existingRecorder.IsRecording(ctx) {
+			return fmt.Errorf("recorder with id '%s' already exists and is recording", recorder.ID())
+		}
+		// If existing recorder is not recording, replace it
+		log.Info("replacing inactive recorder", "id", recorder.ID())
 	}
 
 	fm.recorders[recorder.ID()] = recorder

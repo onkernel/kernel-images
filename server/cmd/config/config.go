@@ -38,18 +38,31 @@ func validate(config *Config) error {
 	if config.OutputDir == "" {
 		return fmt.Errorf("OUTPUT_DIR is required")
 	}
-	if config.DisplayNum < 0 {
-		return fmt.Errorf("DISPLAY_NUM must be greater than 0")
+	if config.DisplayNum < 0 || config.DisplayNum > 99 {
+		return fmt.Errorf("DISPLAY_NUM must be between 0 and 99")
 	}
-	if config.FrameRate < 0 {
-		return fmt.Errorf("FRAME_RATE must be greater than 0")
+	if config.FrameRate <= 0 || config.FrameRate > 120 {
+		return fmt.Errorf("FRAME_RATE must be between 1 and 120")
 	}
-	if config.MaxSizeInMB < 0 {
-		return fmt.Errorf("MAX_SIZE_MB must be greater than 0")
+	if config.MaxSizeInMB <= 0 || config.MaxSizeInMB > 10000 {
+		return fmt.Errorf("MAX_SIZE_MB must be between 1 and 10000")
 	}
 	if config.PathToFFmpeg == "" {
 		return fmt.Errorf("FFMPEG_PATH is required")
 	}
 
 	return nil
+}
+
+// LogSafeConfig returns a version of the config safe for logging
+// by redacting sensitive information
+func (c *Config) LogSafeConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"port":         c.Port,
+		"frame_rate":   c.FrameRate,
+		"display_num":  c.DisplayNum,
+		"max_size_mb":  c.MaxSizeInMB,
+		"output_dir":   "[REDACTED]", // Potentially sensitive path
+		"ffmpeg_path":  "[REDACTED]", // Potentially sensitive path
+	}
 }

@@ -32,7 +32,7 @@ func main() {
 		slogger.Error("failed to load configuration", "err", err)
 		os.Exit(1)
 	}
-	slogger.Info("server configuration", "config", config)
+	slogger.Info("server configuration", "config", config.LogSafeConfig())
 
 	// context cancellation on SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
