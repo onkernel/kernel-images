@@ -27,7 +27,9 @@ while true; do
     metrics=$(curl -s -H "Authorization: Bearer $UKC_TOKEN" "$UKC_METRO/instances/$instance_id/metrics")
     rss=$(echo "$metrics" | grep 'instance_rss_bytes{instance_uuid=' | cut -d' ' -f2)
     cpu_time=$(echo "$metrics" | grep 'instance_cpu_time_s{instance_uuid=' | cut -d' ' -f2)
+    tx_bytes=$(echo "$metrics" | grep 'instance_tx_bytes{instance_uuid=' | cut -d' ' -f2)
     echo "RSS: $rss"
     echo "CPU Time: $cpu_time"
+    echo "TX Bytes: $tx_bytes"
     sleep 1
 done
