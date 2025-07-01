@@ -152,7 +152,7 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xor
 COPY image-chromium/ /
 COPY ./wrapper.sh /wrapper.sh
 
-# copy the kernel-images API binary built by build.sh
+# copy the kernel-images API binary built externally
 COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
 
