@@ -24,7 +24,10 @@ fi
 trap 'echo "Stopping stats collection..."; exit 0' INT
 
 while true; do
-    rss=$(curl -s -H "Authorization: Bearer $UKC_TOKEN" "$UKC_METRO/instances/$instance_id/metrics" | grep 'instance_rss_bytes{instance_uuid=')
-    echo $rss
+    metrics=$(curl -s -H "Authorization: Bearer $UKC_TOKEN" "$UKC_METRO/instances/$instance_id/metrics")
+    rss=$(echo "$metrics" | grep 'instance_rss_bytes{instance_uuid=' | cut -d' ' -f2)
+    cpu_time=$(echo "$metrics" | grep 'instance_cpu_time_s{instance_uuid=' | cut -d' ' -f2)
+    echo "RSS: $rss"
+    echo "CPU Time: $cpu_time"
     sleep 1
 done

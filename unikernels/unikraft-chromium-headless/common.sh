@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -e -o pipefail
 
-# fail if IMAGE, UKC_TOKEN, UKC_METRO are not set
+# fail if IMAGE, UKC_TOKEN, UKC_METRO, UKC_INDEX are not set
 errormsg=""
-for var in IMAGE UKC_TOKEN UKC_METRO; do
+for var in IMAGE UKC_TOKEN UKC_METRO UKC_INDEX; do
     if [ -z "${!var}" ]; then
         errormsg+="$var "
     fi

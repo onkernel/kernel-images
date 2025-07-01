@@ -6,7 +6,9 @@ import socket
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen, Request
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError  # type: ignore
+import aiohttp  # type: ignore
+import contextlib
 
 async def run(cdp_url: str) -> None:
     """Connect to an existing Chromium instance via CDP, navigate, and screenshot."""
@@ -23,7 +25,36 @@ async def run(cdp_url: str) -> None:
         # Re-use the first page if present, otherwise create a fresh one.
         page = context.pages[0] if context.pages else await context.new_page()
 
-        await page.goto("https://www.apple.com", wait_until="networkidle")
+        # Snapshot the page as-is for debugging purposes.
+        print(f"Page URL: {page.url}")
+        print(f"Taking screenshot before navigation")
+        await page.screenshot(path="screenshot-before.png", full_page=True)
+
+        # Decide destination URL.
+        target_url = (
+            "https://www.apple.com"
+            if "apple.com" not in page.url
+            else "https://www.microsoft.com"
+        )
+
+        print(f"Navigating to {target_url} …", file=sys.stderr)
+
+        try:
+            # First wait only for DOMContentLoaded – many modern sites keep long-polling
+            # connections alive which makes the stricter "networkidle" heuristic unreliable.
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=60_000)
+
+            # Optionally wait for a quieter network but don't fail if it never settles.
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10_000)
+            except PlaywrightTimeoutError:
+                print("networkidle state not reached within 10 s – proceeding", file=sys.stderr)
+
+        except PlaywrightTimeoutError:
+            print(f"Navigation to {target_url} timed out after 60 s", file=sys.stderr)
+            # Capture the state for post-mortem analysis.
+            await page.screenshot(path="screenshot-error.png", full_page=True)
+            raise
 
         # Ensure output directory and save screenshot.
         out_path = Path("screenshot.png")
@@ -86,13 +117,48 @@ def _resolve_cdp_url(arg: str) -> str:
         )
         sys.exit(1)
 
+# ---------------- keep-alive task ---------------- #
+
+
+async def _keep_alive(endpoint: str) -> None:
+    """Periodically send a GET request to *endpoint* to keep the instance alive."""
+    # Ensure scheme; default to http:// if missing.
+    if not endpoint.startswith(("http://", "https://")):
+        endpoint = f"http://{endpoint}"
+
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(endpoint) as resp:
+                    # Consume the response body to finish the request.
+                    await resp.read()
+            except Exception as exc:  # noqa: BLE001
+                print(f"Keep-alive request to {endpoint} failed: {exc}", file=sys.stderr)
+
+            await asyncio.sleep(1)
+
+
+async def _async_main(endpoint_arg: str) -> None:
+    """Resolve CDP URL, start keep-alive task, and run the browser automation."""
+
+    cdp_url = _resolve_cdp_url(endpoint_arg)
+
+    # Start the keep-alive loop.
+    keep_alive_task = asyncio.create_task(_keep_alive(endpoint_arg))
+
+    try:
+        await run(cdp_url)
+    finally:
+        # Ensure the keep-alive task is cancelled cleanly when run() completes.
+        keep_alive_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await keep_alive_task
 
 def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python main.py <DevTools HTTP endpoint>", file=sys.stderr)
         sys.exit(1)
-    cdp_url = _resolve_cdp_url(sys.argv[1])
-    asyncio.run(run(cdp_url))
+    asyncio.run(_async_main(sys.argv[1]))
 
 if __name__ == "__main__":
     main()

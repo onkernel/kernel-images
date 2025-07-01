@@ -25,13 +25,22 @@ RUN set -xe; \
     build-essential \
     libssl-dev \
     git \
+    dbus \
+    dbus-x11 \
+    xvfb \
+    x11-utils \
     software-properties-common;
 
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium ncat
 
+# Remove upower to prevent spurious D-Bus activations and logs
+RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user with a home directory
 RUN useradd -m -s /bin/bash kernel
+
+COPY ./xvfb_startup.sh /usr/bin/xvfb_startup.sh
 
 # Wrapper script set environment
 COPY ./wrapper.sh /usr/bin/wrapper.sh
