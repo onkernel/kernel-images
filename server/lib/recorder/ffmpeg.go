@@ -153,7 +153,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	go fr.waitForCommand(ctx)
 
 	// Check for startup errors before returning
-	if err := waitForChan(ctx, 500*time.Millisecond, fr.exited); err == nil {
+	if err := waitForChan(ctx, 250*time.Millisecond, fr.exited); err == nil {
 		fr.mu.Lock()
 		defer fr.mu.Unlock()
 		return fmt.Errorf("failed to start ffmpeg process: %w", fr.ffmpegErr)
@@ -165,16 +165,17 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	return fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+		{"wake_and_interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
+		{"retry_interrupt", []syscall.Signal{syscall.SIGINT}, 3 * time.Second, "retry graceful stop"},
+		{"terminate", []syscall.Signal{syscall.SIGTERM}, 250 * time.Millisecond, "forceful termination"},
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 	return fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 1 * time.Second, "immediate kill"},
+		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 }
 
@@ -321,6 +322,7 @@ func (fr *FFmpegRecorder) shutdownInPhases(ctx context.Context, phases []shutdow
 
 	pgid := -cmd.Process.Pid // negative PGID targets the whole group
 	for _, phase := range phases {
+		phaseStartTime := time.Now()
 		// short circuit: the process exited before this phase started.
 		select {
 		case <-done:
@@ -331,12 +333,16 @@ func (fr *FFmpegRecorder) shutdownInPhases(ctx context.Context, phases []shutdow
 		log.Info("ffmpeg shutdown phase", "phase", phase.name, "desc", phase.desc)
 
 		// Send the phase's signals in order.
-		for _, sig := range phase.signals {
+		for idx, sig := range phase.signals {
 			_ = syscall.Kill(pgid, sig) // ignore error; process may have gone away
+			// arbitrary delay between signals, but not after the last signal
+			if idx < len(phase.signals)-1 {
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
 
 		// Wait for exit or timeout
-		if err := waitForChan(ctx, phase.timeout, done); err == nil {
+		if err := waitForChan(ctx, phase.timeout-time.Since(phaseStartTime), done); err == nil {
 			log.Info("ffmpeg shutdown successful", "phase", phase.name)
 			return nil
 		}

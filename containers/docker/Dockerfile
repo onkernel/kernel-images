@@ -2,10 +2,14 @@ FROM ghcr.io/anthropics/anthropic-quickstarts:computer-use-demo-latest
 
 USER root
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
+RUN apt update -y && apt install -y chromium ncat ffmpeg
 
 # Switch to computeruse user
 USER computeruse
+
+# copy the kernel-images API binary built by build.sh
+COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
+ENV WITH_KERNEL_IMAGES_API=false
 
 # Modify entrypoint script
 # The original can be found here: https://github.com/anthropics/anthropic-quickstarts/blob/main/computer-use-demo/image/entrypoint.sh
@@ -21,10 +25,15 @@ cleanup () {
   echo "Cleaning up..."
   kill -TERM $pid
   kill -TERM $pid2
+  # Kill API pid if set
+  if [[ -n "${pid3:-}" ]]; then
+    kill -TERM $pid3 || true
+  fi
 }
 trap cleanup TERM INT
 pid=
 pid2=
+pid3=
 INTERNAL_PORT=9223
 CHROME_PORT=9222  # External port mapped in Docker
 echo "Starting Chromium on internal port $INTERNAL_PORT"
@@ -39,6 +48,25 @@ ncat \
   --keep-open & pid2=$!
 
 ./novnc_startup.sh >&2
+
+if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
+  echo "✨ Starting kernel-images API."
+
+  API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
+  API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
+  API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-1}"
+  API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
+  API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
+
+  mkdir -p "$API_OUTPUT_DIR"
+
+  PORT="$API_PORT" \
+  FRAME_RATE="$API_FRAME_RATE" \
+  DISPLAY_NUM="$API_DISPLAY_NUM" \
+  MAX_SIZE_MB="$API_MAX_SIZE_MB" \
+  OUTPUT_DIR="$API_OUTPUT_DIR" \
+  /usr/local/bin/kernel-images-api & pid3=$!
+fi
 
 python http_server.py >&2 &
 
