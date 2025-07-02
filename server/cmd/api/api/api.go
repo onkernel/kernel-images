@@ -99,15 +99,19 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 		return oapi.DownloadRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
 	}
 
-	if rec.IsRecording(ctx) {
-		log.Warn("attempted to download recording while is still in progress")
-		return oapi.DownloadRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording still in progress, please stop first"}}, nil
-	}
-
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
 		log.Error("failed to get recording", "err", err)
 		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+	}
+
+	// short-circuit if the recording is still in progress and the file is arbitrary small
+	if rec.IsRecording(ctx) && meta.Size <= 100 {
+		return oapi.DownloadRecording202Response{
+			Headers: oapi.DownloadRecording202ResponseHeaders{
+				RetryAfter: 300,
+			},
+		}, nil
 	}
 
 	log.Info("serving recording file for download", "size", meta.Size)
