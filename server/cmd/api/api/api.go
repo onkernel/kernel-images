@@ -89,6 +89,10 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	return oapi.StopRecording200Response{}, nil
 }
 
+const (
+	minRecordingSizeInBytes = 100
+)
+
 func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRecordingRequestObject) (oapi.DownloadRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
@@ -106,7 +110,7 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 	}
 
 	// short-circuit if the recording is still in progress and the file is arbitrary small
-	if rec.IsRecording(ctx) && meta.Size <= 100 {
+	if rec.IsRecording(ctx) && meta.Size <= minRecordingSizeInBytes {
 		return oapi.DownloadRecording202Response{
 			Headers: oapi.DownloadRecording202ResponseHeaders{
 				RetryAfter: 300,

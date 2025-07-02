@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand"
 	"testing"
 
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -92,15 +93,40 @@ func TestApiService_DownloadRecording(t *testing.T) {
 		require.IsType(t, oapi.DownloadRecording404JSONResponse{}, resp)
 	})
 
+	randomBytes := func(n int) []byte {
+		data := make([]byte, n)
+		for i := range data {
+			data[i] = byte(rand.Intn(256))
+		}
+		return data
+	}
+
 	t.Run("still recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		rec := &mockRecorder{id: "main", isRecordingFlag: true}
+		rec := &mockRecorder{id: "main", isRecordingFlag: true, recordingData: randomBytes(minRecordingSizeInBytes - 1)}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
 		svc := New(mgr, newMockFactory())
+		// will return a 202 when the recording is too small
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
-		require.IsType(t, oapi.DownloadRecording400JSONResponse{}, resp)
+		require.IsType(t, oapi.DownloadRecording202Response{}, resp)
+
+		// mimic writing more data to the recording
+		data := randomBytes(minRecordingSizeInBytes * 2)
+		rec.recordingData = data
+
+		// now that the recording is larger than the minimum size, it should return a 200
+		resp, err = svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
+		require.NoError(t, err)
+		require.IsType(t, oapi.DownloadRecording200Videomp4Response{}, resp)
+		r, ok := resp.(oapi.DownloadRecording200Videomp4Response)
+		require.True(t, ok, "expected 200 mp4 response, got %T", resp)
+		buf := new(bytes.Buffer)
+		_, copyErr := io.Copy(buf, r.Body)
+		require.NoError(t, copyErr)
+		require.Equal(t, data, buf.Bytes(), "response body mismatch")
+		require.Equal(t, int64(len(data)), r.ContentLength, "content length mismatch")
 	})
 
 	t.Run("success", func(t *testing.T) {
