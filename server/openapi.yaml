@@ -50,6 +50,14 @@ paths:
               schema:
                 type: string
                 format: binary
+        "202":
+          description: Recording is still in progress, please try again later
+          headers:
+            Retry-After:
+              description: Suggested wait time in seconds before retrying
+              schema:
+                type: integer
+                minimum: 1
         "400":
           $ref: "#/components/responses/BadRequestError"
         "404":
