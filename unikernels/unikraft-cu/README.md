@@ -12,10 +12,10 @@ This deploys headful Chromium on a unikernel. It also exposes a remote GUI throu
 `export UKC_METRO=<region> and UKC_TOKEN=<secret>`
 
 ## 3. Build the image
-`./build.sh`
+`./build-unikernel.sh`
 
 ## 4. Run it
-`./run.sh`
+`./run-unikernel.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
 ```
@@ -36,7 +36,7 @@ Deployed successfully!
 
 ### 3.1 Deploy the Implementation with WebRTC desktop streaming enabled
 ```sh
-ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh
+ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run-unikernel.sh
 ```
 
 `NEKO_ICESERVERS`
@@ -111,17 +111,8 @@ const browser = await chromium.connectOverCDP(finalWSUrl);
 You can also run the Dockerfile directly as a docker container:
 
 ```sh
-docker build -t kernel-docker .
-docker run -d \
-  -p 8080:8080 \
-  -p 9222:9222 \
-  --cap-add SYS_ADMIN \
-  -p 56000-56100:56000-56100/udp \
-  -e ENABLE_WEBRTC=true \
-  -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
-  -e NEKO_WEBRTC_EPR=56000-56100 \
-  -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
-  kernel-docker
+./build-docker.sh
+./run-docker.sh
 ```
 
 ## 📞 WebRTC Notes

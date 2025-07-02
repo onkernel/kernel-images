@@ -1,0 +1,113 @@
+openapi: 3.1.0
+info:
+  title: Kernel Images API
+  version: 0.1.0
+paths:
+  /recording/start:
+    post:
+      summary: Start a screen recording. Only one recording can be active at a time.
+      operationId: startRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRecordingRequest"
+      responses:
+        "201":
+          description: Recording started
+        "409":
+          description: A recording is already in progress
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/stop:
+    post:
+      summary: Stop the current recording
+      operationId: stopRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StopRecordingRequest"
+      responses:
+        "200":
+          description: Recording stopped
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/download:
+    get:
+      summary: Download the most recently recorded video file
+      operationId: downloadRecording
+      responses:
+        "200":
+          description: Recording file
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  schemas:
+    StartRecordingRequest:
+      type: object
+      properties:
+        maxFileSizeInMB:
+          type: integer
+          description: Maximum file size in MB (overrides server default)
+          minimum: 10
+          maximum: 10000
+        framerate:
+          type: integer
+          description: Recording framerate in fps (overrides server default)
+          minimum: 1
+          maximum: 60
+      additionalProperties: false
+    StopRecordingRequest:
+      type: object
+      properties:
+        forceStop:
+          type: boolean
+          description: Immediately stop without graceful shutdown. This may result in a corrupted video file.
+          default: false
+      additionalProperties: false
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+  responses:
+    BadRequestError:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ConflictError:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFoundError:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error" 
