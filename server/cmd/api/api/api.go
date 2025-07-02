@@ -27,11 +27,6 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecordingRequestObject) (oapi.StartRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
-		log.Error("attempted to start recording while one is already active")
-		return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
-	}
-
 	var params recorder.FFmpegRecordingParams
 	if req.Body != nil {
 		params.FrameRate = req.Body.Framerate
@@ -45,6 +40,10 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create recording"}}, nil
 	}
 	if err := s.recordManager.RegisterRecorder(ctx, rec); err != nil {
+		if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
+			log.Error("attempted to start recording while one is already active")
+			return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
+		}
 		log.Error("failed to register recorder", "err", err)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to register recording"}}, nil
 	}
