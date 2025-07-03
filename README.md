@@ -20,7 +20,7 @@ Sign up [here](https://www.onkernel.com/)!
 - Sandboxed Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
 - Remote GUI access (live view streaming) for visual monitoring and remote control
 - Configurable live view settings (read-only view, browser window dimensions)
-- [Coming soon] Video replays of the browser's session
+- [Coming soon] Video replays of the browser's session [[1]](#notes)
 
 ## What You Can Do With It
 
@@ -45,14 +45,14 @@ https://github.com/user-attachments/assets/5888e823-5867-4c01-ad67-ec8989ba9573
 You can build and run the Dockerfile directly as a Docker container.
 
 ```sh
-cd images
+cd images/chromium-headful
 docker build -t kernel-docker .
 docker run -d \
-  -p 8080:8080 \ # or 6080:6080 for noVNC
+  -p 8080:8080 \
   -p 9222:9222 \
   --cap-add SYS_ADMIN \
   -p 56000-56100:56000-56100/udp \
-  -e ENABLE_WEBRTC=true \ # ENABLE_WEBRTC=false for noVNC
+  -e ENABLE_WEBRTC=true \
   -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
   -e NEKO_WEBRTC_EPR=56000-56100 \
   -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
@@ -70,10 +70,10 @@ Alternatively, you can run the browser on a Unikraft unikernel.
 `export UKC_METRO=<region> and UKC_TOKEN=<secret>`
 
 ### 3. Build the image
-`./build.sh`
+`./build-unikernel.sh`
 
 ### 4. Run it
-`./run.sh`
+`./run-unikernel.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
 ```
@@ -95,7 +95,7 @@ Deployed successfully!
 ### Unikernel Notes
 
 - The image requires at least 8gb of memory.
-- To deploy the implementation with WebRTC desktop streaming enabled instead of noVNC: `ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run.sh`
+- To deploy the implementation with WebRTC desktop streaming enabled instead of noVNC: `ENABLE_WEBRTC=true NEKO_ICESERVERS=xxx ./run-unikernel.sh`
 - Deploying to Unikraft Cloud requires the usage of a [TURN server](https://webrtc.org/getting-started/turn-server) when `ENABLE_WEBRTC=true`, as direct exposure of UDP ports is not currently supported. `NEKO_ICESERVERS`: Describes multiple STUN and TURN server that can be used by the ICEAgent to establish a connection with a peer. e.g. `[{"urls": ["turn:turn.example.com:19302", "stun:stun.example.com:19302"], "username": "name", "credential": "password"}, {"urls": ["stun:stun.example2.com:19302"]}]`.
 - Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast.
 - The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
@@ -147,6 +147,7 @@ You can use the embedded live view to monitor and control the browser. The live 
 ### Notes
 - Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
 - The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
+- Replays are currently a work in progress. There is some source code for it throughout the repo.
 
 ## Documentation
 

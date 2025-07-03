@@ -8,8 +8,8 @@ deploy_args=(
   -p 9222:9222/tls
   -p 8080:8080/tls
   -e DISPLAY_NUM=1
-  -e HEIGHT=1080
-  -e WIDTH=1920
+  -e HEIGHT=768
+  -e WIDTH=1024
   -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote"
   -e HOME=/
   -n "$name"
