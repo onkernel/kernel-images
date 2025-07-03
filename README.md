@@ -46,6 +46,7 @@ You can build and run the Dockerfile directly as a Docker container.
 
 ```sh
 cd images/chromium-headful
+../../shared/build-server.sh bin
 docker build -t kernel-docker .
 docker run -d \
   -p 8080:8080 \
