@@ -9,7 +9,6 @@ member:
 
 session:
   merciful_reconnect: true
-  implicit_hosting: true
   cookie:
     # needed for legacy API
     enabled: false
@@ -22,3 +21,7 @@ chat:
 
 filetransfer:
   enabled: false
+
+server:
+  bind: "0.0.0.0:8080"
+  static: "/var/www"

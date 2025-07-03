@@ -52,7 +52,16 @@ ncat \
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
   echo "✨ Starting neko (webrtc server)."
-  /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2
+  if [[ "${ENABLE_READONLY_VIEW:-}" == "true" ]]; then
+    echo "webrtc: readonly mode."
+    /usr/bin/neko serve \
+      --session.implicit_hosting=false >&2
+  else
+    echo "webrtc: full access mode."
+    /usr/bin/neko serve \
+      --session.implicit_hosting=true >&2
+  fi
+  implicit_hosting: true
 else
   # use novnc
   ./novnc_startup.sh
