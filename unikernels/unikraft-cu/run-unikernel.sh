@@ -15,6 +15,11 @@ deploy_args=(
   -n "$name"
 )
 
+if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
+  deploy_args+=( -p 444:10001/tls )
+  deploy_args+=( -e WITH_KERNEL_IMAGES_API=true )
+fi
+
 kraft cloud inst rm $name || true
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then

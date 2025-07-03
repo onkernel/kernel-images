@@ -1,0 +1,12 @@
+spec: v0.6
+
+runtime: index.unikraft.io/official/base-compat:latest
+
+labels:
+  cloud.unikraft.v1.instances/scale_to_zero.policy: "idle"
+  cloud.unikraft.v1.instances/scale_to_zero.stateful: "true"
+  cloud.unikraft.v1.instances/scale_to_zero.cooldown_time_ms: 5000
+
+rootfs: ./initrd
+
+cmd: ["/usr/bin/wrapper.sh"]
