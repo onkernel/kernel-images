@@ -188,10 +188,6 @@ func (fr *FFmpegRecorder) IsRecording(ctx context.Context) bool {
 
 // Recording returns the recording file as an io.ReadCloser.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
-	if fr.IsRecording(ctx) {
-		return nil, nil, fmt.Errorf("recording still in progress, please call stop first")
-	}
-
 	file, err := os.Open(fr.outputPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open recording file: %w", err)

@@ -27,11 +27,6 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecordingRequestObject) (oapi.StartRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
-		log.Error("attempted to start recording while one is already active")
-		return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
-	}
-
 	var params recorder.FFmpegRecordingParams
 	if req.Body != nil {
 		params.FrameRate = req.Body.Framerate
@@ -45,6 +40,10 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create recording"}}, nil
 	}
 	if err := s.recordManager.RegisterRecorder(ctx, rec); err != nil {
+		if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
+			log.Error("attempted to start recording while one is already active")
+			return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
+		}
 		log.Error("failed to register recorder", "err", err)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to register recording"}}, nil
 	}
@@ -90,6 +89,10 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	return oapi.StopRecording200Response{}, nil
 }
 
+const (
+	minRecordingSizeInBytes = 100
+)
+
 func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRecordingRequestObject) (oapi.DownloadRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
@@ -100,15 +103,19 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 		return oapi.DownloadRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
 	}
 
-	if rec.IsRecording(ctx) {
-		log.Warn("attempted to download recording while is still in progress")
-		return oapi.DownloadRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording still in progress, please stop first"}}, nil
-	}
-
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
 		log.Error("failed to get recording", "err", err)
 		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+	}
+
+	// short-circuit if the recording is still in progress and the file is arbitrary small
+	if rec.IsRecording(ctx) && meta.Size <= minRecordingSizeInBytes {
+		return oapi.DownloadRecording202Response{
+			Headers: oapi.DownloadRecording202ResponseHeaders{
+				RetryAfter: 300,
+			},
+		}, nil
 	}
 
 	log.Info("serving recording file for download", "size", meta.Size)
