@@ -25,9 +25,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 1. Build the binary in the server module
-pushd "$REPO_ROOT/server" >/dev/null
-GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED=0 make build
-popd >/dev/null
+GO_REQUIRED=$(grep -E "^go [0-9]+\.[0-9]+" "$REPO_ROOT/server/go.mod" | head -n1 | awk '{print $2}')
+echo "🔨 Building kernel-images-api binary using go ${GO_REQUIRED}"
+docker run --rm \
+  -e GOOS="$TARGET_OS" \
+  -e GOARCH="$TARGET_ARCH" \
+  -e CGO_ENABLED=0 \
+  -e GOFLAGS="-buildvcs=false" \
+  -v "$REPO_ROOT":/workspace \
+  -w /workspace/server \
+  "golang:${GO_REQUIRED}" \
+  make build
 
 # 2. Copy to destination
 mkdir -p "$DEST_DIR"
