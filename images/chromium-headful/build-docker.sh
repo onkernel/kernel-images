@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -ex -o pipefail
+set -e -o pipefail
 
 # Move to the script's directory so relative paths work regardless of the caller CWD
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
