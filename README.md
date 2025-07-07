@@ -46,7 +46,7 @@ You can build and run the Dockerfile directly as a Docker container.
 
 ```sh
 cd images/chromium-headful
-../../shared/build-server.sh bin
+bash ../../shared/build-server.sh bin
 IMAGE=kernel-docker ./build-docker.sh
 IMAGE=kernel-docker ENABLE_WEBRTC=true ./run-docker.sh
 ```
