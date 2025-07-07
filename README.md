@@ -56,18 +56,23 @@ IMAGE=kernel-docker ENABLE_WEBRTC=true ./run-docker.sh
 Alternatively, you can run the browser on a Unikraft unikernel.
 
 ### 1. Install the Kraft CLI
+
 `curl -sSfL https://get.kraftkit.sh | sh`
 
 ### 2. Add Unikraft Secret to Your CLI
+
 `export UKC_METRO=<region> and UKC_TOKEN=<secret>`
 
 ### 3. Build the image
+
 `./build-unikernel.sh`
 
 ### 4. Run it
+
 `./run-unikernel.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
+
 ```
 Deployed successfully!
  │
@@ -103,8 +108,8 @@ First, fetch the browser's CDP websocket endpoint:
 const url = new URL("http://localhost:9222/json/version");
 const response = await fetch(url, {
   headers: {
-    "Host": "<this can be anything>" // Required if using a unikernel
-  }
+    Host: "<this can be anything>", // Required if using a unikernel
+  },
 });
 if (response.status !== 200) {
   throw new Error(
@@ -137,6 +142,7 @@ You can use the embedded live view to monitor and control the browser. The live 
 - WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set.
 
 ### Notes
+
 - Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
 - The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
 - Replays are currently a work in progress. There is some source code for it throughout the repo.

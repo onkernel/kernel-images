@@ -7,10 +7,10 @@ cd "$SCRIPT_DIR"
 
 IMAGE="${IMAGE:-onkernel/kernel-cu-test:latest}"
 
-source ../../shared/start-buildkit.sh
+bash ../../shared/start-buildkit.sh
 
 # Build the kernel-images API binary and place it into ./bin for Docker build context
-source ../../shared/build-server.sh "$(pwd)/bin"
+bash ../../shared/build-server.sh "$(pwd)/bin"
 
 # Build (and optionally push) the Docker image.
 docker build -t "$IMAGE" .
