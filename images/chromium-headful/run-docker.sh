@@ -36,7 +36,13 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Running container with WebRTC"
   RUN_ARGS+=( -p 443:8080 )
   RUN_ARGS+=( -e ENABLE_WEBRTC=true )
-  [[ -n "${NEKO_ICESERVERS:-}" ]] && RUN_ARGS+=( -e NEKO_ICESERVERS="$NEKO_ICESERVERS" )
+  if [[ -n "${NEKO_ICESERVERS:-}" ]]; then
+    RUN_ARGS+=( -e NEKO_ICESERVERS="$NEKO_ICESERVERS" )
+  else
+    RUN_ARGS+=( -e NEKO_WEBRTC_EPR=56000-56100 )
+    RUN_ARGS+=( -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 )
+    RUN_ARGS+=( -p 56000-56100:56000-56100/udp )
+  fi
 else
   echo "Running container with noVNC"
   RUN_ARGS+=( -p 443:6080 )

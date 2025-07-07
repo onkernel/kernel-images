@@ -47,17 +47,8 @@ You can build and run the Dockerfile directly as a Docker container.
 ```sh
 cd images/chromium-headful
 ../../shared/build-server.sh bin
-docker build -t kernel-docker .
-docker run -d \
-  -p 8080:8080 \
-  -p 9222:9222 \
-  --cap-add SYS_ADMIN \
-  -p 56000-56100:56000-56100/udp \
-  -e ENABLE_WEBRTC=true \
-  -e CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote" \
-  -e NEKO_WEBRTC_EPR=56000-56100 \
-  -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 \
-  kernel-docker
+IMAGE=kernel-docker ./build-docker.sh
+IMAGE=kernel-docker ENABLE_WEBRTC=true ./run-docker.sh
 ```
 
 ## Running on a Unikernel
@@ -140,10 +131,10 @@ const browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
 
 ## Browser Remote GUI / Live View
 
-You can use the embedded live view to monitor and control the browser. The live view supports both read and write access to the browser.
+You can use the embedded live view to monitor and control the browser. The live view supports both read and write access to the browser. Both map to port `443`.
 
-- NoVNC: A VNC client. Read/write is supported. Set `ENABLE_WEBRTC=false` in `docker run`. Maps to port `6080`.
-- WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set. Maps to port `8080`. 
+- NoVNC: A VNC client. Read/write is supported. Set `ENABLE_WEBRTC=false` in `./run-docker.sh`.
+- WebRTC: A WebRTC-based client. Read/write, window resizing, and copy/paste is supported. It's much faster than VNC. Available when `ENABLE_WEBRTC=true` is set.
 
 ### Notes
 - Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
