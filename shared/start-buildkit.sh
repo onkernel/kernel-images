@@ -14,8 +14,7 @@ else
     return $?
 fi
 
-test "$(docker container inspect -f '{{.State.Running}}' buildkit 2> /dev/null)" = "true"
-if test $? -eq 0; then
+if [ "$(docker container inspect -f '{{.State.Running}}' buildkit 2> /dev/null)" = "true" ]; then
     echo "Container 'buildkit' is already running. Nothing to do."
 else
     echo "Starting 'buildkit' container ... "
