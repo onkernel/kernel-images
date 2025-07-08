@@ -52,7 +52,7 @@ ncat \
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
   echo "✨ Starting neko (webrtc server)."
-  /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2
+  /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2 &
 else
   # use novnc
   ./novnc_startup.sh
