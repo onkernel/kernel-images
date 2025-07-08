@@ -6,7 +6,7 @@
 export KRAFTKIT_BUILDKIT_HOST=docker-container://buildkit
 
 # Install container if not already installed.
-if test "$(docker ps --all --no-trunc --quiet --filter 'name=^buildkit$')"; then
+if [ -n "$(docker ps --all --no-trunc --quiet --filter 'name=^buildkit$')" ]; then
     echo "Container 'buildkit' is already installed. Nothing to do."
 else
     echo "Installing 'buildkit' container ... "
