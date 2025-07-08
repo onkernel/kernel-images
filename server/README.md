@@ -7,10 +7,10 @@ A REST API server to start, stop, and download screen recordings.
 ### Required Software
 
 - **Go 1.24.3+** - Programming language runtime
-- **FFmpeg** - Video recording engine
+- **ffmpeg** - Video recording engine
   - macOS: `brew install ffmpeg`
   - Linux: `sudo apt install ffmpeg` or `sudo yum install ffmpeg`
-- **Node.js/pnpm** - For OpenAPI code generation
+- **pnpm** - For OpenAPI code generation
   - `npm install -g pnpm`
 
 ### System Requirements
@@ -33,28 +33,29 @@ The server will start on port 10001 by default and log its configuration.
 
 ```bash
 # 1. Start a new recording
-curl http://localhost:10001/recording/start
+curl http://localhost:10001/recording/start -d {}
 
 # (recording in progress)
 
-# 2. Stop recording and clean up resources
-curl http://localhost:10001/recording/stop
+# 2. Stop recording
+curl http://localhost:10001/recording/stop -d {}
 
 # 3. Download the recorded file
-curl http://localhost:10001/recording/download --output foo.mp4
+curl http://localhost:10001/recording/download --output recording.mp4
 ```
 
 ### ⚙️ Configuration
 
 Configure the server using environment variables:
 
-| Variable      | Default | Description                       |
-| ------------- | ------- | --------------------------------- |
-| `PORT`        | `10001` | HTTP server port                  |
-| `FRAME_RATE`  | `10`    | Default recording framerate (fps) |
-| `DISPLAY_NUM` | `1`     | Display/screen number to capture  |
-| `MAX_SIZE_MB` | `500`   | Default maximum file size (MB)    |
-| `OUTPUT_DIR`  | `.`     | Directory to save recordings      |
+| Variable       | Default   | Description                                 |
+| -------------- | --------- | ------------------------------------------- |
+| `PORT`         | `10001`   | HTTP server port                            |
+| `FRAME_RATE`   | `10`      | Default recording framerate (fps)           |
+| `DISPLAY_NUM`  | `1`       | Display/screen number to capture            |
+| `MAX_SIZE_MB`  | `500`     | Default maximum file size (MB)              |
+| `OUTPUT_DIR`   | `.`       | Directory to save recordings                |
+| `FFMPEG_PATH`  | `ffmpeg`  | Path to the ffmpeg binary                   |
 
 #### Example Configuration
 
