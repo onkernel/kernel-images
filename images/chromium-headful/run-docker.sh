@@ -27,7 +27,7 @@ RUN_ARGS=(
 )
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  RUN_ARGS+=( -p 444:10001 )
+  RUN_ARGS+=( -p 10001:10001 )
   RUN_ARGS+=( -e WITH_KERNEL_IMAGES_API=true )
 fi
 
