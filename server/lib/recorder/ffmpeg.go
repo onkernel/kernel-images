@@ -134,6 +134,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 	fr.mu.Lock()
 	if fr.cmd != nil {
+		fr.mu.Unlock()
 		return fmt.Errorf("recording already in progress")
 	}
 
@@ -150,6 +151,11 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 	args, err := ffmpegArgs(fr.params, fr.outputPath)
 	if err != nil {
+		_ = fr.stz.Enable(ctx)
+		fr.cmd = nil
+		close(fr.exited)
+		fr.mu.Unlock()
+
 		return err
 	}
 	log.Info(fmt.Sprintf("%s %s", fr.binaryPath, strings.Join(args, " ")))
@@ -164,6 +170,10 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 	if err := cmd.Start(); err != nil {
 		_ = fr.stz.Enable(ctx)
+		fr.mu.Lock()
+		fr.ffmpegErr = err
+		close(fr.exited)
+		fr.mu.Unlock()
 		return fmt.Errorf("failed to start ffmpeg process: %w", err)
 	}
 
@@ -233,9 +243,35 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 	}, nil
 }
 
-// ffmpegArgs generates platform-specific ffmpeg command line arguments.
+// ffmpegArgs generates platform-specific ffmpeg command line arguments. Allegedly order matters.
 func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, error) {
-	args := []string{
+	var args []string
+
+	// Input options first
+	switch runtime.GOOS {
+	case "darwin":
+		args = []string{
+			// Input options for AVFoundation
+			"-f", "avfoundation",
+			"-framerate", strconv.Itoa(*params.FrameRate),
+			"-pixel_format", "nv12",
+			// Input file
+			"-i", fmt.Sprintf("%d:none", *params.DisplayNum), // Screen capture, no audio
+		}
+	case "linux":
+		args = []string{
+			// Input options for X11
+			"-f", "x11grab",
+			"-framerate", strconv.Itoa(*params.FrameRate),
+			// Input file
+			"-i", fmt.Sprintf(":%d", *params.DisplayNum), // X11 display
+		}
+	default:
+		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	// Output options next
+	args = append(args, []string{
 		// Video encoding
 		"-c:v", "libx264",
 
@@ -244,37 +280,20 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 		"-reset_timestamps", "1", // Reset timestamps to start from zero
 		"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
 
-		// Output configuration for data safety
+		// Data safety
 		"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
 		"-frag_duration", "2000000", // 2-second fragments (in microseconds)
 		"-fs", fmt.Sprintf("%dM", *params.MaxSizeInMB), // File size limit
 		"-y", // Overwrite output file if it exists
-		outputPath,
-	}
+	}...)
 
+	// Duration limit
 	if params.MaxDurationInSeconds != nil {
 		args = append(args, "-t", strconv.Itoa(*params.MaxDurationInSeconds))
 	}
 
-	switch runtime.GOOS {
-	case "darwin":
-		args = append(args, []string{
-			// Input configuration - Use AVFoundation for macOS screen capture
-			"-f", "avfoundation",
-			"-framerate", strconv.Itoa(*params.FrameRate),
-			"-pixel_format", "nv12",
-			"-i", fmt.Sprintf("%d:none", *params.DisplayNum), // Screen capture, no audio
-		}...)
-	case "linux":
-		args = append(args, []string{
-			// Input configuration - Use X11 screen capture for Linux
-			"-f", "x11grab",
-			"-framerate", strconv.Itoa(*params.FrameRate),
-			"-i", fmt.Sprintf(":%d", *params.DisplayNum), // X11 display
-		}...)
-	default:
-		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
+	// Output file
+	args = append(args, outputPath)
 
 	return args, nil
 }
