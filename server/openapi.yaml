@@ -45,6 +45,17 @@ paths:
       responses:
         "200":
           description: Recording file
+          headers:
+            X-Recording-Start:
+              description: Timestamp of when the recording started
+              schema:
+                type: string
+                format: date-time
+            X-Recording-End:
+              description: Timestamp of when the recording ended
+              schema:
+                type: string
+                format: date-time
           content:
             video/mp4:
               schema:
