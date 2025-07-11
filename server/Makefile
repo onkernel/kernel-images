@@ -28,7 +28,7 @@ build: | $(BIN_DIR)
 	go build -o $(BIN_DIR)/api ./cmd/api
 
 dev: build $(RECORDING_DIR)
-	OUTPUT_DIR=$(RECORDING_DIR) ./bin/api
+	OUTPUT_DIR=$(RECORDING_DIR) DISPLAY_NUM=$(DISPLAY_NUM) ./bin/api
 
 test:
 	go vet ./...
@@ -38,3 +38,12 @@ clean:
 	@rm -rf $(BIN_DIR)
 	@rm -f openapi-3.0.yaml
 	@echo "Clean complete"
+
+DISPLAY_NUM := $(shell \
+	if [ "$$(uname)" = "Linux" ]; then \
+		echo "1"; \
+	elif [ "$$(uname)" = "Darwin" ]; then \
+		ffmpeg -f avfoundation -list_devices true -i "" 2>&1 | grep "Capture screen" | head -1 | sed 's/.*\[\([0-9]*\)\].*/\1/' 2>/dev/null || echo "2"; \
+	else \
+		echo "0"; \
+	fi)

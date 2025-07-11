@@ -140,6 +140,32 @@ You can use the embedded live view to monitor and control the browser. The live 
 - The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
 - Replays are currently a work in progress. There is some source code for it throughout the repo.
 
+## Replay Capture
+
+You can use the embedded recording server to capture recordings of the entire screen in our headful images. It allows for one recording at a time and can be enabled with `WITH_KERNEL_IMAGES_API=true`
+
+For example:
+
+```bash
+cd images/chromium-headful
+export IMAGE=kernel-docker
+./build-docker.sh
+WITH_KERNEL_IMAGES_API=true ENABLE_WEBRTC=true ./run-docker.sh
+
+# 1. Start a new recording
+curl http://localhost:10001/recording/start -d {}
+
+# recording in progress - run your agent
+
+# 2. Stop recording
+curl http://localhost:10001/recording/stop -d {}
+
+# 3. Download the recorded file
+curl http://localhost:10001/recording/download --output recording.mp4
+```
+
+Note: the recording file is encoded into a H.264/MPEG-4 AVC video file. [QuickTime has known issues with playback](https://discussions.apple.com/thread/254851789?sortBy=rank) so please make sure to use a compatible media player!
+
 ## Documentation
 
 This repo powers our managed [browser infrastructure](https://docs.onkernel.com).
