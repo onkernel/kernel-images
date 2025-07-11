@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,9 @@ type Error struct {
 type StartRecordingRequest struct {
 	// Framerate Recording framerate in fps (overrides server default)
 	Framerate *int `json:"framerate,omitempty"`
+
+	// MaxDurationInSeconds Maximum recording duration in seconds (overrides server default)
+	MaxDurationInSeconds *int `json:"maxDurationInSeconds,omitempty"`
 
 	// MaxFileSizeInMB Maximum file size in MB (overrides server default)
 	MaxFileSizeInMB *int `json:"maxFileSizeInMB,omitempty"`
@@ -816,8 +820,14 @@ type DownloadRecordingResponseObject interface {
 	VisitDownloadRecordingResponse(w http.ResponseWriter) error
 }
 
+type DownloadRecording200ResponseHeaders struct {
+	XRecordingEnd   time.Time
+	XRecordingStart time.Time
+}
+
 type DownloadRecording200Videomp4Response struct {
 	Body          io.Reader
+	Headers       DownloadRecording200ResponseHeaders
 	ContentLength int64
 }
 
@@ -826,6 +836,8 @@ func (response DownloadRecording200Videomp4Response) VisitDownloadRecordingRespo
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
 	}
+	w.Header().Set("X-Recording-End", fmt.Sprint(response.Headers.XRecordingEnd))
+	w.Header().Set("X-Recording-Start", fmt.Sprint(response.Headers.XRecordingStart))
 	w.WriteHeader(200)
 
 	if closer, ok := response.Body.(io.ReadCloser); ok {
@@ -1075,20 +1087,22 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"d35kQf8GAAD//76bNWkwDAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

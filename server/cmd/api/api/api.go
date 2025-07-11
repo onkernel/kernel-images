@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -16,12 +17,19 @@ type ApiService struct {
 	factory        recorder.FFmpegRecorderFactory
 }
 
-func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) *ApiService {
+func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) (*ApiService, error) {
+	switch {
+	case recordManager == nil:
+		return nil, fmt.Errorf("recordManager cannot be nil")
+	case factory == nil:
+		return nil, fmt.Errorf("factory cannot be nil")
+	}
+
 	return &ApiService{
 		recordManager:  recordManager,
 		factory:        factory,
 		mainRecorderID: "main", // use a single recorder for now
-	}
+	}, nil
 }
 
 func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecordingRequestObject) (oapi.StartRecordingResponseObject, error) {
@@ -31,6 +39,7 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 	if req.Body != nil {
 		params.FrameRate = req.Body.Framerate
 		params.MaxSizeInMB = req.Body.MaxFileSizeInMB
+		params.MaxDurationInSeconds = req.Body.MaxDurationInSeconds
 	}
 
 	// Create, register, and start a new recorder
@@ -50,7 +59,7 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 
 	if err := rec.Start(ctx); err != nil {
 		log.Error("failed to start recording", "err", err)
-		// ensure the recorder is deregistered if we fail to start
+		// ensure the recorder is deregistered
 		defer s.recordManager.DeregisterRecorder(ctx, rec)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start recording"}}, nil
 	}
@@ -62,9 +71,12 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	log := logger.FromContext(ctx)
 
 	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
-	if !exists || !rec.IsRecording(ctx) {
+	if !exists {
 		log.Warn("attempted to stop recording when none is active")
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
+	} else if !rec.IsRecording(ctx) {
+		log.Warn("recording already stopped")
+		return oapi.StopRecording200Response{}, nil
 	}
 
 	// Check if force stop is requested
@@ -120,7 +132,11 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 
 	log.Info("serving recording file for download", "size", meta.Size)
 	return oapi.DownloadRecording200Videomp4Response{
-		Body:          out,
+		Body: out,
+		Headers: oapi.DownloadRecording200ResponseHeaders{
+			XRecordingStart: meta.StartTime,
+			XRecordingEnd:   meta.EndTime,
+		},
 		ContentLength: meta.Size,
 	}, nil
 }

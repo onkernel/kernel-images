@@ -22,6 +22,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 func main() {
@@ -64,7 +65,16 @@ func main() {
 		slogger.Error("invalid default recording parameters", "err", err)
 		os.Exit(1)
 	}
-	apiService := api.New(recorder.NewFFmpegManager(), recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams))
+	stz := scaletozero.NewUnikraftCloudController()
+
+	apiService, err := api.New(
+		recorder.NewFFmpegManager(),
+		recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams, stz),
+	)
+	if err != nil {
+		slogger.Error("failed to create api service", "err", err)
+		os.Exit(1)
+	}
 
 	strictHandler := oapi.NewStrictHandler(apiService, nil)
 	oapi.HandlerFromMux(strictHandler, r)

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,6 +31,7 @@ func TestFFmpegRecorder_StartAndStop(t *testing.T) {
 		id:         "startstop",
 		binaryPath: mockBin,
 		params:     defaultParams(t.TempDir()),
+		stz:        scaletozero.NewOncer(scaletozero.NewNoopController()),
 	}
 	require.NoError(t, rec.Start(t.Context()))
 	require.True(t, rec.IsRecording(t.Context()))
@@ -46,6 +48,7 @@ func TestFFmpegRecorder_ForceStop(t *testing.T) {
 		id:         "startstop",
 		binaryPath: mockBin,
 		params:     defaultParams(t.TempDir()),
+		stz:        scaletozero.NewOncer(scaletozero.NewNoopController()),
 	}
 	require.NoError(t, rec.Start(t.Context()))
 	require.True(t, rec.IsRecording(t.Context()))
