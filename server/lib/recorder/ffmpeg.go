@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 const (
@@ -45,6 +46,7 @@ type FFmpegRecorder struct {
 	ffmpegErr  error
 	exitCode   int
 	exited     chan struct{}
+	stz        *scaletozero.Oncer
 }
 
 type FFmpegRecordingParams struct {
@@ -76,7 +78,7 @@ type FFmpegRecorderFactory func(id string, overrides FFmpegRecordingParams) (Rec
 // NewFFmpegRecorderFactory returns a factory that creates new recorders. The provided
 // pathToFFmpeg is used as the binary to execute; if empty it defaults to "ffmpeg" which
 // is expected to be discoverable on the host's PATH.
-func NewFFmpegRecorderFactory(pathToFFmpeg string, config FFmpegRecordingParams) FFmpegRecorderFactory {
+func NewFFmpegRecorderFactory(pathToFFmpeg string, config FFmpegRecordingParams, ctrl scaletozero.Controller) FFmpegRecorderFactory {
 	return func(id string, overrides FFmpegRecordingParams) (Recorder, error) {
 		mergedParams := mergeFFmpegRecordingParams(config, overrides)
 		return &FFmpegRecorder{
@@ -84,6 +86,7 @@ func NewFFmpegRecorderFactory(pathToFFmpeg string, config FFmpegRecordingParams)
 			binaryPath: pathToFFmpeg,
 			outputPath: filepath.Join(*mergedParams.OutputDir, fmt.Sprintf("%s.mp4", id)),
 			params:     mergedParams,
+			stz:        scaletozero.NewOncer(ctrl),
 		}, nil
 	}
 }
@@ -125,6 +128,11 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 		return fmt.Errorf("recording already in progress")
 	}
 
+	if err := fr.stz.Disable(ctx); err != nil {
+		fr.mu.Unlock()
+		return fmt.Errorf("failed to disable scale-to-zero: %w", err)
+	}
+
 	// ensure internal state
 	fr.ffmpegErr = nil
 	fr.exitCode = exitCodeInitValue
@@ -146,6 +154,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	fr.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
+		_ = fr.stz.Enable(ctx)
 		return fmt.Errorf("failed to start ffmpeg process: %w", err)
 	}
 
@@ -164,19 +173,25 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
-	return fr.shutdownInPhases(ctx, []shutdownPhase{
+	defer fr.stz.Enable(ctx)
+	err := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"wake_and_interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
 		{"retry_interrupt", []syscall.Signal{syscall.SIGINT}, 3 * time.Second, "retry graceful stop"},
 		{"terminate", []syscall.Signal{syscall.SIGTERM}, 250 * time.Millisecond, "forceful termination"},
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
+
+	return err
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
-	return fr.shutdownInPhases(ctx, []shutdownPhase{
+	defer fr.stz.Enable(ctx)
+	err := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
+
+	return err
 }
 
 // IsRecording returns true if a recording is currently in progress.
@@ -271,6 +286,8 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 // waitForCommand should be run in the background to wait for the ffmpeg process to complete and
 // update the internal state accordingly.
 func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
+	defer fr.stz.Enable(ctx)
+
 	log := logger.FromContext(ctx)
 
 	// wait for the process to complete and extract the exit code
