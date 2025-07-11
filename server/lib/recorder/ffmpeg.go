@@ -244,9 +244,6 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 		"-reset_timestamps", "1", // Reset timestamps to start from zero
 		"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
 
-		// Error handling
-		"-xerror", // Exit on any error
-
 		// Output configuration for data safety
 		"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
 		"-frag_duration", "2000000", // 2-second fragments (in microseconds)
