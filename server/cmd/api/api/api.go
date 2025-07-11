@@ -39,6 +39,7 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 	if req.Body != nil {
 		params.FrameRate = req.Body.Framerate
 		params.MaxSizeInMB = req.Body.MaxFileSizeInMB
+		params.MaxDurationInSeconds = req.Body.MaxDurationInSeconds
 	}
 
 	// Create, register, and start a new recorder
@@ -70,9 +71,12 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	log := logger.FromContext(ctx)
 
 	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
-	if !exists || !rec.IsRecording(ctx) {
+	if !exists {
 		log.Warn("attempted to stop recording when none is active")
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
+	} else if !rec.IsRecording(ctx) {
+		log.Warn("recording already stopped")
+		return oapi.StopRecording200Response{}, nil
 	}
 
 	// Check if force stop is requested

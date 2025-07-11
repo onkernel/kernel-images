@@ -53,7 +53,9 @@ type FFmpegRecordingParams struct {
 	FrameRate   *int
 	DisplayNum  *int
 	MaxSizeInMB *int
-	OutputDir   *string
+	// MaxDurationInSeconds optionally limits the total recording time. If nil there is no duration limit.
+	MaxDurationInSeconds *int
+	OutputDir            *string
 }
 
 func (p FFmpegRecordingParams) Validate() error {
@@ -68,6 +70,9 @@ func (p FFmpegRecordingParams) Validate() error {
 	}
 	if p.MaxSizeInMB == nil {
 		return fmt.Errorf("max size in MB is required")
+	}
+	if p.MaxDurationInSeconds != nil && *p.MaxDurationInSeconds <= 0 {
+		return fmt.Errorf("max duration must be greater than 0 seconds")
 	}
 
 	return nil
@@ -93,10 +98,11 @@ func NewFFmpegRecorderFactory(pathToFFmpeg string, config FFmpegRecordingParams,
 
 func mergeFFmpegRecordingParams(config FFmpegRecordingParams, overrides FFmpegRecordingParams) FFmpegRecordingParams {
 	merged := FFmpegRecordingParams{
-		FrameRate:   config.FrameRate,
-		DisplayNum:  config.DisplayNum,
-		MaxSizeInMB: config.MaxSizeInMB,
-		OutputDir:   config.OutputDir,
+		FrameRate:            config.FrameRate,
+		DisplayNum:           config.DisplayNum,
+		MaxSizeInMB:          config.MaxSizeInMB,
+		MaxDurationInSeconds: config.MaxDurationInSeconds,
+		OutputDir:            config.OutputDir,
 	}
 	if overrides.FrameRate != nil {
 		merged.FrameRate = overrides.FrameRate
@@ -106,6 +112,9 @@ func mergeFFmpegRecordingParams(config FFmpegRecordingParams, overrides FFmpegRe
 	}
 	if overrides.MaxSizeInMB != nil {
 		merged.MaxSizeInMB = overrides.MaxSizeInMB
+	}
+	if overrides.MaxDurationInSeconds != nil {
+		merged.MaxDurationInSeconds = overrides.MaxDurationInSeconds
 	}
 	if overrides.OutputDir != nil {
 		merged.OutputDir = overrides.OutputDir
@@ -226,61 +235,51 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 
 // ffmpegArgs generates platform-specific ffmpeg command line arguments.
 func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, error) {
+	args := []string{
+		// Video encoding
+		"-c:v", "libx264",
+
+		// Timestamp handling for reliable playback
+		"-use_wallclock_as_timestamps", "1", // Use system time instead of input stream time
+		"-reset_timestamps", "1", // Reset timestamps to start from zero
+		"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
+
+		// Error handling
+		"-xerror", // Exit on any error
+
+		// Output configuration for data safety
+		"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
+		"-frag_duration", "2000000", // 2-second fragments (in microseconds)
+		"-fs", fmt.Sprintf("%dM", *params.MaxSizeInMB), // File size limit
+		"-y", // Overwrite output file if it exists
+		outputPath,
+	}
+
+	if params.MaxDurationInSeconds != nil {
+		args = append(args, "-t", strconv.Itoa(*params.MaxDurationInSeconds))
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		return []string{
+		args = append(args, []string{
 			// Input configuration - Use AVFoundation for macOS screen capture
 			"-f", "avfoundation",
 			"-framerate", strconv.Itoa(*params.FrameRate),
 			"-pixel_format", "nv12",
 			"-i", fmt.Sprintf("%d:none", *params.DisplayNum), // Screen capture, no audio
-
-			// Video encoding
-			"-c:v", "libx264",
-
-			// Timestamp handling for reliable playback
-			"-use_wallclock_as_timestamps", "1", // Use system time instead of input stream time
-			"-reset_timestamps", "1", // Reset timestamps to start from zero
-			"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
-
-			// Error handling
-			"-xerror", // Exit on any error
-
-			// Output configuration for data safety
-			"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
-			"-frag_duration", "2000000", // 2-second fragments (in microseconds)
-			"-fs", fmt.Sprintf("%dM", *params.MaxSizeInMB), // File size limit
-			"-y", // Overwrite output file if it exists
-			outputPath,
-		}, nil
+		}...)
 	case "linux":
-		return []string{
+		args = append(args, []string{
 			// Input configuration - Use X11 screen capture for Linux
 			"-f", "x11grab",
 			"-framerate", strconv.Itoa(*params.FrameRate),
 			"-i", fmt.Sprintf(":%d", *params.DisplayNum), // X11 display
-
-			// Video encoding
-			"-c:v", "libx264",
-
-			// Timestamp handling for reliable playback
-			"-use_wallclock_as_timestamps", "1", // Use system time instead of input stream time
-			"-reset_timestamps", "1", // Reset timestamps to start from zero
-			"-avoid_negative_ts", "make_zero", // Convert negative timestamps to zero
-
-			// Error handling
-			"-xerror", // Exit on any error
-
-			// Output configuration for data safety
-			"-movflags", "+frag_keyframe+empty_moov", // Enable fragmented MP4 for data safety
-			"-frag_duration", "2000000", // 2-second fragments (in microseconds)
-			"-fs", fmt.Sprintf("%dM", *params.MaxSizeInMB), // File size limit
-			"-y", // Overwrite output file if it exists
-			outputPath,
-		}, nil
+		}...)
 	default:
 		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
+
+	return args, nil
 }
 
 // waitForCommand should be run in the background to wait for the ffmpeg process to complete and
