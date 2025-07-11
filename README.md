@@ -150,7 +150,6 @@ For example:
 cd /images/chromium-headful
 IMAGE=kernel-docker ENABLE_WEBRTC=true ./run-docker.sh
 
-
 # 1. Start a new recording
 curl http://localhost:10001/recording/start -d {}
 
@@ -162,6 +161,8 @@ curl http://localhost:10001/recording/stop -d {}
 # 3. Download the recorded file
 curl http://localhost:10001/recording/download --output recording.mp4
 ```
+
+Note: the recording file is encoded into a H.264/MPEG-4 AVC video file. [QuickTime has known issues with playback](https://discussions.apple.com/thread/254851789?sortBy=rank) so please make sure to use a compatible media player!
 
 ## Documentation
 
