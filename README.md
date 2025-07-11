@@ -147,8 +147,10 @@ You can use the embedded recording server to capture recordings of the entire sc
 For example:
 
 ```bash
-cd /images/chromium-headful
-IMAGE=kernel-docker ENABLE_WEBRTC=true ./run-docker.sh
+cd images/chromium-headful
+export IMAGE=kernel-docker
+./build-docker.sh
+WITH_KERNEL_IMAGES_API=true ENABLE_WEBRTC=true ./run-docker.sh
 
 # 1. Start a new recording
 curl http://localhost:10001/recording/start -d {}
