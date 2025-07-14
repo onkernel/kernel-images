@@ -172,6 +172,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 		_ = fr.stz.Enable(ctx)
 		fr.mu.Lock()
 		fr.ffmpegErr = err
+		fr.cmd = nil // reset cmd on failure to start so IsRecording() remains correct
 		close(fr.exited)
 		fr.mu.Unlock()
 		return fmt.Errorf("failed to start ffmpeg process: %w", err)
