@@ -255,6 +255,8 @@
       }
     }
 
+    // KERNEL: begin custom resolution and frame rate control
+
     // Add a watcher so that when we are connected we can set the resolution from query params
     @Watch('connected', { immediate: true })
     onConnected(value: boolean) {
@@ -287,6 +289,8 @@
         this.$accessor.video.screenSet(resolution)
       }
     }
+
+    // KERNEL: end custom resolution and frame rate control
 
     controlAttempt() {
       if (this.shakeKbd || this.$accessor.remote.hosted) return
