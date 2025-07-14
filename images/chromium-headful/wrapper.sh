@@ -22,6 +22,46 @@ if [[ "${ENABLE_WEBRTC:-}" != "true" ]]; then
   ./x11vnc_startup.sh
 fi
 
+# -----------------------------------------------------------------------------
+# House-keeping for the unprivileged "kernel" user --------------------------------
+# Some Chromium subsystems want to create files under $HOME (NSS cert DB, dconf
+# cache).  If those directories are missing or owned by root Chromium emits
+# noisy error messages such as:
+#   [ERROR:crypto/nss_util.cc:48] Failed to create /home/kernel/.pki/nssdb ...
+#   dconf-CRITICAL **: unable to create directory '/home/kernel/.cache/dconf'
+# Pre-create them and hand ownership to the user so the messages disappear.
+
+for dir in /home/kernel/.pki/nssdb /home/kernel/.cache/dconf; do
+  if [ ! -d "$dir" ]; then
+    mkdir -p "$dir"
+  fi
+done
+# Ensure correct ownership (ignore errors if already correct)
+chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache /home/kernel/user-data 2>/dev/null || true
+
+# -----------------------------------------------------------------------------
+# System-bus setup --------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Start a lightweight system D-Bus daemon if one is not already running.  We
+# will later use this very same bus as the *session* bus as well, avoiding the
+# autolaunch fallback that produced many "Connection refused" errors.
+# Start a lightweight system D-Bus daemon if one is not already running (Chromium complains otherwise)
+if [ ! -S /run/dbus/system_bus_socket ]; then
+  echo "Starting system D-Bus daemon"
+  mkdir -p /run/dbus
+  # Ensure a machine-id exists (required by dbus-daemon)
+  dbus-uuidgen --ensure
+  # Launch dbus-daemon in the background and remember its PID for cleanup
+  dbus-daemon --system \
+    --address=unix:path=/run/dbus/system_bus_socket \
+    --nopidfile --nosyslog --nofork >/dev/null 2>&1 &
+  dbus_pid=$!
+fi
+
+# We will point DBUS_SESSION_BUS_ADDRESS at the system bus socket to suppress
+# autolaunch attempts that failed and spammed logs.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
+
 # Start Chromium with display :1 and remote debugging, loading our recorder extension.
 # Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
 cleanup () {
@@ -40,9 +80,9 @@ pid3=
 INTERNAL_PORT=9223
 CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
-chromium \
+runuser -u kernel -- env DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" chromium \
   --remote-debugging-port=$INTERNAL_PORT \
-  ${CHROMIUM_FLAGS:-} >&2 &
+  ${CHROMIUM_FLAGS:-} >&2 & pid=$!
 echo "Setting up ncat proxy on port $CHROME_PORT"
 ncat \
   --sh-exec "ncat 0.0.0.0 $INTERNAL_PORT" \
