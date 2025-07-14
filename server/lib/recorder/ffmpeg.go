@@ -411,17 +411,16 @@ func (fm *FFmpegManager) GetRecorder(id string) (Recorder, bool) {
 	return recorder, exists
 }
 
-func (fm *FFmpegManager) ListActiveRecorders(ctx context.Context) []string {
+func (fm *FFmpegManager) ListActiveRecorders(ctx context.Context) []Recorder {
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
 
-	var active []string
-	for id, recorder := range fm.recorders {
-		if recorder.IsRecording(ctx) {
-			active = append(active, id)
-		}
+	recorders := make([]Recorder, 0, len(fm.recorders))
+	for _, recorder := range fm.recorders {
+		recorders = append(recorders, recorder)
 	}
-	return active
+
+	return recorders
 }
 
 func (fm *FFmpegManager) DeregisterRecorder(ctx context.Context, recorder Recorder) error {

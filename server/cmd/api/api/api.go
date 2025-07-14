@@ -164,6 +164,20 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 	}, nil
 }
 
+// ListRecorders returns a list of all registered recorders and whether each one is currently recording.
+func (s *ApiService) ListRecorders(ctx context.Context, _ oapi.ListRecordersRequestObject) (oapi.ListRecordersResponseObject, error) {
+	infos := []oapi.RecorderInfo{}
+
+	recs := s.recordManager.ListActiveRecorders(ctx)
+	for _, r := range recs {
+		infos = append(infos, oapi.RecorderInfo{
+			Id:          r.ID(),
+			IsRecording: r.IsRecording(ctx),
+		})
+	}
+	return oapi.ListRecorders200JSONResponse(infos), nil
+}
+
 func (s *ApiService) Shutdown(ctx context.Context) error {
 	return s.recordManager.StopAll(ctx)
 }

@@ -70,7 +70,7 @@ func TestApiService_StartRecording(t *testing.T) {
 		require.NoError(t, err)
 
 		out = mgr.ListActiveRecorders(ctx)
-		assert.Equal(t, 0, len(out))
+		assert.Equal(t, 5, len(out))
 	})
 }
 

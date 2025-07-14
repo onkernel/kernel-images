@@ -29,8 +29,8 @@ type RecordManager interface {
 	// Returns the recorder and true if found, nil and false otherwise.
 	GetRecorder(id string) (Recorder, bool)
 
-	// ListActiveRecorders returns a list of IDs for all currently recording recorders.
-	ListActiveRecorders(ctx context.Context) []string
+	// ListActiveRecorders returns a list of IDs for all registered recorders
+	ListActiveRecorders(ctx context.Context) []Recorder
 
 	// DeregisterRecorder removes a recorder from the manager.
 	DeregisterRecorder(ctx context.Context, recorder Recorder) error

@@ -84,6 +84,21 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /recording/list:
+    get:
+      summary: List all recorders
+      operationId: listRecorders
+      responses:
+        "200":
+          description: List of recorders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecorderInfo"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -126,6 +141,14 @@ components:
       properties:
         message:
           type: string
+    RecorderInfo:
+      type: object
+      required: [id, isRecording]
+      properties:
+        id:
+          type: string
+        isRecording:
+          type: boolean
   responses:
     BadRequestError:
       description: Bad Request
