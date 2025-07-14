@@ -75,7 +75,8 @@ export const actions = actionTree(
 
     newMessage(store, message: Message) {
       if (accessor.settings.chat_sound) {
-        new Audio('chat.mp3').play().catch(console.error)
+        // KERNEL: disable sound
+        // new Audio('chat.mp3').play().catch(console.error)
       }
       accessor.chat.addMessage(message)
     },
