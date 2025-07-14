@@ -64,7 +64,9 @@ func TestApiService_StartRecording(t *testing.T) {
 
 		out := mgr.ListActiveRecorders(ctx)
 		assert.Equal(t, 5, len(out))
-		assert.NotContains(t, out, "default")
+		for _, rec := range out {
+			assert.NotEqual(t, "default", rec.ID())
+		}
 
 		err = mgr.StopAll(ctx)
 		require.NoError(t, err)
