@@ -38,8 +38,10 @@
         <div ref="aspect" class="player-aspect" />
       </div>
       <ul v-if="!fullscreen && !hideControls" class="video-menu top">
+        <!-- KERNEL: disable fullscreen and resolution controls
         <li><i @click.stop.prevent="requestFullscreen" class="fas fa-expand"></i></li>
         <li v-if="admin"><i @click.stop.prevent="openResolution" class="fas fa-desktop"></i></li>
+        -->
         <li v-if="!controlLocked && !implicitHosting" :class="extraControls || 'extra-control'">
           <i
             :class="[
@@ -57,12 +59,14 @@
           <i @click.stop.prevent="openClipboard" class="fas fa-clipboard"></i>
         </li>
         <li>
+          <!-- KERNEL: disable pip
           <i
             v-if="pip_available"
             @click.stop.prevent="requestPictureInPicture"
             v-tooltip="{ content: 'Picture-in-Picture', placement: 'left', offset: 5, boundariesElement: 'body' }"
             class="fas fa-external-link-alt"
           />
+          -->
         </li>
         <li
           v-if="hosting && is_touch_device"
