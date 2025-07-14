@@ -69,7 +69,9 @@
         background: $background-tertiary;
         height: $menu-height;
         flex-shrink: 0;
-        display: flex;
+        // KERNEL: hide it
+        // display: flex;
+        display: none;
       }
 
       .video-container {
@@ -85,7 +87,9 @@
         max-width: 100%;
         flex-shrink: 0;
         flex-direction: column;
-        display: flex;
+        // KERNEL: hide it
+        // display: flex;
+        display: none;
 
         .room-menu {
           max-width: 100%;
@@ -186,9 +190,9 @@
     components: {
       'neko-connect': Connect,
       'neko-video': Video,
-      'neko-menu': Menu,
+      // 'neko-menu': Menu,
       //'neko-side': Side,
-      'neko-controls': Controls,
+      // 'neko-controls': Controls,
       //'neko-members': Members,
       //'neko-emotes': Emotes,
       //'neko-about': About,
