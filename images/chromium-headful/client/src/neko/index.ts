@@ -97,13 +97,14 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
       clean: true,
     })
 
-    this.$vue.$notify({
-      group: 'neko',
-      type: 'success',
-      title: this.$vue.$t('connection.connected') as string,
-      duration: 5000,
-      speed: 1000,
-    })
+    // KERNEL: disable notifcation on connected
+    // this.$vue.$notify({
+    //   group: 'neko',
+    //   type: 'success',
+    //   title: this.$vue.$t('connection.connected') as string,
+    //   duration: 5000,
+    //   speed: 1000,
+    // })
   }
 
   protected [EVENT.DISCONNECTED](reason?: Error) {
