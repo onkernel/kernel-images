@@ -255,6 +255,39 @@
       }
     }
 
+    // Add a watcher so that when we are connected we can set the resolution from query params
+    @Watch('connected', { immediate: true })
+    onConnected(value: boolean) {
+      if (value) {
+        this.applyQueryResolution()
+      }
+    }
+
+    // Read ?width=, ?height=, and optional ?rate= (or their short aliases w/h/r) from the URL
+    // and set the resolution accordingly. If the current user is an admin we also request the
+    // server to switch to that resolution.
+    private applyQueryResolution() {
+      const params = new URL(location.href).searchParams
+
+      const width = parseInt(params.get('width') || params.get('w') || '')
+      const height = parseInt(params.get('height') || params.get('h') || '')
+      const rate = parseInt(params.get('rate') || params.get('r') || '30')
+
+      if (isNaN(width) || isNaN(height)) {
+        return // resolution not specified or invalid
+      }
+
+      const resolution = { width, height, rate: isNaN(rate) ? 30 : rate }
+
+      // Apply locally so the UI updates immediately
+      this.$accessor.video.setResolution(resolution)
+
+      // If we are an admin, ask the server to change the stream resolution as well
+      if (this.$accessor.user && this.$accessor.user.admin) {
+        this.$accessor.video.screenSet(resolution)
+      }
+    }
+
     controlAttempt() {
       if (this.shakeKbd || this.$accessor.remote.hosted) return
 
