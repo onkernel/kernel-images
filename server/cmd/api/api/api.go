@@ -9,12 +9,12 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 )
 
-// ApiService implements the API endpoints
-// It manages a single recording session and provides endpoints for starting, stopping, and downloading it
 type ApiService struct {
-	mainRecorderID string // ID used for the primary recording session
-	recordManager  recorder.RecordManager
-	factory        recorder.FFmpegRecorderFactory
+	// defaultRecorderID is used whenever the caller doesn't specify an explicit ID.
+	defaultRecorderID string
+
+	recordManager recorder.RecordManager
+	factory       recorder.FFmpegRecorderFactory
 }
 
 func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) (*ApiService, error) {
@@ -26,9 +26,9 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 	}
 
 	return &ApiService{
-		recordManager:  recordManager,
-		factory:        factory,
-		mainRecorderID: "main", // use a single recorder for now
+		recordManager:     recordManager,
+		factory:           factory,
+		defaultRecorderID: "main",
 	}, nil
 }
 
@@ -42,14 +42,20 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 		params.MaxDurationInSeconds = req.Body.MaxDurationInSeconds
 	}
 
+	// Determine recorder ID (use default if none provided)
+	recorderID := s.defaultRecorderID
+	if req.Body != nil && req.Body.Id != nil && *req.Body.Id != "" {
+		recorderID = *req.Body.Id
+	}
+
 	// Create, register, and start a new recorder
-	rec, err := s.factory(s.mainRecorderID, params)
+	rec, err := s.factory(recorderID, params)
 	if err != nil {
 		log.Error("failed to create recorder", "err", err)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create recording"}}, nil
 	}
 	if err := s.recordManager.RegisterRecorder(ctx, rec); err != nil {
-		if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
+		if rec, exists := s.recordManager.GetRecorder(recorderID); exists && rec.IsRecording(ctx) {
 			log.Error("attempted to start recording while one is already active")
 			return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
 		}
@@ -70,7 +76,13 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRequestObject) (oapi.StopRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
+	// Determine recorder ID
+	recorderID := s.defaultRecorderID
+	if req.Body != nil && req.Body.Id != nil && *req.Body.Id != "" {
+		recorderID = *req.Body.Id
+	}
+
+	rec, exists := s.recordManager.GetRecorder(recorderID)
 	if !exists {
 		log.Warn("attempted to stop recording when none is active")
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
@@ -108,8 +120,14 @@ const (
 func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRecordingRequestObject) (oapi.DownloadRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
+	// Determine recorder ID
+	recorderID := s.defaultRecorderID
+	if req.Params.Id != nil && *req.Params.Id != "" {
+		recorderID = *req.Params.Id
+	}
+
 	// Get the recorder to access its output path
-	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
+	rec, exists := s.recordManager.GetRecorder(recorderID)
 	if !exists {
 		log.Error("attempted to download non-existent recording")
 		return oapi.DownloadRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
