@@ -72,6 +72,9 @@ cleanup () {
   if [[ -n "${pid3:-}" ]]; then
     kill -TERM $pid3 || true
   fi
+  if [ -n "${dbus_pid:-}" ]; then
+    kill -TERM $dbus_pid 2>/dev/null || true
+  fi
 }
 trap cleanup TERM INT
 pid=
