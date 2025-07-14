@@ -19,6 +19,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
@@ -32,6 +33,9 @@ type StartRecordingRequest struct {
 	// Framerate Recording framerate in fps (overrides server default)
 	Framerate *int `json:"framerate,omitempty"`
 
+	// Id Optional identifier for the recording session. Alphanumeric or hyphen.
+	Id *string `json:"id,omitempty"`
+
 	// MaxDurationInSeconds Maximum recording duration in seconds (overrides server default)
 	MaxDurationInSeconds *int `json:"maxDurationInSeconds,omitempty"`
 
@@ -43,6 +47,9 @@ type StartRecordingRequest struct {
 type StopRecordingRequest struct {
 	// ForceStop Immediately stop without graceful shutdown. This may result in a corrupted video file.
 	ForceStop *bool `json:"forceStop,omitempty"`
+
+	// Id Identifier of the recorder to stop. Alphanumeric or hyphen.
+	Id *string `json:"id,omitempty"`
 }
 
 // BadRequestError defines model for BadRequestError.
@@ -56,6 +63,12 @@ type InternalError = Error
 
 // NotFoundError defines model for NotFoundError.
 type NotFoundError = Error
+
+// DownloadRecordingParams defines parameters for DownloadRecording.
+type DownloadRecordingParams struct {
+	// Id Optional recorder identifier. When omitted, the server uses the default recorder.
+	Id *string `form:"id,omitempty" json:"id,omitempty"`
+}
 
 // StartRecordingJSONRequestBody defines body for StartRecording for application/json ContentType.
 type StartRecordingJSONRequestBody = StartRecordingRequest
@@ -137,7 +150,7 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 	// DownloadRecording request
-	DownloadRecording(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	DownloadRecording(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartRecordingWithBody request with any body
 	StartRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -150,8 +163,8 @@ type ClientInterface interface {
 	StopRecording(ctx context.Context, body StopRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) DownloadRecording(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDownloadRecordingRequest(c.Server)
+func (c *Client) DownloadRecording(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadRecordingRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +224,7 @@ func (c *Client) StopRecording(ctx context.Context, body StopRecordingJSONReques
 }
 
 // NewDownloadRecordingRequest generates requests for DownloadRecording
-func NewDownloadRecordingRequest(server string) (*http.Request, error) {
+func NewDownloadRecordingRequest(server string, params *DownloadRecordingParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -227,6 +240,28 @@ func NewDownloadRecordingRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Id != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "id", runtime.ParamLocationQuery, *params.Id); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -361,7 +396,7 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 	// DownloadRecordingWithResponse request
-	DownloadRecordingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error)
+	DownloadRecordingWithResponse(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error)
 
 	// StartRecordingWithBodyWithResponse request with any body
 	StartRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartRecordingResponse, error)
@@ -445,8 +480,8 @@ func (r StopRecordingResponse) StatusCode() int {
 }
 
 // DownloadRecordingWithResponse request returning *DownloadRecordingResponse
-func (c *ClientWithResponses) DownloadRecordingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error) {
-	rsp, err := c.DownloadRecording(ctx, reqEditors...)
+func (c *ClientWithResponses) DownloadRecordingWithResponse(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error) {
+	rsp, err := c.DownloadRecording(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -597,7 +632,7 @@ func ParseStopRecordingResponse(rsp *http.Response) (*StopRecordingResponse, err
 type ServerInterface interface {
 	// Download the most recently recorded video file
 	// (GET /recording/download)
-	DownloadRecording(w http.ResponseWriter, r *http.Request)
+	DownloadRecording(w http.ResponseWriter, r *http.Request, params DownloadRecordingParams)
 	// Start a screen recording. Only one recording can be active at a time.
 	// (POST /recording/start)
 	StartRecording(w http.ResponseWriter, r *http.Request)
@@ -612,7 +647,7 @@ type Unimplemented struct{}
 
 // Download the most recently recorded video file
 // (GET /recording/download)
-func (_ Unimplemented) DownloadRecording(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) DownloadRecording(w http.ResponseWriter, r *http.Request, params DownloadRecordingParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -640,8 +675,21 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // DownloadRecording operation middleware
 func (siw *ServerInterfaceWrapper) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadRecordingParams
+
+	// ------------- Optional query parameter "id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "id", r.URL.Query(), &params.Id)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DownloadRecording(w, r)
+		siw.Handler.DownloadRecording(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -814,6 +862,7 @@ type InternalErrorJSONResponse Error
 type NotFoundErrorJSONResponse Error
 
 type DownloadRecordingRequestObject struct {
+	Params DownloadRecordingParams
 }
 
 type DownloadRecordingResponseObject interface {
@@ -999,8 +1048,10 @@ type strictHandler struct {
 }
 
 // DownloadRecording operation middleware
-func (sh *strictHandler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) DownloadRecording(w http.ResponseWriter, r *http.Request, params DownloadRecordingParams) {
 	var request DownloadRecordingRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DownloadRecording(ctx, request.(DownloadRecordingRequestObject))
@@ -1087,22 +1138,24 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7xWXW/bNhT9KwS3hw1QbCXNBsxvzdoCxpCuiPswYNgDI17JLEhe9vLKqVr4vw+kbNmy",
-	"3aTL0rzJ/Drn3HM//EVW6AJ68Bzl7IskiAF9hPzjSukb+NhC5NdESGmpQs/gOX2qEKypFBv00w8RfVqL",
-	"1RKcSl8/EtRyJn+Y7t6f9rtx2r+2Xq8LqSFWZEJ6RM4SoNggynUhf0dfW1M9F/oWLkHPPQN5ZZ8Jegsn",
-	"FkArILE5WMi3yG+w9fqZeLxFFhlPpr3N8fTagB8IAxCbPkMcxKgaSJ/cBZAzGZmMb/J1go+tIdBy9vdw",
-	"8J9iexBvP0Af6wUr4huokLTxzdb/JFBrk4gp+24PtVY2QnFApCblgBRnKmNNw8tiOCSMF3WI4idcAZHR",
-	"EEXsA6+hVq3ln2UhnfpkXOvk7NeykM74/sf5IMB4hgayS059etVSdmLuF1Ch1/GYyHX/oKCBkN5cSnxi",
-	"f+0BTg/ReGMsLMxnmPvrq68zqI0FEc3nHIjrq2+Mw3lZlqNQlMck1if9xfB/7UWqIL3Ta8rchqMHpeQc",
-	"aKMYbCciYxB3hpfYsmhIVVC3VsRlyxrv/ES8X5oonOoEQWwtp2goUSFRGxi0WBkNmIM1kYOuW0QLyp+S",
-	"mpaMrzGXg2Gb9v4A8mDF3KkGonj5bi4LuQKKPdlycj4pU4wwgFfByJl8MSknL2Qhg+Jl1j4d8mWaWFtU",
-	"Oi03kIOYotQnnpYz+WpzYAi3LMYt/aIsD7pIFjl14XLcPmokpzjpNV5Rt9M/FPhR89grNGNBFnIJSgNl",
-	"3L/Oht2z114fp+Z74yCyckFgLe6W4AUvYa9UwGvQsjjFUCuGMzYOTpAsRsi50/x37JiuPQY94V+UF/f1",
-	"JBNFZGNtyr1A2BDEWIhgQUUQTJ1QjTJeWMVA45DeAFN39rJOG0cAi7ZpIKYkvlOGReK332RuoUZKEpm6",
-	"Pkt2yu7rMVnRZZ9DpwbMkGvTw/8O+d7lw/fGA29dyF++BW08rvPsap1LeburiWyqw8jJWfBsu43Fo0rP",
-	"l/dKLm5TJmA8UXDj2SX7oQeRr1B3TzauTw/I3oyD6j6/L9e2eZy9+O3hqI7/fz2FF1mJUCJWBOB3JTYR",
-	"f3rbCfT7ZVcpL25BqIrNCoRK91IeT44t6ufC1xzamz7fzaATE+6kP+X9/mAIW38eV2NP4BCGXClVSwSe",
-	"d35kQf8GAAD//76bNWkwDAAA",
+	"H4sIAAAAAAAC/7xW3W4bNxN9lQG/XHxFV9LacQtEd3aTAELhJLADtKjhAvRyVmLAPw9n7ciG3r0gV1pp",
+	"JdlOUtd3+0NyzpxzZjj3ovI2eIeOoxjfC8IYvIuYX06kOsPrBiO/I/KUPlXeMTpOjzIEoyvJ2rvRl+hd",
+	"+harGVqZnl4R1mIs/jdanz9q/8ZRe9pisSiEwliRDukQMU4BYRlRLArxm3e10dVLRV+FS6EnjpGcNC8U",
+	"ehUOzpFukGC5sBAfPL/3jVMvhOODZ8jxRPq3XJ5O6+IH8gGJdesQizHKKaZHngcUYxGZtJvm7YTXjSZU",
+	"YnzRLbwsVgv91RdsuT5nSXyGlSel3XSlf0pQKZ2ASfNpI2otTcRiC0hN0iJJzlD6OXUnQ7cItIM6RPi/",
+	"v0EirTBCbIlXWMvG8E+iEFZ+1baxYvxrWQirXfty0CWgHeMUs0pa7Yb9GFrooBU61rVGgtoT8AyBOkgR",
+	"Y9TeDeHYhJl0jUXSFXiC2TzM0A1FIYLkZA4xFn9fyMHd8eCvcvBmcPnzK1Fsk55Bv20oe2LizrHyTsVd",
+	"bKdtahs41HJTYia2255g51FCrPz6Xhs813c4cacnDyOotUGI+i5LcnryjYoclGXZE6XcBbHY6zQf/q3R",
+	"PFWYzmlzyti6pVtFbS0qLRnNHCL7ALeaZ75hmJKssG4MxFnDyt+6IXye6QhWzoEwNoYTGxIqT9QERgU3",
+	"WqHPZA3Xql95b1C6hww4WfvO1xu2QwL2GdAzuW6X6fRJu9rnvqDZpH+/Izk0MLFyihGOP01EIW6QYgu2",
+	"HB4My5SJD+hk0GIsXg/L4esWySxTP+rsOkqkGS9z1lPMGiaRWt8rMRZvlws6tfNBqf4ZKYrxxYPl2pG0",
+	"rtsh/DFDB95qZlRF5nLpziZizO9LK3TbE4c6HXzdIM1FIZy02Z9KFBtd+ntoviz61/NhWW7dCNkmIxuO",
+	"+ldB7clKTo7RTmYw20fvXAQbTVMbFIWYoVSZuXvx56D7O3jn9jjvs7YYWdqQjHebqOs3PXQK+zR0CJVk",
+	"HLC2uNdmm5HzrfH9sWPa9iPRU/zD8vCx+0VHiKyNSdUbyE8JYywgGJQRgWkOciq1AyMZqU/pGTLNB8d1",
+	"+rET4LyZTjGmNnArNUPCt9mmr7D2lFJkmrdGX2f2WJfOGR21Hto3LHReG23PgXnf0dP7+sPLohC/fEu0",
+	"/uiV55DG2uTbdVlnUa2Pud7QsZmvCm+zV+bNG10jriwTfNzTM/pziGgHGIx84tX82Uav/cNOK8ZWdR88",
+	"5rWVj7MWb55mtT9LP4cWOROQECtCdOsSG8JHZ+bg3WbZVdLBFYKsWN8gyLQv+Xi4K1F7sz6k0Mb9/Z8J",
+	"tGdG2KtP+bg+PoSVPj9WY8+gkA+5UqqGCB2v9cgJ/RMAAP//hfJgGPwNAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
