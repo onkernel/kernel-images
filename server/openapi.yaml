@@ -5,7 +5,7 @@ info:
 paths:
   /recording/start:
     post:
-      summary: Start a screen recording. Only one recording can be active at a time.
+      summary: Start a screen recording. Only one recording per ID can be registered at a time.
       operationId: startRecording
       requestBody:
         required: false
@@ -16,6 +16,8 @@ paths:
       responses:
         "201":
           description: Recording started
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "409":
           description: A recording is already in progress
           $ref: "#/components/responses/ConflictError"
@@ -23,7 +25,7 @@ paths:
           $ref: "#/components/responses/InternalError"
   /recording/stop:
     post:
-      summary: Stop the current recording
+      summary: Stop the recording
       operationId: stopRecording
       requestBody:
         required: false
