@@ -255,7 +255,7 @@
       }
     }
 
-    // KERNEL: begin custom resolution and frame rate control
+    // KERNEL: begin custom resolution, frame rate, and readOnly control via query params
 
     // Add a watcher so that when we are connected we can set the resolution from query params
     @Watch('connected', { immediate: true })
@@ -275,22 +275,26 @@
       const height = parseInt(params.get('height') || params.get('h') || '')
       const rate = parseInt(params.get('rate') || params.get('r') || '30')
 
-      if (isNaN(width) || isNaN(height)) {
-        return // resolution not specified or invalid
+      if (!isNaN(width) && !isNaN(height)) {
+        const resolution = { width, height, rate: isNaN(rate) ? 30 : rate }
+        this.$accessor.video.setResolution(resolution)
+        if (this.$accessor.user && this.$accessor.user.admin) {
+          this.$accessor.video.screenSet(resolution)
+        }
       }
 
-      const resolution = { width, height, rate: isNaN(rate) ? 30 : rate }
-
-      // Apply locally so the UI updates immediately
-      this.$accessor.video.setResolution(resolution)
-
-      // If we are an admin, ask the server to change the stream resolution as well
-      if (this.$accessor.user && this.$accessor.user.admin) {
-        this.$accessor.video.screenSet(resolution)
+      // Handle readOnly query param (e.g., ?readOnly=true or ?readonly=1)
+      const readOnlyParam = params.get('readOnly') || params.get('readonly') || params.get('ro')
+      const readOnly = typeof readOnlyParam === 'string' && ['1', 'true', 'yes'].includes(readOnlyParam.toLowerCase())
+      if (readOnly) {
+        // Disable implicit hosting so the user doesn't automatically gain control
+        this.$accessor.remote.setImplicitHosting(false)
+        // Lock the session locally to block any input even if hosting is later requested
+        this.$accessor.remote.setLocked(true)
       }
     }
 
-    // KERNEL: end custom resolution and frame rate control
+    // KERNEL: end custom resolution, frame rate, and readOnly control via query params
 
     controlAttempt() {
       if (this.shakeKbd || this.$accessor.remote.hosted) return
