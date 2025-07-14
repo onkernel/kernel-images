@@ -41,6 +41,13 @@ paths:
   /recording/download:
     get:
       summary: Download the most recently recorded video file
+      parameters:
+        - name: id
+          in: query
+          description: Optional recorder identifier. When omitted, the server uses the default recorder.
+          schema:
+            type: string
+            pattern: "^[a-zA-Z0-9-]+$"
       operationId: downloadRecording
       responses:
         "200":
@@ -94,6 +101,10 @@ components:
           type: integer
           description: Maximum recording duration in seconds (overrides server default)
           minimum: 1
+        id:
+          type: string
+          description: Optional identifier for the recording session. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
       additionalProperties: false
     StopRecordingRequest:
       type: object
@@ -102,6 +113,10 @@ components:
           type: boolean
           description: Immediately stop without graceful shutdown. This may result in a corrupted video file.
           default: false
+        id:
+          type: string
+          description: Identifier of the recorder to stop. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
       additionalProperties: false
     Error:
       type: object
