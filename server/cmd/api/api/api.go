@@ -2,28 +2,37 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 )
 
-// ApiService implements the API endpoints
-// It manages a single recording session and provides endpoints for starting, stopping, and downloading it
 type ApiService struct {
-	mainRecorderID string // ID used for the primary recording session
-	recordManager  recorder.RecordManager
-	factory        recorder.FFmpegRecorderFactory
+	// defaultRecorderID is used whenever the caller doesn't specify an explicit ID.
+	defaultRecorderID string
+
+	recordManager recorder.RecordManager
+	factory       recorder.FFmpegRecorderFactory
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
 
-func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) *ApiService {
-	return &ApiService{
-		recordManager:  recordManager,
-		factory:        factory,
-		mainRecorderID: "main", // use a single recorder for now
+func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) (*ApiService, error) {
+	switch {
+	case recordManager == nil:
+		return nil, fmt.Errorf("recordManager cannot be nil")
+	case factory == nil:
+		return nil, fmt.Errorf("factory cannot be nil")
 	}
+
+	return &ApiService{
+		recordManager:     recordManager,
+		factory:           factory,
+		defaultRecorderID: "default",
+	}, nil
 }
 
 func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecordingRequestObject) (oapi.StartRecordingResponseObject, error) {
@@ -33,26 +42,38 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 	if req.Body != nil {
 		params.FrameRate = req.Body.Framerate
 		params.MaxSizeInMB = req.Body.MaxFileSizeInMB
+		params.MaxDurationInSeconds = req.Body.MaxDurationInSeconds
+	}
+
+	// Determine recorder ID (use default if none provided)
+	recorderID := s.defaultRecorderID
+	if req.Body != nil && req.Body.Id != nil && *req.Body.Id != "" {
+		recorderID = *req.Body.Id
 	}
 
 	// Create, register, and start a new recorder
-	rec, err := s.factory(s.mainRecorderID, params)
+	rec, err := s.factory(recorderID, params)
 	if err != nil {
-		log.Error("failed to create recorder", "err", err)
+		log.Error("failed to create recorder", "err", err, "recorder_id", recorderID)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create recording"}}, nil
 	}
 	if err := s.recordManager.RegisterRecorder(ctx, rec); err != nil {
-		if rec, exists := s.recordManager.GetRecorder(s.mainRecorderID); exists && rec.IsRecording(ctx) {
-			log.Error("attempted to start recording while one is already active")
-			return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
+		if rec, exists := s.recordManager.GetRecorder(recorderID); exists {
+			if rec.IsRecording(ctx) {
+				log.Error("attempted to start recording while one is already active", "recorder_id", recorderID)
+				return oapi.StartRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording already in progress"}}, nil
+			} else {
+				log.Error("attempted to restart recording", "recorder_id", recorderID)
+				return oapi.StartRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording already completed"}}, nil
+			}
 		}
-		log.Error("failed to register recorder", "err", err)
+		log.Error("failed to register recorder", "err", err, "recorder_id", recorderID)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to register recording"}}, nil
 	}
 
 	if err := rec.Start(ctx); err != nil {
-		log.Error("failed to start recording", "err", err)
-		// ensure the recorder is deregistered if we fail to start
+		log.Error("failed to start recording", "err", err, "recorder_id", recorderID)
+		// ensure the recorder is deregistered
 		defer s.recordManager.DeregisterRecorder(ctx, rec)
 		return oapi.StartRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start recording"}}, nil
 	}
@@ -63,10 +84,19 @@ func (s *ApiService) StartRecording(ctx context.Context, req oapi.StartRecording
 func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRequestObject) (oapi.StopRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
-	if !exists || !rec.IsRecording(ctx) {
-		log.Warn("attempted to stop recording when none is active")
+	// Determine recorder ID
+	recorderID := s.defaultRecorderID
+	if req.Body != nil && req.Body.Id != nil && *req.Body.Id != "" {
+		recorderID = *req.Body.Id
+	}
+
+	rec, exists := s.recordManager.GetRecorder(recorderID)
+	if !exists {
+		log.Warn("attempted to stop recording when none is active", "recorder_id", recorderID)
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
+	} else if !rec.IsRecording(ctx) {
+		log.Warn("recording already stopped", "recorder_id", recorderID)
+		return oapi.StopRecording200Response{}, nil
 	}
 
 	// Check if force stop is requested
@@ -77,15 +107,15 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 
 	var err error
 	if forceStop {
-		log.Info("force stopping recording")
+		log.Info("force stopping recording", "recorder_id", recorderID)
 		err = rec.ForceStop(ctx)
 	} else {
-		log.Info("gracefully stopping recording")
+		log.Info("gracefully stopping recording", "recorder_id", recorderID)
 		err = rec.Stop(ctx)
 	}
 
 	if err != nil {
-		log.Error("error occurred while stopping recording", "err", err, "force", forceStop)
+		log.Error("error occurred while stopping recording", "err", err, "force", forceStop, "recorder_id", recorderID)
 	}
 
 	return oapi.StopRecording200Response{}, nil
@@ -98,16 +128,22 @@ const (
 func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRecordingRequestObject) (oapi.DownloadRecordingResponseObject, error) {
 	log := logger.FromContext(ctx)
 
+	// Determine recorder ID
+	recorderID := s.defaultRecorderID
+	if req.Params.Id != nil && *req.Params.Id != "" {
+		recorderID = *req.Params.Id
+	}
+
 	// Get the recorder to access its output path
-	rec, exists := s.recordManager.GetRecorder(s.mainRecorderID)
+	rec, exists := s.recordManager.GetRecorder(recorderID)
 	if !exists {
-		log.Error("attempted to download non-existent recording")
+		log.Error("attempted to download non-existent recording", "recorder_id", recorderID)
 		return oapi.DownloadRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
 	}
 
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
-		log.Error("failed to get recording", "err", err)
+		log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
 		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
 	}
 
@@ -120,11 +156,39 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 		}, nil
 	}
 
-	log.Info("serving recording file for download", "size", meta.Size)
+	log.Info("serving recording file for download", "size", meta.Size, "recorder_id", recorderID)
 	return oapi.DownloadRecording200Videomp4Response{
-		Body:          out,
+		Body: out,
+		Headers: oapi.DownloadRecording200ResponseHeaders{
+			XRecordingStartedAt:  meta.StartTime.Format(time.RFC3339),
+			XRecordingFinishedAt: meta.EndTime.Format(time.RFC3339),
+		},
 		ContentLength: meta.Size,
 	}, nil
+}
+
+// ListRecorders returns a list of all registered recorders and whether each one is currently recording.
+func (s *ApiService) ListRecorders(ctx context.Context, _ oapi.ListRecordersRequestObject) (oapi.ListRecordersResponseObject, error) {
+	infos := []oapi.RecorderInfo{}
+
+	timeOrNil := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		return &t
+	}
+
+	recs := s.recordManager.ListActiveRecorders(ctx)
+	for _, r := range recs {
+		m := r.Metadata()
+		infos = append(infos, oapi.RecorderInfo{
+			Id:          r.ID(),
+			IsRecording: r.IsRecording(ctx),
+			StartedAt:   timeOrNil(m.StartTime),
+			FinishedAt:  timeOrNil(m.EndTime),
+		})
+	}
+	return oapi.ListRecorders200JSONResponse(infos), nil
 }
 
 func (s *ApiService) Shutdown(ctx context.Context) error {

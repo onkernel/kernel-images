@@ -13,6 +13,7 @@ type Recorder interface {
 	Stop(ctx context.Context) error
 	ForceStop(ctx context.Context) error
 	IsRecording(ctx context.Context) bool
+	Metadata() *RecordingMetadata
 	Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) // Returns the recording file as a ReadCloser
 }
 
@@ -29,8 +30,8 @@ type RecordManager interface {
 	// Returns the recorder and true if found, nil and false otherwise.
 	GetRecorder(id string) (Recorder, bool)
 
-	// ListActiveRecorders returns a list of IDs for all currently recording recorders.
-	ListActiveRecorders(ctx context.Context) []string
+	// ListActiveRecorders returns a list of IDs for all registered recorders
+	ListActiveRecorders(ctx context.Context) []Recorder
 
 	// DeregisterRecorder removes a recorder from the manager.
 	DeregisterRecorder(ctx context.Context, recorder Recorder) error

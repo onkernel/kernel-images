@@ -5,7 +5,7 @@ info:
 paths:
   /recording/start:
     post:
-      summary: Start a screen recording. Only one recording can be active at a time.
+      summary: Start a screen recording. Only one recording per ID can be registered at a time.
       operationId: startRecording
       requestBody:
         required: false
@@ -16,6 +16,8 @@ paths:
       responses:
         "201":
           description: Recording started
+        "400":
+          $ref: "#/components/responses/BadRequestError"
         "409":
           description: A recording is already in progress
           $ref: "#/components/responses/ConflictError"
@@ -23,7 +25,7 @@ paths:
           $ref: "#/components/responses/InternalError"
   /recording/stop:
     post:
-      summary: Stop the current recording
+      summary: Stop the recording
       operationId: stopRecording
       requestBody:
         required: false
@@ -41,10 +43,30 @@ paths:
   /recording/download:
     get:
       summary: Download the most recently recorded video file
+      parameters:
+        - name: id
+          in: query
+          description: Optional recorder identifier. When omitted, the server uses the default recorder.
+          schema:
+            type: string
+            pattern: "^[a-zA-Z0-9-]+$"
       operationId: downloadRecording
       responses:
         "200":
           description: Recording file
+          headers:
+            # Note: using a `format: date-time` here doesn't work as intended as the generated code
+            # calls a `fmt.Sprint` on the value when setting the header. time.String is a
+            # non-standard format that most parses will barf on, making everyone's life harder, so
+            # we're skipping the `format` in favor of an explicit description.
+            X-Recording-Started-At:
+              description: Timestamp of when the recording started. Guaranteed to be RFC3339.
+              schema:
+                type: string
+            X-Recording-Finished-At:
+              description: Timestamp of when the recording finished. Guaranteed to be RFC3339.
+              schema:
+                type: string
           content:
             video/mp4:
               schema:
@@ -62,6 +84,21 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/list:
+    get:
+      summary: List all recorders
+      operationId: listRecorders
+      responses:
+        "200":
+          description: List of recorders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecorderInfo"
         "500":
           $ref: "#/components/responses/InternalError"
   /computer/click_mouse:
@@ -113,6 +150,14 @@ components:
           description: Recording framerate in fps (overrides server default)
           minimum: 1
           maximum: 60
+        maxDurationInSeconds:
+          type: integer
+          description: Maximum recording duration in seconds (overrides server default)
+          minimum: 1
+        id:
+          type: string
+          description: Optional identifier for the recording session. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
       additionalProperties: false
     StopRecordingRequest:
       type: object
@@ -121,6 +166,10 @@ components:
           type: boolean
           description: Immediately stop without graceful shutdown. This may result in a corrupted video file.
           default: false
+        id:
+          type: string
+          description: Identifier of the recorder to stop. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
       additionalProperties: false
     Error:
       type: object
@@ -128,6 +177,24 @@ components:
       properties:
         message:
           type: string
+    RecorderInfo:
+      type: object
+      required: [id, isRecording]
+      properties:
+        id:
+          type: string
+        isRecording:
+          type: boolean
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording started
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording finished
     ClickMouseRequest:
       type: object
       required:

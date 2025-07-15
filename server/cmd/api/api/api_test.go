@@ -3,12 +3,14 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"math/rand"
 	"testing"
 
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,29 +19,60 @@ func TestApiService_StartRecording(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 
 		resp, err := svc.StartRecording(ctx, oapi.StartRecordingRequestObject{})
 		require.NoError(t, err)
 		require.IsType(t, oapi.StartRecording201Response{}, resp)
 
-		rec, exists := mgr.GetRecorder("main")
+		rec, exists := mgr.GetRecorder("default")
 		require.True(t, exists, "recorder was not registered")
 		require.True(t, rec.IsRecording(ctx), "recorder should be recording after Start")
 	})
 
 	t.Run("already recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 
 		// First start should succeed
-		_, err := svc.StartRecording(ctx, oapi.StartRecordingRequestObject{})
+		_, err = svc.StartRecording(ctx, oapi.StartRecordingRequestObject{})
 		require.NoError(t, err)
 
 		// Second start should return conflict
 		resp, err := svc.StartRecording(ctx, oapi.StartRecordingRequestObject{})
 		require.NoError(t, err)
 		require.IsType(t, oapi.StartRecording409JSONResponse{}, resp)
+	})
+
+	t.Run("custom ids don't collide", func(t *testing.T) {
+		mgr := recorder.NewFFmpegManager()
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
+
+		for i := 0; i < 5; i++ {
+			customID := fmt.Sprintf("rec-%d", i)
+			resp, err := svc.StartRecording(ctx, oapi.StartRecordingRequestObject{Body: &oapi.StartRecordingJSONRequestBody{Id: &customID}})
+			require.NoError(t, err)
+			require.IsType(t, oapi.StartRecording201Response{}, resp)
+
+			rec, exists := mgr.GetRecorder(customID)
+			assert.True(t, exists)
+			assert.True(t, rec.IsRecording(ctx))
+		}
+
+		out := mgr.ListActiveRecorders(ctx)
+		assert.Equal(t, 5, len(out))
+		for _, rec := range out {
+			assert.NotEqual(t, "default", rec.ID())
+		}
+
+		err = mgr.StopAll(ctx)
+		require.NoError(t, err)
+
+		out = mgr.ListActiveRecorders(ctx)
+		assert.Equal(t, 5, len(out))
 	})
 }
 
@@ -48,7 +81,8 @@ func TestApiService_StopRecording(t *testing.T) {
 
 	t.Run("no active recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 
 		resp, err := svc.StopRecording(ctx, oapi.StopRecordingRequestObject{})
 		require.NoError(t, err)
@@ -57,10 +91,11 @@ func TestApiService_StopRecording(t *testing.T) {
 
 	t.Run("graceful stop", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		rec := &mockRecorder{id: "main", isRecordingFlag: true}
+		rec := &mockRecorder{id: "default", isRecordingFlag: true}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 		resp, err := svc.StopRecording(ctx, oapi.StopRecordingRequestObject{})
 		require.NoError(t, err)
 		require.IsType(t, oapi.StopRecording200Response{}, resp)
@@ -69,12 +104,13 @@ func TestApiService_StopRecording(t *testing.T) {
 
 	t.Run("force stop", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		rec := &mockRecorder{id: "main", isRecordingFlag: true}
+		rec := &mockRecorder{id: "default", isRecordingFlag: true}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
 		force := true
 		req := oapi.StopRecordingRequestObject{Body: &oapi.StopRecordingJSONRequestBody{ForceStop: &force}}
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 		resp, err := svc.StopRecording(ctx, req)
 		require.NoError(t, err)
 		require.IsType(t, oapi.StopRecording200Response{}, resp)
@@ -87,7 +123,8 @@ func TestApiService_DownloadRecording(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
 		require.IsType(t, oapi.DownloadRecording404JSONResponse{}, resp)
@@ -103,10 +140,11 @@ func TestApiService_DownloadRecording(t *testing.T) {
 
 	t.Run("still recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		rec := &mockRecorder{id: "main", isRecordingFlag: true, recordingData: randomBytes(minRecordingSizeInBytes - 1)}
+		rec := &mockRecorder{id: "default", isRecordingFlag: true, recordingData: randomBytes(minRecordingSizeInBytes - 1)}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 		// will return a 202 when the recording is too small
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
@@ -132,10 +170,11 @@ func TestApiService_DownloadRecording(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
 		data := []byte("dummy video data")
-		rec := &mockRecorder{id: "main", recordingData: data}
+		rec := &mockRecorder{id: "default", recordingData: data}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory())
+		require.NoError(t, err)
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
 		r, ok := resp.(oapi.DownloadRecording200Videomp4Response)
@@ -151,10 +190,11 @@ func TestApiService_DownloadRecording(t *testing.T) {
 func TestApiService_Shutdown(t *testing.T) {
 	ctx := context.Background()
 	mgr := recorder.NewFFmpegManager()
-	rec := &mockRecorder{id: "main", isRecordingFlag: true}
+	rec := &mockRecorder{id: "default", isRecordingFlag: true}
 	require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-	svc := New(mgr, newMockFactory())
+	svc, err := New(mgr, newMockFactory())
+	require.NoError(t, err)
 
 	require.NoError(t, svc.Shutdown(ctx))
 	require.True(t, rec.stopCalled, "Shutdown should have stopped active recorder")
@@ -217,6 +257,10 @@ func (m *mockRecorder) Recording(ctx context.Context) (io.ReadCloser, *recorder.
 	reader := io.NopCloser(bytes.NewReader(m.recordingData))
 	meta := &recorder.RecordingMetadata{Size: int64(len(m.recordingData))}
 	return reader, meta, nil
+}
+
+func (m *mockRecorder) Metadata() *recorder.RecordingMetadata {
+	return &recorder.RecordingMetadata{}
 }
 
 func newMockFactory() recorder.FFmpegRecorderFactory {
