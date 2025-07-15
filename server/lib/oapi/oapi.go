@@ -40,10 +40,10 @@ const (
 // ClickMouseRequest defines model for ClickMouseRequest.
 type ClickMouseRequest struct {
 	// Button Mouse button to interact with
-	Button ClickMouseRequestButton `json:"button"`
+	Button *ClickMouseRequestButton `json:"button,omitempty"`
 
 	// ClickType Type of click action
-	ClickType ClickMouseRequestClickType `json:"click_type"`
+	ClickType *ClickMouseRequestClickType `json:"click_type,omitempty"`
 
 	// HoldKeys Modifier keys to hold during the click
 	HoldKeys *[]string `json:"hold_keys,omitempty"`
@@ -67,6 +67,18 @@ type ClickMouseRequestClickType string
 // Error defines model for Error.
 type Error struct {
 	Message string `json:"message"`
+}
+
+// MoveMouseRequest defines model for MoveMouseRequest.
+type MoveMouseRequest struct {
+	// HoldKeys Modifier keys to hold during the move
+	HoldKeys *[]string `json:"hold_keys,omitempty"`
+
+	// X X coordinate to move the cursor to
+	X int `json:"x"`
+
+	// Y Y coordinate to move the cursor to
+	Y int `json:"y"`
 }
 
 // StartRecordingRequest defines model for StartRecordingRequest.
@@ -98,6 +110,9 @@ type NotFoundError = Error
 
 // ClickMouseJSONRequestBody defines body for ClickMouse for application/json ContentType.
 type ClickMouseJSONRequestBody = ClickMouseRequest
+
+// MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
+type MoveMouseJSONRequestBody = MoveMouseRequest
 
 // StartRecordingJSONRequestBody defines body for StartRecording for application/json ContentType.
 type StartRecordingJSONRequestBody = StartRecordingRequest
@@ -183,6 +198,11 @@ type ClientInterface interface {
 
 	ClickMouse(ctx context.Context, body ClickMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// MoveMouseWithBody request with any body
+	MoveMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DownloadRecording request
 	DownloadRecording(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -211,6 +231,30 @@ func (c *Client) ClickMouseWithBody(ctx context.Context, contentType string, bod
 
 func (c *Client) ClickMouse(ctx context.Context, body ClickMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewClickMouseRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) MoveMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveMouseRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMoveMouseRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +346,46 @@ func NewClickMouseRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	operationPath := fmt.Sprintf("/computer/click_mouse")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewMoveMouseRequest calls the generic MoveMouse builder with application/json body
+func NewMoveMouseRequest(server string, body MoveMouseJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewMoveMouseRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewMoveMouseRequestWithBody generates requests for MoveMouse with any type of body
+func NewMoveMouseRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/move_mouse")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -476,6 +560,11 @@ type ClientWithResponsesInterface interface {
 
 	ClickMouseWithResponse(ctx context.Context, body ClickMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*ClickMouseResponse, error)
 
+	// MoveMouseWithBodyWithResponse request with any body
+	MoveMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
+
+	MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
+
 	// DownloadRecordingWithResponse request
 	DownloadRecordingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error)
 
@@ -507,6 +596,29 @@ func (r ClickMouseResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ClickMouseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type MoveMouseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r MoveMouseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MoveMouseResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -600,6 +712,23 @@ func (c *ClientWithResponses) ClickMouseWithResponse(ctx context.Context, body C
 	return ParseClickMouseResponse(rsp)
 }
 
+// MoveMouseWithBodyWithResponse request with arbitrary body returning *MoveMouseResponse
+func (c *ClientWithResponses) MoveMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error) {
+	rsp, err := c.MoveMouseWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveMouseResponse(rsp)
+}
+
+func (c *ClientWithResponses) MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error) {
+	rsp, err := c.MoveMouse(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMoveMouseResponse(rsp)
+}
+
 // DownloadRecordingWithResponse request returning *DownloadRecordingResponse
 func (c *ClientWithResponses) DownloadRecordingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error) {
 	rsp, err := c.DownloadRecording(ctx, reqEditors...)
@@ -652,6 +781,39 @@ func ParseClickMouseResponse(rsp *http.Response) (*ClickMouseResponse, error) {
 	}
 
 	response := &ClickMouseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMoveMouseResponse parses an HTTP response from a MoveMouseWithResponse call
+func ParseMoveMouseResponse(rsp *http.Response) (*MoveMouseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MoveMouseResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -787,6 +949,9 @@ type ServerInterface interface {
 	// Simulate a mouse click action on the host computer
 	// (POST /computer/click_mouse)
 	ClickMouse(w http.ResponseWriter, r *http.Request)
+	// Move the mouse cursor to the specified coordinates on the host computer
+	// (POST /computer/move_mouse)
+	MoveMouse(w http.ResponseWriter, r *http.Request)
 	// Download the most recently recorded video file
 	// (GET /recording/download)
 	DownloadRecording(w http.ResponseWriter, r *http.Request)
@@ -805,6 +970,12 @@ type Unimplemented struct{}
 // Simulate a mouse click action on the host computer
 // (POST /computer/click_mouse)
 func (_ Unimplemented) ClickMouse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Move the mouse cursor to the specified coordinates on the host computer
+// (POST /computer/move_mouse)
+func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -840,6 +1011,20 @@ func (siw *ServerInterfaceWrapper) ClickMouse(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ClickMouse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MoveMouse operation middleware
+func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MoveMouse(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1008,6 +1193,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/click_mouse", wrapper.ClickMouse)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/recording/download", wrapper.DownloadRecording)
 	})
 	r.Group(func(r chi.Router) {
@@ -1056,6 +1244,40 @@ func (response ClickMouse400JSONResponse) VisitClickMouseResponse(w http.Respons
 type ClickMouse500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response ClickMouse500JSONResponse) VisitClickMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MoveMouseRequestObject struct {
+	Body *MoveMouseJSONRequestBody
+}
+
+type MoveMouseResponseObject interface {
+	VisitMoveMouseResponse(w http.ResponseWriter) error
+}
+
+type MoveMouse200Response struct {
+}
+
+func (response MoveMouse200Response) VisitMoveMouseResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type MoveMouse400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response MoveMouse400JSONResponse) VisitMoveMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MoveMouse500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response MoveMouse500JSONResponse) VisitMoveMouseResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1202,6 +1424,9 @@ type StrictServerInterface interface {
 	// Simulate a mouse click action on the host computer
 	// (POST /computer/click_mouse)
 	ClickMouse(ctx context.Context, request ClickMouseRequestObject) (ClickMouseResponseObject, error)
+	// Move the mouse cursor to the specified coordinates on the host computer
+	// (POST /computer/move_mouse)
+	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
 	// Download the most recently recorded video file
 	// (GET /recording/download)
 	DownloadRecording(ctx context.Context, request DownloadRecordingRequestObject) (DownloadRecordingResponseObject, error)
@@ -1266,6 +1491,37 @@ func (sh *strictHandler) ClickMouse(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ClickMouseResponseObject); ok {
 		if err := validResponse.VisitClickMouseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MoveMouse operation middleware
+func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
+	var request MoveMouseRequestObject
+
+	var body MoveMouseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MoveMouse(ctx, request.(MoveMouseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MoveMouse")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MoveMouseResponseObject); ok {
+		if err := validResponse.VisitMoveMouseResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1362,25 +1618,26 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

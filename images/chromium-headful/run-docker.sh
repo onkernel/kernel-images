@@ -15,11 +15,13 @@ mkdir -p "$HOST_RECORDINGS_DIR"
 # Build Chromium flags file and mount
 CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-sandbox --no-zygote"
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
-FLAGS_DIR=$(mktemp -d)
-FLAGS_FILE="$FLAGS_DIR/flags"
+rm -rf .tmp/chromium
+mkdir -p .tmp/chromium
+FLAGS_FILE=".tmp/chromium/flags"
 echo "$CHROMIUM_FLAGS" > "$FLAGS_FILE"
-# Ensure temporary directory is removed on exit
-trap 'rm -rf "$FLAGS_DIR"' EXIT
+
+echo "flags file: $FLAGS_FILE"
+cat "$FLAGS_FILE"
 
 # Build docker run argument list
 RUN_ARGS=(
@@ -32,7 +34,7 @@ RUN_ARGS=(
   -e DISPLAY_NUM=1 \
   -e HEIGHT=768 \
   -e WIDTH=1024 \
-  -v "$FLAGS_FILE:/chromium/flags:ro"
+  --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then

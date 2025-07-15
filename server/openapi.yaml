@@ -81,6 +81,23 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/move_mouse:
+    post:
+      summary: Move the mouse cursor to the specified coordinates on the host computer
+      operationId: moveMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveMouseRequest"
+      responses:
+        "200":
+          description: Mouse cursor moved
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -114,8 +131,6 @@ components:
     ClickMouseRequest:
       type: object
       required:
-        - button
-        - click_type
         - x
         - y
       properties:
@@ -143,6 +158,24 @@ components:
           description: Number of times to repeat the click
           default: 1
       additionalProperties: false
+    MoveMouseRequest:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          description: X coordinate to move the cursor to
+        y:
+          type: integer
+          description: Y coordinate to move the cursor to
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the move
+          items:
+            type: string
+      additionalProperties: false
   responses:
     BadRequestError:
       description: Bad Request
@@ -167,4 +200,4 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error" 
+            $ref: "#/components/schemas/Error"

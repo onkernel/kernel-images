@@ -95,9 +95,11 @@ CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
 
 # Load additional Chromium flags from /chromium/flags if present
+CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-}"
 if [[ -f /chromium/flags ]]; then
-  CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-} $(cat /chromium/flags)"
+  CHROMIUM_FLAGS="$CHROMIUM_FLAGS $(cat /chromium/flags)"
 fi
+echo "CHROMIUM_FLAGS: $CHROMIUM_FLAGS"
 
 RUN_AS_ROOT=${RUN_AS_ROOT:-false}
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
@@ -149,6 +151,22 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   MAX_SIZE_MB="$API_MAX_SIZE_MB" \
   OUTPUT_DIR="$API_OUTPUT_DIR" \
   /usr/local/bin/kernel-images-api & pid3=$!
+  # close the "--no-sandbox unsupported flag" warning when running as root
+  # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
+  # and when running as root you must use the --no-sandbox flag, which generates a warning
+  if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
+    read WIDTH HEIGHT < <(xdotool getdisplaygeometry)
+    for i in {1..10}; do
+        set +e
+        exitcode=$(curl -X POST http://localhost:10001/computer/click_mouse -H "Content-Type: application/json" -d '{"x":'$((WIDTH - 30))',"y":215}' 2>/dev/null)
+        if [ $? -eq 0 ]; then
+        set -e
+        curl -X POST http://localhost:10001/computer/move_mouse -H "Content-Type: application/json" -d '{"x":'$((WIDTH - 30))',"y":115}' 2>/dev/null
+        break
+        fi
+        sleep 1
+    done
+  fi
 fi
 
 # Keep the container running

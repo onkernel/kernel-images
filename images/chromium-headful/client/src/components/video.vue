@@ -56,7 +56,9 @@
       </ul>
       <ul v-if="!fullscreen && !hideControls" class="video-menu bottom">
         <li v-if="hosting && (!clipboard_read_available || !clipboard_write_available)">
+          <!-- KERNEL: disable clipboard controls
           <i @click.stop.prevent="openClipboard" class="fas fa-clipboard"></i>
+          -->
         </li>
         <li>
           <!-- KERNEL: disable pip

@@ -3,57 +3,30 @@
 source common.sh
 name=chromium-headful-test
 
-  CHROMIUM_FLAGS="--accept-lang=en-US,en \
-    --allow-pre-commit-input \
-    --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 \
-    --crash-dumps-dir=/tmp/chromium-dumps \
-    --disable-back-forward-cache \
-    --disable-background-networking \
-    --disable-background-timer-throttling \
-    --disable-backgrounding-occluded-windows \
-    --disable-blink-features=AutomationControlled \
-    --disable-breakpad \
-    --disable-client-side-phishing-detection \
-    --disable-component-extensions-with-background-pages \
-    --disable-component-update \
-    --disable-crash-reporter \
-    --disable-crashpad \
-    --disable-default-apps \
-    --disable-dev-shm-usage \
-    --disable-extensions \
-    --disable-features=AcceptCHFrame,AutoExpandDetailsElement,AvoidUnnecessaryBeforeUnloadCheckSync,CertificateTransparencyComponentUpdater,DeferRendererTasksAfterInput,DestroyProfileOnBrowserClose,DialMediaRouteProvider,ExtensionManifestV2Disabled,GlobalMediaControls,HttpsUpgrades,ImprovedCookieControls,LazyFrameLoading,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate \
-    --disable-field-trial-config \
-    --disable-gcm-registration \
-    --disable-gpu \
-    --disable-gpu-compositing \
-    --disable-hang-monitor \
-    --disable-ipc-flooding-protection \
-    --disable-notifications \
-    --disable-popup-blocking \
-    --disable-prompt-on-repost \
-    --disable-renderer-backgrounding \
-    --disable-search-engine-choice-screen \
-    --disable-software-rasterizer \
-    --enable-automation \
-    --enable-use-zoom-for-dsf=false \
-    --export-tagged-pdf \
-    --force-color-profile=srgb \
-    --hide-scrollbars \
-    --metrics-recording-only \
-    --mute-audio \
-    --no-default-browser-check \
-    --no-first-run \
-    --no-sandbox \
-    --no-zygote \
-    --no-service-autorun \
-    --no-startup-window \
-    --password-store=basic \
-    --remote-allow-origins=* \
-    --start-maximized \
-    --unsafely-disable-devtools-self-xss-warnings \
-    --use-angle \
-    --use-gl=disabled \
-    --use-mock-keychain"
+# Name for the Kraft Cloud volume that will carry Chromium flags
+volume_name="${name}-flags"
+
+# ------------------------------------------------------------------------------
+# Prepare Kraft Cloud volume containing Chromium flags
+# ------------------------------------------------------------------------------
+# Build a temporary directory with a single file "flags" that holds all
+# Chromium runtime flags. This directory will be imported into a Kraft Cloud
+# volume which we then mount into the image at /chromium.
+CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-sandbox --no-zygote"
+CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
+rm -rf .tmp/chromium
+mkdir -p .tmp/chromium
+FLAGS_DIR=".tmp/chromium"
+echo "$CHROMIUM_FLAGS" > "$FLAGS_DIR/flags"
+
+# Re-create the volume from scratch every run
+kraft cloud volume rm "$volume_name" || true
+kraft cloud volume create -n "$volume_name" -s 16M
+# Import the flags directory into the freshly created volume
+kraft cloud volume import -s "$FLAGS_DIR" -v "$volume_name"
+
+# Ensure the temp directory is cleaned up on exit
+trap 'rm -rf "$FLAGS_DIR"' EXIT
 
 #   -e CHROMIUM_FLAGS="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --disable-breakpad --crash-dumps-dir=/tmp --no-sandbox --no-zygote"
 
@@ -66,7 +39,7 @@ deploy_args=(
   -e HEIGHT=768
   -e WIDTH=1024
   -e HOME=/
-  -e CHROMIUM_FLAGS="$CHROMIUM_FLAGS"
+  -v "$volume_name":/chromium
   -n "$name"
 )
 
