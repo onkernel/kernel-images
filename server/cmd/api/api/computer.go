@@ -81,7 +81,7 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 		var ok bool
 		btn, ok = buttonMap[*body.Button]
 		if !ok {
-			return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("unsupported button: %s", btn)}}, nil
+			return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("unsupported button: %s", *body.Button)}}, nil
 		}
 	}
 
