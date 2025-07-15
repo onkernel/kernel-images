@@ -31,13 +31,23 @@ fi
 #   dconf-CRITICAL **: unable to create directory '/home/kernel/.cache/dconf'
 # Pre-create them and hand ownership to the user so the messages disappear.
 
-for dir in /home/kernel/.pki/nssdb /home/kernel/.cache/dconf; do
+dirs=(
+  /home/kernel/user-data
+  /home/kernel/.config/chromium
+  /home/kernel/.pki/nssdb
+  /home/kernel/.cache/dconf
+  /tmp
+  /var/log
+)
+
+for dir in "${dirs[@]}"; do
   if [ ! -d "$dir" ]; then
     mkdir -p "$dir"
   fi
 done
+
 # Ensure correct ownership (ignore errors if already correct)
-chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache /home/kernel/user-data 2>/dev/null || true
+chown -R kernel:kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache /tmp /var/log 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # System-bus setup --------------------------------------------------------------
