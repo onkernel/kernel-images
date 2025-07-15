@@ -55,10 +55,10 @@ paths:
         "200":
           description: Recording file
           headers:
-            # Note: using a `format: date-time` here doesn't work as inteded. The generated code
-            # does a `fmt.Sprint` on the value when setting the header. Since time.String is a
-            # non-standard format it makes everyone's life harder so we're skipping the `format`
-            # directive
+            # Note: using a `format: date-time` here doesn't work as intended as the generated code
+            # calls a `fmt.Sprint` on the value when setting the header. time.String is a
+            # non-standard format that most parses will barf on, making everyone's life harder, so
+            # we're skipping the `format` in favor of an explicit description.
             X-Recording-Started-At:
               description: Timestamp of when the recording started. Guaranteed to be RFC3339.
               schema:
