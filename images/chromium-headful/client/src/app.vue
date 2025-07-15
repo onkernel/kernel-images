@@ -271,12 +271,24 @@
     private applyQueryResolution() {
       const params = new URL(location.href).searchParams
 
-      const width = parseInt(params.get('width') || params.get('w') || '')
-      const height = parseInt(params.get('height') || params.get('h') || '')
-      const rate = parseInt(params.get('rate') || params.get('r') || '30')
+      // Helper to parse integer query parameters and return `undefined` when the value is not a valid number.
+      const parseIntSafe = (keys: string[], fallback?: number): number | undefined => {
+        for (const key of keys) {
+          const value = params.get(key)
+          if (value !== null) {
+            const num = parseInt(value, 10)
+            if (!isNaN(num)) return num
+          }
+        }
+        return fallback
+      }
 
-      if (!isNaN(width) && !isNaN(height)) {
-        const resolution = { width, height, rate: isNaN(rate) ? 30 : rate }
+      const width = parseIntSafe(['width', 'w'])
+      const height = parseIntSafe(['height', 'h'])
+      const rate = parseIntSafe(['rate', 'r'], 30) as number
+
+      if (width !== undefined && height !== undefined) {
+        const resolution = { width, height, rate }
         this.$accessor.video.setResolution(resolution)
         if (this.$accessor.user && this.$accessor.user.admin) {
           this.$accessor.video.screenSet(resolution)
