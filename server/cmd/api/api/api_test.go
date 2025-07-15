@@ -259,6 +259,10 @@ func (m *mockRecorder) Recording(ctx context.Context) (io.ReadCloser, *recorder.
 	return reader, meta, nil
 }
 
+func (m *mockRecorder) Metadata() *recorder.RecordingMetadata {
+	return &recorder.RecordingMetadata{}
+}
+
 func newMockFactory() recorder.FFmpegRecorderFactory {
 	return func(id string, _ recorder.FFmpegRecordingParams) (recorder.Recorder, error) {
 		rec := &mockRecorder{id: id}

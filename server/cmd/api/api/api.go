@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -168,11 +169,21 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 func (s *ApiService) ListRecorders(ctx context.Context, _ oapi.ListRecordersRequestObject) (oapi.ListRecordersResponseObject, error) {
 	infos := []oapi.RecorderInfo{}
 
+	timeOrNil := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		return &t
+	}
+
 	recs := s.recordManager.ListActiveRecorders(ctx)
 	for _, r := range recs {
+		m := r.Metadata()
 		infos = append(infos, oapi.RecorderInfo{
 			Id:          r.ID(),
 			IsRecording: r.IsRecording(ctx),
+			StartedAt:   timeOrNil(m.StartTime),
+			FinishedAt:  timeOrNil(m.EndTime),
 		})
 	}
 	return oapi.ListRecorders200JSONResponse(infos), nil

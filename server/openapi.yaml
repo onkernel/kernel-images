@@ -149,6 +149,16 @@ components:
           type: string
         isRecording:
           type: boolean
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording started
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording finished
   responses:
     BadRequestError:
       description: Bad Request

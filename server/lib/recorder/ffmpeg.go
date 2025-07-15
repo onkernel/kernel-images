@@ -221,6 +221,17 @@ func (fr *FFmpegRecorder) IsRecording(ctx context.Context) bool {
 	return fr.cmd != nil && fr.exitCode < exitCodeProcessDoneMinValue
 }
 
+// Metadata is an incomplete snapshot of the recording metadata.
+func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+
+	return &RecordingMetadata{
+		StartTime: fr.startTime,
+		EndTime:   fr.endTime,
+	}
+}
+
 // Recording returns the recording file as an io.ReadCloser.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
 	file, err := os.Open(fr.outputPath)

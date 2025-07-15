@@ -30,8 +30,13 @@ type Error struct {
 
 // RecorderInfo defines model for RecorderInfo.
 type RecorderInfo struct {
-	Id          string `json:"id"`
-	IsRecording bool   `json:"isRecording"`
+	// FinishedAt Timestamp when recording finished
+	FinishedAt  *time.Time `json:"finished_at"`
+	Id          string     `json:"id"`
+	IsRecording bool       `json:"isRecording"`
+
+	// StartedAt Timestamp when recording started
+	StartedAt *time.Time `json:"started_at"`
 }
 
 // StartRecordingRequest defines model for StartRecordingRequest.
@@ -1349,26 +1354,26 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7xXbY8TNxD+K5bLh1bdJHtAK5FvdwWkqOVFHFKrIir51rOJkd+Ymb1jQfnvlb3JJpss",
-	"OShXvmVtz8zjZ54ZTz7JKrgYPHgmOf8kESgGT5A/LpR+Be8bIH6CGDAtVcEzeE4/VYzWVIpN8LN3FHxa",
-	"o2oFTqVf9xBqOZc/zHb+Z90uzTpv6/W6kBqoQhOTEzlPAcUmolwX8rfga2uq7xV9Gy6FXngG9Mp+p9Db",
-	"cOIS8BpQbA4W8nngp6Hx+jvheB5Y5Hgy7W2OJ299/IghArLpFOKASC0h/eQ2gpxLYjR+mc0R3jcGQcv5",
-	"m/7g22J7MFy9g47rV1AF1IALX4fjEEaPeC+koc4sfe72r0KwoPxReKPl0GQMxyUr5P7IVoeJaK1NIkjZ",
-	"l3vQamUJigO0NSoHqDhTMuS29yz6Q8J4UUcSP4ZrQDQaSFAnAA21aiz/JAvp1AfjGifnv5aFdMZ3H2f9",
-	"BYxnWEJWS8fVMOyL2EEXRoNnUxtAUQcUvAKBPSQCIhP8VJzbuFK+cYCmEgHFqo0r8FNZyKg4iVTO5T9v",
-	"1OTj+eTvcvJo8vbne7I4To9THx43mLW58JdQBa/pGNuz7mp7OPTGKDFDndkt7JwkxKkPT42FS/MRFv7Z",
-	"xecR1MaCIPMxp+TZxRdm5Kwsy0FSymMQ61GlhfitQgtYQfLT3Slj648eNBfnQBvFYFtBHKK4MbwKDYsl",
-	"qgrqxgpaNazDjZ+K1ytDwqlWIFBjObGhRBUQm8igxbXREDJZ013W+6IbF+Bip7tQ78kOUHDIgO5IdcdM",
-	"pyWz6Sps2Ka93wE9WLFwagkkzl8uZCGvAakDW07PpmW6SYjgVTRyLh9My+mDDskqUz/r5TpLpNmg8q2X",
-	"kHOYktTpXsu5fLw5sOs8yVGqfwYkOX/z2XLtSdrV7VT8uQIvgjPMoIvM5UadDQHl740UevPEoUmO3zeA",
-	"rSykVy7rM3XE3WvxNTS/LYZjwv2yPHiZskxmLj4cPkl1QKc4KcZ4lcEcuj56kPaaprEgC7kCpTNzn+Rf",
-	"k3538sSPKO+1cUCsXEzCu0nUDZseeA1DGnqEWjFM2DgYldl+5PxqfH1sSmb/JXqKf7+8f+p9MSSIjbWp",
-	"eiOGJQJRIaIFRSAYW6GWynhhFQMOKX0FjO3kvE4bRwEum+USKLWBG2VYJHz7bfoK6oDpioxtJ/TdzU51",
-	"6Xyjh52GxoaWXmuzw3k02z283W44RK0L+cuXRBuOgHkeapxLut2VdU6qC5TrDTzbdlt4+70yG+91DWu6",
-	"dj/aMf4wxNuJiOStpXZ6CDQMjm6bBgfz166JKkTVjtVkQphUjT3Ku6A0e1XW7rsd0kbbSouBRogbjm+y",
-	"GwCB+CLo9s4m5/EZsdPwQabOTpXotvy/SfqPbrcb/oW6izxlBoQSVCGA33W0qXjhbSuC3+9yEVAsHotK",
-	"eXGV1peGGBC0UMlF6iDT4yx3M83nkrw3Of1vOR6ZzkZTXJ5OcYjx21J8B8kKcfjw5Iv8GwAA//9yqpZD",
-	"9g8AAA==",
+	"H4sIAAAAAAAC/7xXW2/bRhP9K4v98vAVpSQ6SQtEb3aTAEKbC+wALRqkxZo7lCbYW2aWdpTA/73YpSSS",
+	"EiPHjZs3kdydy5kzZ0afZeVt8A5cZDn/LAk4eMeQH86UPocPDXB8RuQpvaq8i+Bi+qlCMFipiN7N3rN3",
+	"6R1XK7Aq/XpAUMu5/N+ssz9rv/KstXZzc1NIDVwRhmREzpNDsfEobwr5i3e1wep7ed+6S64XLgI5Zb6T",
+	"6607cQF0BSQ2Bwv50sfnvnH6O8Xx0keR/cn0bXM8Wdv5D+QDUMSWIRaY1RLSz7gOIOeSI6Fb5usEHxok",
+	"0HL+dnfwXbE96C/fQ4v1OVSeNNDC1f7QRY0OeQX6b5WTHsb7Bi1wVDaI6xU4QdkSuqXY3pKFrD3ZdFdq",
+	"FWES0YIspGuMUZcG5DxSA8V+9IVEPZJUIZHPtz563y+9N6BcOsBRUbxrtJtL/zLYPagx2enHOYb5RfK4",
+	"O7LtuUQqrTGFq8zrXhlqZRiK/cqQskAqwmGm510htocEOlEHFv/3V0CEGlhwS3YNtWpM/EEW0qqPaBsr",
+	"5z+XhbTo2oeTXQLoIiyBugIN3b4KbegCNbiINQKJ2pOIK+ijDczo3VScmrBSrrFAWAlPYrUOK3BTWcig",
+	"YmpIOZd/vVWTT6eTP8vJk8m7Hx/IEapY9fFpQ7kPF+4CKu80H8b2ok2tF4feXErIcHvtFnSOAmLVx+do",
+	"4AI/wcK9OPtyBDUaEIyfcklenH1lRU7KshwUpTwM4maUaT58K9E8VZDstDnl2HZH94TUWtCoIpi14OiD",
+	"uMa48k0US1IV1I0RvGqi9tduKt6skIVVa0HAjYkJDSUqT9SECFpcoQafwZp2Ve91+hgBFx3vfN2jHZCI",
+	"Pgd0T6w7RDq9wo2CRoxJLeSvQA6MWFi1BBanrxeykFdA3AZbTk+mZcrEB3AqoJzLR9Ny+qiNZJWhn+3o",
+	"OkugGa9y1kvINUxFanmv5Vw+3RzolCcZSv0fgVjO336xXXcgdX07Fb8njfQWYwRdZCw37GwYOD9vqLC7",
+	"njDEZPhDA7ROwqls5mdSxG4y3gXmd8VwJXpYlntTONNkZsPj4fjdCfklOpWD2Td9MHx7ookm6f4KlM7I",
+	"fZZ/THZfJ8+cPjZbfN2Ol6HogdMwhGF01BzSrO85T427++7G2x29J/8Py4fH5guy4IjGpO4N5JcEzIUI",
+	"BhSDiLQWaqnQCaMi0BDSc4i0npzW6cOBg4tmuQROMnCtMIoUX1+mL6H2lFKMtG6J3mV2TKVzRo9bDo0t",
+	"aDuuzfZ373zv8e33hgvjTSF/+hpvw3U3736NtYm3XVvnolrPud/ARbPeNl5fK/PlnmoYbOV+VDF+Q47b",
+	"7Y/lra12fOHFCJZv23wHu2YnoopIrcd6MkWYWE27KO8D0mxVGdM3O4SNt50WPI8AN1zfZLsAAsczr9f3",
+	"9i9hfEdsObxXqZNjLbpt/2+i/pPb7w3/Lt5HnTICQgmuCPoL+1S8cmYtvOurXAASi6eiUk5cpvdL5AgE",
+	"WqhkIinI9LDK7U7zpSL3Nqf/rMYj29loicvjJfYhfFuJ76FYPgwHT07knwAAAP//+kBG3eIQAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

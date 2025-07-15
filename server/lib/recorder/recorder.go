@@ -13,6 +13,7 @@ type Recorder interface {
 	Stop(ctx context.Context) error
 	ForceStop(ctx context.Context) error
 	IsRecording(ctx context.Context) bool
+	Metadata() *RecordingMetadata
 	Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) // Returns the recording file as a ReadCloser
 }
 
