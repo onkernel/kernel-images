@@ -158,8 +158,8 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 	return oapi.DownloadRecording200Videomp4Response{
 		Body: out,
 		Headers: oapi.DownloadRecording200ResponseHeaders{
-			XRecordingStart: meta.StartTime,
-			XRecordingEnd:   meta.EndTime,
+			XRecordingStartedAt:  meta.StartTime,
+			XRecordingFinishedAt: meta.EndTime,
 		},
 		ContentLength: meta.Size,
 	}, nil
