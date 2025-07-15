@@ -55,13 +55,13 @@ paths:
         "200":
           description: Recording file
           headers:
-            X-Recording-Start:
+            X-Recording-Started-At:
               description: Timestamp of when the recording started
               schema:
                 type: string
                 format: date-time
-            X-Recording-End:
-              description: Timestamp of when the recording ended
+            X-Recording-Finished-At:
+              description: Timestamp of when the recording finished
               schema:
                 type: string
                 format: date-time
