@@ -12,6 +12,15 @@ NAME="${NAME:-kernel-cu-test}"
 HOST_RECORDINGS_DIR="$SCRIPT_DIR/recordings"
 mkdir -p "$HOST_RECORDINGS_DIR"
 
+# Build Chromium flags file and mount
+CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-sandbox --no-zygote"
+CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
+FLAGS_DIR=$(mktemp -d)
+FLAGS_FILE="$FLAGS_DIR/flags"
+echo "$CHROMIUM_FLAGS" > "$FLAGS_FILE"
+# Ensure temporary directory is removed on exit
+trap 'rm -rf "$FLAGS_DIR"' EXIT
+
 # Build docker run argument list
 RUN_ARGS=(
   --name "$NAME"
@@ -23,7 +32,7 @@ RUN_ARGS=(
   -e DISPLAY_NUM=1 \
   -e HEIGHT=768 \
   -e WIDTH=1024 \
-  -e CHROMIUM_FLAGS="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
+  -v "$FLAGS_FILE:/chromium/flags:ro"
 )
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
@@ -45,7 +54,7 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   fi
 else
   echo "Running container with noVNC"
-  RUN_ARGS+=( -p 443:6080 )
+  RUN_ARGS+=( -p 8080:6080 )
 fi
 
 docker rm -f "$NAME" 2>/dev/null || true

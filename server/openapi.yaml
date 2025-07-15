@@ -64,6 +64,23 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/click_mouse:
+    post:
+      summary: Simulate a mouse click action on the host computer
+      operationId: clickMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClickMouseRequest"
+      responses:
+        "200":
+          description: Mouse action performed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -94,6 +111,38 @@ components:
       properties:
         message:
           type: string
+    ClickMouseRequest:
+      type: object
+      required:
+        - button
+        - click_type
+        - x
+        - y
+      properties:
+        button:
+          type: string
+          description: Mouse button to interact with
+          enum: [left, right, middle, back, forward]
+        click_type:
+          type: string
+          description: Type of click action
+          enum: [down, up, click]
+        x:
+          type: integer
+          description: X coordinate of the click position
+        y:
+          type: integer
+          description: Y coordinate of the click position
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the click
+          items:
+            type: string
+        num_clicks:
+          type: integer
+          description: Number of times to repeat the click
+          default: 1
+      additionalProperties: false
   responses:
     BadRequestError:
       description: Bad Request

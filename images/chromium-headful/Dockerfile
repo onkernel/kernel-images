@@ -13,7 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
     apt-get install -y \
-        git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
+    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
     && rm -rf /var/lib/apt/lists/*;
 COPY xorg-deps/ /xorg/
 # build xf86-video-dummy v0.3.8 with RandR support
@@ -97,12 +97,12 @@ ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        wget ca-certificates python2 supervisor xclip \
-        pulseaudio dbus-x11 xserver-xorg-video-dummy \
-        libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
-        gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-        gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-        gstreamer1.0-pulseaudio gstreamer1.0-omx; \
+    wget ca-certificates python2 supervisor xclip xdotool \
+    pulseaudio dbus-x11 xserver-xorg-video-dummy \
+    libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+    gstreamer1.0-pulseaudio gstreamer1.0-omx; \
     #
     # install libxcvt0 (not available in debian:bullseye)
     ARCH=$(dpkg --print-architecture); \
@@ -117,9 +117,9 @@ RUN set -eux; \
     #
     # make directories for neko
     mkdir -p /etc/neko /var/www /var/log/neko \
-        /tmp/runtime-$USERNAME \
-        /home/$USERNAME/.config/pulse  \
-        /home/$USERNAME/.local/share/xorg; \
+    /tmp/runtime-$USERNAME \
+    /home/$USERNAME/.config/pulse  \
+    /home/$USERNAME/.local/share/xorg; \
     chmod 1777 /var/log/neko; \
     chown $USERNAME /var/log/neko/ /tmp/runtime-$USERNAME; \
     chown -R $USERNAME:$USERNAME /home/$USERNAME; \

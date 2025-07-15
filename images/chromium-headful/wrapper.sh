@@ -93,9 +93,29 @@ pid3=
 INTERNAL_PORT=9223
 CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
-runuser -u kernel -- env DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" chromium \
-  --remote-debugging-port=$INTERNAL_PORT \
-  ${CHROMIUM_FLAGS:-} >&2 & pid=$!
+
+# Load additional Chromium flags from /chromium/flags if present
+if [[ -f /chromium/flags ]]; then
+  CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-} $(cat /chromium/flags)"
+fi
+
+RUN_AS_ROOT=${RUN_AS_ROOT:-false}
+if [[ "$RUN_AS_ROOT" == "true" ]]; then
+  DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" chromium \
+    --remote-debugging-port=$INTERNAL_PORT \
+    ${CHROMIUM_FLAGS:-} >&2 & pid=$!
+else
+  runuser -u kernel -- env \
+    DISPLAY=:1 \
+    DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    XDG_CONFIG_HOME=/home/kernel/.config \
+    XDG_CACHE_HOME=/home/kernel/.cache \
+    HOME=/home/kernel \
+    chromium \
+    --remote-debugging-port=$INTERNAL_PORT \
+    ${CHROMIUM_FLAGS:-} >&2 & pid=$!
+fi
+
 echo "Setting up ncat proxy on port $CHROME_PORT"
 ncat \
   --sh-exec "ncat 0.0.0.0 $INTERNAL_PORT" \
