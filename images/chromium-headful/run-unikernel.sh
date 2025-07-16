@@ -2,6 +2,7 @@
 
 source common.sh
 name=chromium-headful-test
+kraft cloud inst rm $name || true
 
 # Name for the Kraft Cloud volume that will carry Chromium flags
 volume_name="${name}-flags"
@@ -52,8 +53,6 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   deploy_args+=( -p 444:10001/tls )
   deploy_args+=( -e WITH_KERNEL_IMAGES_API=true )
 fi
-
-kraft cloud inst rm $name || true
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Deploying with WebRTC enabled"

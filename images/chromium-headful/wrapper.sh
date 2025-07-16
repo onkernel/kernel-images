@@ -163,18 +163,37 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
         OFFSET_X=0
       fi
 
-      # Best-effort loop: we attempt up to 10 times to click the warning's close button.
-      echo "Attempting to click the warning's close button at x=${OFFSET_X}, y=115"
-      for _ in {1..10}; do
-        if curl -s -o /dev/null -X POST \
-          http://localhost:10001/computer/click_mouse \
-          -H "Content-Type: application/json" \
-          -d "{\"x\":${OFFSET_X},\"y\":115}"; then
-            echo "Successfully clicked the warning's close button"
+      # Wait for Chromium window to open before dismissing the --no-sandbox warning.
+      TARGET='New Tab - Chromium'
+      echo "Waiting for Chromium window \"${TARGET}\" to appear and become active..."
+      while :; do
+        WIN_ID=$(xwininfo -root -tree 2>/dev/null | awk -v t="$TARGET" '$0 ~ t {print $1; exit}')
+        if [[ -n $WIN_ID ]]; then
+          WIN_ID=${WIN_ID%:}
+          if xdotool windowactivate --sync "$WIN_ID"; then
+            echo "Focused window $WIN_ID ($TARGET) on $DISPLAY"
             break
+          fi
         fi
-        sleep 1
+        sleep 0.5
       done
+
+      # Wait for kernel-images API port 10001 to be ready.
+      echo "Waiting for kernel-images API port 10001..."
+      while ! nc -z localhost 10001 2>/dev/null; do
+        sleep 0.5
+      done
+      echo "Port 10001 is open"
+
+      # Attempt to click the warning's close button once.
+      if curl -s -o /dev/null -X POST \
+        http://localhost:10001/computer/click_mouse \
+        -H "Content-Type: application/json" \
+        -d "{\"x\":${OFFSET_X},\"y\":115}"; then
+          echo "Successfully clicked the warning's close button"
+      else
+        echo "Failed to click the warning's close button" >&2
+      fi
     else
       echo "xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
     fi
