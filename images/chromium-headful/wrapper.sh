@@ -12,6 +12,27 @@ if [ -z "${WITHDOCKER:-}" ]; then
   mount -t tmpfs tmpfs /dev/shm
 fi
 
+# We disable scale-to-zero for the lifetime of this script and restore
+# the original setting on exit.
+SCALE_TO_ZERO_FILE="/uk/libukp/scale_to_zero_disable"
+scale_to_zero_write() {
+  local char="$1"
+  # Skip when not running inside Unikraft Cloud (control file absent)
+  if [[ -e "$SCALE_TO_ZERO_FILE" ]]; then
+    # Write the character, but do not fail the whole script if this errors out
+    echo -n "$char" > "$SCALE_TO_ZERO_FILE" 2>/dev/null || \
+      echo "Failed to write to scale-to-zero control file" >&2
+  fi
+}
+disable_scale_to_zero() { scale_to_zero_write "+"; }
+enable_scale_to_zero()  { scale_to_zero_write "-"; }
+
+# Disable scale-to-zero for the duration of the script when not running under Docker
+if [[ -z "${WITHDOCKER:-}" ]]; then
+  echo "Disabling scale-to-zero"
+  disable_scale_to_zero
+fi
+
 export DISPLAY=:1
 
 /usr/bin/Xorg :1 -config /etc/neko/xorg.conf -noreset -nolisten tcp &
@@ -76,6 +97,8 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 # Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
 cleanup () {
   echo "Cleaning up..."
+  # Re-enable scale-to-zero if the script terminates early
+  enable_scale_to_zero
   kill -TERM $pid
   kill -TERM $pid2
   # Kill the API server if it was started
@@ -179,12 +202,13 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       done
 
       # Wait for kernel-images API port 10001 to be ready.
-      echo "Waiting for kernel-images API port 10001..."
-      while ! nc -z localhost 10001 2>/dev/null; do
+      echo "Waiting for kernel-images API port 127.0.0.1:10001..."
+      while ! nc -z 127.0.0.1 10001 2>/dev/null; do
         sleep 0.5
       done
       echo "Port 10001 is open"
-
+      # wait... not sure but this just increases the likelihood of success
+      sleep 5
       # Attempt to click the warning's close button once.
       if curl -s -o /dev/null -X POST \
         http://localhost:10001/computer/click_mouse \
@@ -198,6 +222,10 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       echo "xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
     fi
   fi
+fi
+
+if [[ -z "${WITHDOCKER:-}" ]]; then
+  enable_scale_to_zero
 fi
 
 # Keep the container running
