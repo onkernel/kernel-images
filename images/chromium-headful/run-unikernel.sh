@@ -12,7 +12,10 @@ volume_name="${name}-flags"
 # Build a temporary directory with a single file "flags" that holds all
 # Chromium runtime flags. This directory will be imported into a Kraft Cloud
 # volume which we then mount into the image at /chromium.
-CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-sandbox --no-zygote"
+CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
+if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
+  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
+fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
