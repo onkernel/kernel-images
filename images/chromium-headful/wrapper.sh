@@ -186,30 +186,33 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
         OFFSET_X=0
       fi
 
-      # Wait for Chromium window to open before dismissing the --no-sandbox warning.
-      TARGET='New Tab - Chromium'
-      echo "Waiting for Chromium window \"${TARGET}\" to appear and become active..."
-      while :; do
-        WIN_ID=$(xwininfo -root -tree 2>/dev/null | awk -v t="$TARGET" '$0 ~ t {print $1; exit}')
-        if [[ -n $WIN_ID ]]; then
-          WIN_ID=${WIN_ID%:}
-          if xdotool windowactivate --sync "$WIN_ID"; then
-            echo "Focused window $WIN_ID ($TARGET) on $DISPLAY"
-            break
-          fi
-        fi
-        sleep 0.5
-      done
-
       # Wait for kernel-images API port 10001 to be ready.
       echo "Waiting for kernel-images API port 127.0.0.1:10001..."
       while ! nc -z 127.0.0.1 10001 2>/dev/null; do
         sleep 0.5
       done
       echo "Port 10001 is open"
+
+      # Wait for Chromium window to open before dismissing the --no-sandbox warning.
+      target='New Tab - Chromium'
+      echo "Waiting for Chromium window \"${target}\" to appear and become active..."
+      while :; do
+        win_id=$(xwininfo -root -tree 2>/dev/null | awk -v t="$target" '$0 ~ t {print $1; exit}')
+        if [[ -n $win_id ]]; then
+          win_id=${win_id%:}
+          if xdotool windowactivate --sync "$win_id"; then
+            echo "Focused window $win_id ($target) on $DISPLAY"
+            break
+          fi
+        fi
+        sleep 0.5
+      done
+
       # wait... not sure but this just increases the likelihood of success
+      # without the sleep you often open the live view and see the mouse hovering over the "X" to dismiss the warning, suggesting that it clicked before the warning or chromium appeared
       sleep 5
-      # Attempt to click the warning's close button once.
+
+      # Attempt to click the warning's close button
       if curl -s -o /dev/null -X POST \
         http://localhost:10001/computer/click_mouse \
         -H "Content-Type: application/json" \

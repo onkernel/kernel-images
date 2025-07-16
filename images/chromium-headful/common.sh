@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -e -o pipefail
 
-# fail if IMAGE, UKC_TOKEN, UKC_METRO, UKC_INDEX are not set
+# Default UKC_INDEX to index.unikraft.io if not set
+UKC_INDEX="${UKC_INDEX:-index.unikraft.io}"
+
+# fail if IMAGE, UKC_TOKEN, UKC_METRO are not set
 errormsg=""
-for var in IMAGE UKC_TOKEN UKC_METRO UKC_INDEX; do
+for var in IMAGE UKC_TOKEN UKC_METRO; do
     if [ -z "${!var}" ]; then
         errormsg+="$var "
     fi
