@@ -15,11 +15,11 @@ volume_name="${name}-flags"
 # RUN_AS_ROOT defaults to true in unikernel (for now, until we figure it out)
 RUN_AS_ROOT="${RUN_AS_ROOT:-true}"
 
-CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
+chromium_flags_default="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
-  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
+  chromium_flags_default="$chromium_flags_default --no-sandbox --no-zygote"
 fi
-CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
+CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$chromium_flags_default}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
 FLAGS_DIR=".tmp/chromium"
@@ -33,8 +33,6 @@ kraft cloud volume import -s "$FLAGS_DIR" -v "$volume_name"
 
 # Ensure the temp directory is cleaned up on exit
 trap 'rm -rf "$FLAGS_DIR"' EXIT
-
-#   -e CHROMIUM_FLAGS="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --disable-breakpad --crash-dumps-dir=/tmp --no-sandbox --no-zygote"
 
 
 deploy_args=(
