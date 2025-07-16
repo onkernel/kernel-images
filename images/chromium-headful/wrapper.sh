@@ -164,7 +164,7 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       fi
 
       # Best-effort loop: we attempt up to 10 times to click the warning's close button.
-      echo "Attempting to click the warning's close button at x=${OFFSET_X}, y=215"
+      echo "Attempting to click the warning's close button at x=${OFFSET_X}, y=115"
       for _ in {1..10}; do
         if curl -s -o /dev/null -X POST \
           http://localhost:10001/computer/click_mouse \
