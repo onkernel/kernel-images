@@ -155,17 +155,29 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
   # and when running as root you must use the --no-sandbox flag, which generates a warning
   if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
-    read WIDTH HEIGHT < <(xdotool getdisplaygeometry)
-    for i in {1..10}; do
-        set +e
-        exitcode=$(curl -X POST http://localhost:10001/computer/click_mouse -H "Content-Type: application/json" -d '{"x":'$((WIDTH - 30))',"y":215}' 2>/dev/null)
-        if [ $? -eq 0 ]; then
-        set -e
-        curl -X POST http://localhost:10001/computer/move_mouse -H "Content-Type: application/json" -d '{"x":'$((WIDTH - 30))',"y":115}' 2>/dev/null
-        break
+    echo "Running as root, attempting to dismiss the --no-sandbox unsupported flag warning"
+    if read -r WIDTH HEIGHT <<< "$(xdotool getdisplaygeometry 2>/dev/null)"; then
+      # Work out an x-coordinate slightly inside the right-hand edge of the
+      OFFSET_X=$(( WIDTH - 30 ))
+      if (( OFFSET_X < 0 )); then
+        OFFSET_X=0
+      fi
+
+      # Best-effort loop: we attempt up to 10 times to click the warning's close button.
+      echo "Attempting to click the warning's close button at x=${OFFSET_X}, y=215"
+      for _ in {1..10}; do
+        if curl -s -o /dev/null -X POST \
+          http://localhost:10001/computer/click_mouse \
+          -H "Content-Type: application/json" \
+          -d "{\"x\":${OFFSET_X},\"y\":115}"; then
+            echo "Successfully clicked the warning's close button"
+            break
         fi
         sleep 1
-    done
+      done
+    else
+      echo "xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
+    fi
   fi
 fi
 

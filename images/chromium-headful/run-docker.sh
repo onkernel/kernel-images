@@ -12,9 +12,12 @@ NAME="${NAME:-kernel-cu-test}"
 HOST_RECORDINGS_DIR="$SCRIPT_DIR/recordings"
 mkdir -p "$HOST_RECORDINGS_DIR"
 
+# RUN_AS_ROOT defaults to false in docker
+RUN_AS_ROOT="${RUN_AS_ROOT:-false}"
+
 # Build Chromium flags file and mount
 CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
-if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
+if [[ "$RUN_AS_ROOT" == "true" ]]; then
   CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
 fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
@@ -37,6 +40,7 @@ RUN_ARGS=(
   -e DISPLAY_NUM=1 \
   -e HEIGHT=768 \
   -e WIDTH=1024 \
+  -e RUN_AS_ROOT="$RUN_AS_ROOT" \
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
 

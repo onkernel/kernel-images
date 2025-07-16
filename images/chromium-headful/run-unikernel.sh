@@ -12,8 +12,11 @@ volume_name="${name}-flags"
 # Build a temporary directory with a single file "flags" that holds all
 # Chromium runtime flags. This directory will be imported into a Kraft Cloud
 # volume which we then mount into the image at /chromium.
+# RUN_AS_ROOT defaults to true in unikernel (for now, until we figure it out)
+RUN_AS_ROOT="${RUN_AS_ROOT:-true}"
+
 CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=*"
-if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
+if [[ "$RUN_AS_ROOT" == "true" ]]; then
   CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
 fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
@@ -42,6 +45,7 @@ deploy_args=(
   -e HEIGHT=768
   -e WIDTH=1024
   -e HOME=/
+  -e RUN_AS_ROOT="$RUN_AS_ROOT" \
   -v "$volume_name":/chromium
   -n "$name"
 )
