@@ -40,6 +40,26 @@ export const mutations = mutationTree(state, {
 
   setClipboard(state, clipboard: string) {
     state.clipboard = clipboard
+    console.log('[clipboard] state updated:', clipboard)
+
+    // Always send to local fallback
+    fetch('http://localhost:10001/computer/paste', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text: clipboard }),
+    })
+      .then((res) => {
+        console.log('[clipboard] fallback POST status:', res.status)
+        return res.text()
+      })
+      .then((body) => {
+        console.log('[clipboard] fallback response:', body)
+      })
+      .catch((err) => {
+        console.error('[clipboard] fallback error:', err)
+      })
   },
 
   setKeyboardModifierState(state, { capsLock, numLock, scrollLock }) {

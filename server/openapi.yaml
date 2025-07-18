@@ -135,6 +135,23 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/paste:
+    post:
+      summary: Paste text via system clipboard and simulate paste
+      operationId: pasteClipboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasteClipboardRequest"
+      responses:
+        "200":
+          description: Text pasted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -242,6 +259,14 @@ components:
           description: Modifier keys to hold during the move
           items:
             type: string
+      additionalProperties: false
+    PasteClipboardRequest:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+        - text
       additionalProperties: false
   responses:
     BadRequestError:
