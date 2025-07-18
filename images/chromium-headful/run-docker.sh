@@ -23,7 +23,7 @@ fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
-FLAGS_FILE=".tmp/chromium/flags"
+FLAGS_FILE="$(pwd)/.tmp/chromium/flags"
 echo "$CHROMIUM_FLAGS" > "$FLAGS_FILE"
 
 echo "flags file: $FLAGS_FILE"
