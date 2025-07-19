@@ -28,6 +28,9 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
   protected _state: RTCIceConnectionState = 'disconnected'
   protected _id = ''
   protected _candidates: RTCIceCandidate[] = []
+  // Timer used to debounce ICE restarts when the connection goes into the
+  // "disconnected" state.
+  private _iceRestartTimer?: number
 
   get id() {
     return this._id
@@ -244,6 +247,17 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
           break
         case 'disconnected':
           this[EVENT.RECONNECTING]()
+          // Give the connection a short grace period to recover on its own
+          // before attempting an ICE restart. This avoids unnecessary
+          // renegotiations for transient network glitches.
+          if (!this._iceRestartTimer) {
+            this._iceRestartTimer = window.setTimeout(() => {
+              this._iceRestartTimer = undefined
+              if (this._peer && this._state === 'disconnected') {
+                this.restartIce()
+              }
+            }, 3000)
+          }
           break
         // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling#ice_connection_state
         // We don't watch the disconnected signaling state here as it can indicate temporary issues and may
@@ -434,6 +448,12 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
   }
 
   private onConnected() {
+    // Clear any pending ICE-restart timer now that we are connected again.
+    if (this._iceRestartTimer) {
+      clearTimeout(this._iceRestartTimer)
+      this._iceRestartTimer = undefined
+    }
+
     if (this._timeout) {
       clearTimeout(this._timeout)
       this._timeout = undefined
@@ -473,4 +493,29 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
   protected abstract [EVENT.DISCONNECTED](reason?: Error): void
   protected abstract [EVENT.TRACK](event: RTCTrackEvent): void
   protected abstract [EVENT.DATA](data: any): void
+
+  // Attempt to restart ICE and force a new negotiation. This is called after
+  // a short delay when the connection stays in the "disconnected" state.
+  private async restartIce() {
+    if (!this._peer || !this.socketOpen) {
+      return
+    }
+
+    this.emit('warn', `attempting ICE restart`)
+
+    try {
+      const offer = await this._peer.createOffer({ iceRestart: true })
+      await this._peer.setLocalDescription(offer)
+
+      this._ws!.send(
+        JSON.stringify({
+          event: EVENT.SIGNAL.OFFER,
+          sdp: offer.sdp,
+        }),
+      )
+    } catch (err: any) {
+      this.emit('warn', `ICE restart failed – disconnecting`, err)
+      this.onDisconnected(err)
+    }
+  }
 }
