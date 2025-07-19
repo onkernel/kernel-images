@@ -3,12 +3,12 @@ import { OPCODE } from './data'
 import { EVENT, WebSocketEvents } from './events'
 
 import {
-  WebSocketMessages,
-  WebSocketPayloads,
-  SignalProvidePayload,
+  SignalAnswerMessage,
   SignalCandidatePayload,
   SignalOfferPayload,
-  SignalAnswerMessage,
+  SignalProvidePayload,
+  WebSocketMessages,
+  WebSocketPayloads,
 } from './messages'
 
 export interface BaseEvents {
@@ -90,40 +90,40 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
 
     if (this._ws) {
       // reset all events
-      this._ws.onmessage = () => {}
-      this._ws.onerror = () => {}
-      this._ws.onclose = () => {}
+      this._ws.onmessage = () => { }
+      this._ws.onerror = () => { }
+      this._ws.onclose = () => { }
 
       try {
         this._ws.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._ws = undefined
     }
 
     if (this._channel) {
       // reset all events
-      this._channel.onmessage = () => {}
-      this._channel.onerror = () => {}
-      this._channel.onclose = () => {}
+      this._channel.onmessage = () => { }
+      this._channel.onerror = () => { }
+      this._channel.onclose = () => { }
 
       try {
         this._channel.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._channel = undefined
     }
 
     if (this._peer) {
       // reset all events
-      this._peer.onconnectionstatechange = () => {}
-      this._peer.onsignalingstatechange = () => {}
-      this._peer.oniceconnectionstatechange = () => {}
-      this._peer.ontrack = () => {}
+      this._peer.onconnectionstatechange = () => { }
+      this._peer.onsignalingstatechange = () => { }
+      this._peer.oniceconnectionstatechange = () => { }
+      this._peer.ontrack = () => { }
 
       try {
         this._peer.close()
-      } catch (err) {}
+      } catch (err) { }
 
       this._peer = undefined
     }
@@ -294,7 +294,8 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
     this._channel = this._peer.createDataChannel('data')
     this._channel.onerror = this.onError.bind(this)
     this._channel.onmessage = this.onData.bind(this)
-    this._channel.onclose = this.onDisconnected.bind(this, new Error('peer data channel closed'))
+    // Be more lenient: try to recreate the data channel before fully disconnecting.
+    this._channel.onclose = this.onDataChannelClose.bind(this)
   }
 
   public async setRemoteOffer(sdp: string) {
@@ -396,6 +397,36 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
       return
     }
     this[EVENT.TRACK](event)
+  }
+
+  // Attempt to recover when the data channel unexpectedly closes. If the peer
+  // connection itself is still in a healthy state we recreate the channel;
+  // otherwise fall back to the normal disconnect flow so that higher-level
+  // logic can handle a full reconnection.
+  private onDataChannelClose() {
+    this.emit('warn', `peer data channel closed – trying to reopen`)
+
+    // If the underlying peer connection still looks healthy, recreate the
+    // channel instead of tearing everything down.
+    if (this._peer && ['connected', 'completed', 'checking'].includes(this._peer.connectionState)) {
+      try {
+        // Create a fresh data channel and wire up handlers.
+        this._channel = this._peer.createDataChannel('data')
+        this._channel.onerror = this.onError.bind(this)
+        this._channel.onmessage = this.onData.bind(this)
+        this._channel.onclose = this.onDataChannelClose.bind(this)
+
+        this.emit('debug', `re-created data channel successfully`)
+        return
+      } catch (err: any) {
+        this.emit('warn', `failed to re-create data channel:`, err)
+        // fall through to a full disconnect below
+      }
+    }
+
+    // If we reach here we could not recover – continue with normal disconnect
+    // handling so that the caller can attempt a full reconnection.
+    this.onDisconnected(new Error('peer data channel closed'))
   }
 
   private onError(event: Event) {

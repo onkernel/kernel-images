@@ -330,7 +330,9 @@
 
     get pip_available() {
       //@ts-ignore
-      return typeof document.createElement('video').requestPictureInPicture === 'function'
+      // KERNEL: disable pip
+      return false;
+      // return typeof document.createElement('video').requestPictureInPicture === 'function'
     }
 
     get clipboard_read_available() {
