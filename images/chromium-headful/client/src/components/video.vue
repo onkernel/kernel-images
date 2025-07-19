@@ -3,6 +3,8 @@
     <div ref="player" class="player">
       <div ref="container" class="player-container">
         <video ref="video" playsinline />
+        <!-- Canvas showing the last captured frame while reconnecting -->
+        <canvas ref="snapshot" class="snapshot" />
         <div class="emotes">
           <template v-for="(emote, index) in emotes">
             <neko-emote :id="index" :key="index" />
@@ -176,6 +178,18 @@
           overflow: hidden;
         }
 
+        /* Snapshot canvas that shows the last frame during reconnect */
+        .snapshot {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 100%;
+          height: 100%;
+          display: none;
+          object-fit: contain;
+          background: #000;
+        }
+
         .player-overlay {
           background: rgba($color: #000, $alpha: 0.2);
           display: flex;
@@ -245,6 +259,7 @@
     @Ref('aspect') readonly _aspect!: HTMLElement
     @Ref('player') readonly _player!: HTMLElement
     @Ref('video') readonly _video!: HTMLVideoElement
+    @Ref('snapshot') readonly _snapshot!: HTMLCanvasElement
     @Ref('resolution') readonly _resolution!: Resolution
     @Ref('clipboard') readonly _clipboard!: Clipboard
 
@@ -429,6 +444,17 @@
       }
     }
 
+    /* Preserve last video frame while reconnecting */
+    @Watch('connected')
+    onConnectedStateChanged(connected: boolean, old?: boolean) {
+      if (old === undefined) return
+      if (!connected && old) {
+        this.captureSnapshot()
+      } else if (connected) {
+        this.hideSnapshot()
+      }
+    }
+
     @Watch('playing')
     async onPlayingChanged(playing: boolean) {
       if (this._video && this._video.paused && playing) {
@@ -512,6 +538,8 @@
 
       this._video.addEventListener('playing', () => {
         this.$accessor.video.play()
+        // Hide snapshot when video resumes
+        this.hideSnapshot()
       })
 
       this._video.addEventListener('pause', () => {
@@ -846,6 +874,30 @@
     openMobileKeyboard() {
       // focus opens the keyboard on mobile
       this._overlay.focus()
+    }
+
+    private captureSnapshot() {
+      if (!this._video || this._video.readyState < 2) {
+        return
+      }
+      const vw = this._video.videoWidth
+      const vh = this._video.videoHeight
+      if (vw === 0 || vh === 0) return
+
+      const canvas = this._snapshot
+      canvas.width = vw
+      canvas.height = vh
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(this._video, 0, 0, vw, vh)
+        canvas.style.display = 'block'
+      }
+    }
+
+    private hideSnapshot() {
+      if (this._snapshot) {
+        this._snapshot.style.display = 'none'
+      }
     }
   }
 </script>

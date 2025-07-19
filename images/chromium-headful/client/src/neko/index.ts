@@ -1,31 +1,31 @@
-import Vue from 'vue'
 import EventEmitter from 'eventemitter3'
-import { BaseClient, BaseEvents } from './base'
-import { Member } from './types'
-import { EVENT } from './events'
+import Vue from 'vue'
 import { accessor } from '~/store'
+import { BaseClient, BaseEvents } from './base'
+import { EVENT } from './events'
+import { Member } from './types'
 
 import {
-  SystemMessagePayload,
-  MemberListPayload,
-  MemberDisconnectPayload,
-  MemberPayload,
+  AdminLockMessage,
+  AdminLockResource,
+  AdminTargetPayload,
+  BroadcastStatusPayload,
+  ChatPayload,
+  ControlClipboardPayload,
   ControlPayload,
   ControlTargetPayload,
-  ChatPayload,
   EmotePayload,
-  ControlClipboardPayload,
+  FileTransferListPayload,
+  MemberDisconnectPayload,
+  MemberListPayload,
+  MemberPayload,
   ScreenConfigurationsPayload,
   ScreenResolutionPayload,
-  BroadcastStatusPayload,
-  AdminTargetPayload,
-  AdminLockMessage,
   SystemInitPayload,
-  AdminLockResource,
-  FileTransferListPayload,
+  SystemMessagePayload,
 } from './messages'
 
-interface NekoEvents extends BaseEvents {}
+interface NekoEvents extends BaseEvents { }
 
 export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   private $vue!: Vue
@@ -75,13 +75,8 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   // Internal Events
   /////////////////////////////
   protected [EVENT.RECONNECTING]() {
-    this.$vue.$notify({
-      group: 'neko',
-      type: 'warning',
-      title: this.$vue.$t('connection.reconnecting') as string,
-      duration: 5000,
-      speed: 1000,
-    })
+    // Suppress pop-up to avoid flashing notifications during brief network
+    // hiccups. The UI will still show the connecting spinner via accessor state.
   }
 
   protected [EVENT.CONNECTING]() {
@@ -130,7 +125,7 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
     this.$accessor.video.setStream(0)
   }
 
-  protected [EVENT.DATA]() {}
+  protected [EVENT.DATA]() { }
 
   /////////////////////////////
   // System Events
