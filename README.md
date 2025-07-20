@@ -20,7 +20,7 @@ Sign up [here](https://www.onkernel.com/)!
 - Sandboxed Chrome browser that Chrome DevTools-based browser frameworks (Playwright, Puppeteer) can connect to
 - Remote GUI access (live view streaming) for visual monitoring and remote control
 - Configurable live view settings (read-only view, browser window dimensions)
-- [Coming soon] Video replays of the browser's session [[1]](#notes)
+- Controllable video replays of the browser's session
 
 ## What You Can Do With It
 
@@ -138,7 +138,6 @@ You can use the embedded live view to monitor and control the browser. The live 
 ### Notes
 - Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
 - The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
-- Replays are currently a work in progress. There is some source code for it throughout the repo.
 
 ## Replay Capture
 
