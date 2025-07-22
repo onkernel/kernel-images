@@ -41,3 +41,14 @@ install_erofs_utils() {
         exit 1
     fi
 } 
+
+# on debian 12 you have to grab mkfs.erofs from sid:
+# echo "deb http://deb.debian.org/debian unstable main" \
+#     | sudo tee /etc/apt/sources.list.d/unstable.list
+# cat <<'EOF' | sudo tee /etc/apt/preferences.d/90-unstable
+# Package: *
+# Pin: release a=unstable
+# Pin-Priority: 90
+# EOF
+# sudo apt update
+# sudo apt -t unstable install erofs-utils

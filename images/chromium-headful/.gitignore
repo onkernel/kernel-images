@@ -1,3 +1,5 @@
 bin/
 recording/
 .tmp/
+.rootfs/
+initrd
