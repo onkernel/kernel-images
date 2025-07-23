@@ -39,7 +39,6 @@ trap 'rm -rf "$FLAGS_DIR"' EXIT
 deploy_args=(
   -M 8192
   -p 9222:9222/tls
-  -p 8080:8080/tls
   -e DISPLAY_NUM=1
   -e HEIGHT=768
   -e WIDTH=1024
