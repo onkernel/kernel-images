@@ -23,12 +23,16 @@ fi
 # get instance stats in a loop until ctrl-c
 trap 'echo "Stopping stats collection..."; exit 0' INT
 
-echo -e "RSS\tCPU Time\tTX Bytes"
+echo -e "RSS\tCPU Time\tTX Bytes\tNConns\tNReqs\tNQueued\tNTotal"
 while true; do
     metrics=$(curl -s -H "Authorization: Bearer $UKC_TOKEN" "$UKC_METRO/instances/$instance_id/metrics")
     rss=$(echo "$metrics" | grep 'instance_rss_bytes{instance_uuid=' | cut -d' ' -f2)
     cpu_time=$(echo "$metrics" | grep 'instance_cpu_time_s{instance_uuid=' | cut -d' ' -f2)
     tx_bytes=$(echo "$metrics" | grep 'instance_tx_bytes{instance_uuid=' | cut -d' ' -f2)
-    echo -e "$rss\t$cpu_time\t$tx_bytes"
+    nconns=$(echo "$metrics" | grep 'instance_nconns{instance_uuid=' | cut -d' ' -f2)
+    nreqs=$(echo "$metrics" | grep 'instance_nreqs{instance_uuid=' | cut -d' ' -f2)
+    nqueued=$(echo "$metrics" | grep 'instance_nqueued{instance_uuid=' | cut -d' ' -f2)
+    ntotal=$(echo "$metrics" | grep 'instance_ntotal{instance_uuid=' | cut -d' ' -f2)
+    echo -e "$rss\t$cpu_time\t$tx_bytes\t$nconns\t$nreqs\t$nqueued\t$ntotal"
     sleep 1
 done
