@@ -151,6 +151,13 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
   echo "✨ Starting neko (webrtc server)."
   /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2 &
+
+  # Wait for neko to be ready.
+  echo "Waiting for neko port 0.0.0.0:8080..."
+  while ! nc -z 127.0.0.1 8080 2>/dev/null; do
+    sleep 0.5
+  done
+  echo "Port 8080 is open"
 else
   # use novnc
   ./novnc_startup.sh
@@ -213,6 +220,7 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       sleep 5
 
       # Attempt to click the warning's close button
+      echo "Clicking the warning's close button at x=$OFFSET_X y=115"
       if curl -s -o /dev/null -X POST \
         http://localhost:10001/computer/click_mouse \
         -H "Content-Type: application/json" \
