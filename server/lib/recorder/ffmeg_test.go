@@ -38,7 +38,10 @@ func TestFFmpegRecorder_StartAndStop(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	require.NoError(t, rec.Stop(t.Context()))
+	err := rec.Stop(t.Context())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exit status 101")
+
 	<-rec.exited
 	require.False(t, rec.IsRecording(t.Context()))
 }
@@ -55,7 +58,9 @@ func TestFFmpegRecorder_ForceStop(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	require.NoError(t, rec.ForceStop(t.Context()))
+	err := rec.ForceStop(t.Context())
+	require.Error(t, err)
+
 	<-rec.exited
 	require.False(t, rec.IsRecording(t.Context()))
 	assert.Contains(t, rec.cmd.ProcessState.String(), "killed")

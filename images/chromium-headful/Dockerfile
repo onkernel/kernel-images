@@ -50,8 +50,6 @@ RUN apt-get update && \
     sudo \
     mutter \
     x11vnc \
-    # Recording tools
-    ffmpeg \
     # Python/pyenv reqs
     build-essential \
     libssl-dev  \
@@ -91,6 +89,17 @@ RUN apt-get update && \
     fonts-liberation \
     unzip && \
     apt-get clean
+
+# install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
+# as of writing these static builds will be the latest 7.0.x release.
+RUN set -eux; \
+    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
+    echo "Downloading FFmpeg static build from $URL"; \
+    curl -fsSL "$URL" -o /tmp/ffmpeg.tar.xz; \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
+    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
+    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
+    rm -rf /tmp/ffmpeg*
 
 # runtime
 ENV USERNAME=root
@@ -138,8 +147,8 @@ RUN git clone --branch v1.5.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
-ENV HEIGHT=1080
-ENV WIDTH=1920
+ENV HEIGHT=768
+ENV WIDTH=1024
 ENV WITHDOCKER=true
 
 COPY xorg.conf /etc/neko/xorg.conf

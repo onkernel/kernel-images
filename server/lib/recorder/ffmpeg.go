@@ -194,10 +194,14 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	defer fr.stz.Enable(ctx)
-	err := fr.shutdownInPhases(ctx, []shutdownPhase{
-		{"wake_and_interrupt", []syscall.Signal{syscall.SIGCONT, syscall.SIGINT}, 5 * time.Second, "graceful stop"},
-		{"retry_interrupt", []syscall.Signal{syscall.SIGINT}, 3 * time.Second, "retry graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 250 * time.Millisecond, "forceful termination"},
+	// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
+	// be complex and we care more about the recording than performance. In cases where ffmpeg
+	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
+	// the recording to complete than it is to quickly terminate. We intentionally detach the
+	// shutdown process from any inbound context
+	err := fr.shutdownInPhases(context.Background(), []shutdownPhase{
+		{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
+		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
@@ -286,6 +290,8 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 	args = append(args, []string{
 		// Video encoding
 		"-c:v", "libx264",
+		"-profile:v", "high", // Explicit web-compatible profile
+		"-pix_fmt", "yuv420p", // Web-standard pixel format
 
 		// Timestamp handling for reliable playback
 		"-use_wallclock_as_timestamps", "1", // Use system time instead of input stream time
@@ -384,7 +390,9 @@ func (fr *FFmpegRecorder) shutdownInPhases(ctx context.Context, phases []shutdow
 		// Wait for exit or timeout
 		if err := waitForChan(ctx, phase.timeout-time.Since(phaseStartTime), done); err == nil {
 			log.Info("ffmpeg shutdown successful", "phase", phase.name)
-			return nil
+			fr.mu.Lock()
+			defer fr.mu.Unlock()
+			return fr.ffmpegErr
 		}
 	}
 
