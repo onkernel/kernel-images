@@ -41,11 +41,11 @@ func validate(config *Config) error {
 	if config.DisplayNum < 0 {
 		return fmt.Errorf("DISPLAY_NUM must be greater than 0")
 	}
-	if config.FrameRate < 0 || config.FrameRate > 120 {
-		return fmt.Errorf("FRAME_RATE must be greater than 0 and less than 120")
+	if config.FrameRate < 0 || config.FrameRate > 20 {
+		return fmt.Errorf("FRAME_RATE must be greater than 0 and less than or equal to 20")
 	}
 	if config.MaxSizeInMB < 0 || config.MaxSizeInMB > 1000 {
-		return fmt.Errorf("MAX_SIZE_MB must be greater than 0 and less than 1000")
+		return fmt.Errorf("MAX_SIZE_MB must be greater than 0 and less than or equal to 1000")
 	}
 	if config.PathToFFmpeg == "" {
 		return fmt.Errorf("FFMPEG_PATH is required")
