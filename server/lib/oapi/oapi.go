@@ -83,6 +83,12 @@ type MoveMouseRequest struct {
 	Y int `json:"y"`
 }
 
+// PasteClipboardRequest defines model for PasteClipboardRequest.
+type PasteClipboardRequest struct {
+    // Text text to paste
+    Text string `json:"text"`
+}
+
 // RecorderInfo defines model for RecorderInfo.
 type RecorderInfo struct {
 	// FinishedAt Timestamp when recording finished
@@ -141,6 +147,9 @@ type ClickMouseJSONRequestBody = ClickMouseRequest
 
 // MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
 type MoveMouseJSONRequestBody = MoveMouseRequest
+
+// PasteClipboardJSONRequestBody defines body for PasteClipboard for application/json ContentType.
+type PasteClipboardJSONRequestBody = PasteClipboardRequest
 
 // StartRecordingJSONRequestBody defines body for StartRecording for application/json ContentType.
 type StartRecordingJSONRequestBody = StartRecordingRequest
@@ -246,6 +255,11 @@ type ClientInterface interface {
 	StopRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	StopRecording(ctx context.Context, body StopRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PasteClipboardWithBody request with any body
+	PasteClipboardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PasteClipboard request
+	PasteClipboard(ctx context.Context, body PasteClipboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) ClickMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -366,6 +380,32 @@ func (c *Client) StopRecording(ctx context.Context, body StopRecordingJSONReques
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// PasteClipboardWithBody sends a PasteClipboard request with arbitrary body.
+func (c *Client) PasteClipboardWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+    req, err := NewPasteClipboardRequestWithBody(c.Server, contentType, body)
+    if err != nil {
+        return nil, err
+    }
+    req = req.WithContext(ctx)
+    if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+        return nil, err
+    }
+    return c.Client.Do(req)
+}
+
+// PasteClipboard sends a PasteClipboard request with application/json.
+func (c *Client) PasteClipboard(ctx context.Context, body PasteClipboardJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+    req, err := NewPasteClipboardRequest(c.Server, body)
+    if err != nil {
+        return nil, err
+    }
+    req = req.WithContext(ctx)
+    if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+        return nil, err
+    }
+    return c.Client.Do(req)
 }
 
 // NewClickMouseRequest calls the generic ClickMouse builder with application/json body
@@ -602,6 +642,39 @@ func NewStopRecordingRequestWithBody(server string, contentType string, body io.
 	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
+}
+
+// NewPasteClipboardRequest calls the generic PasteClipboard builder with application/json body.
+func NewPasteClipboardRequest(server string, body PasteClipboardJSONRequestBody) (*http.Request, error) {
+    var bodyReader io.Reader
+    buf, err := json.Marshal(body)
+    if err != nil {
+        return nil, err
+    }
+    bodyReader = bytes.NewReader(buf)
+    return NewPasteClipboardRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPasteClipboardRequestWithBody generates requests for PasteClipboard with any type of body.
+func NewPasteClipboardRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+    serverURL, err := url.Parse(server)
+    if err != nil {
+        return nil, err
+    }
+    operationPath := fmt.Sprintf("/computer/paste")
+    if operationPath[0] == '/' {
+        operationPath = "." + operationPath
+    }
+    queryURL, err := serverURL.Parse(operationPath)
+    if err != nil {
+        return nil, err
+    }
+    req, err := http.NewRequest("POST", queryURL.String(), body)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Add("Content-Type", contentType)
+    return req, nil
 }
 
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
@@ -1132,6 +1205,8 @@ type ServerInterface interface {
 	// Stop the recording
 	// (POST /recording/stop)
 	StopRecording(w http.ResponseWriter, r *http.Request)
+	// PasteClipboard(w http.ResponseWriter, r *http.Request)
+	PasteClipboard(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -1211,6 +1286,17 @@ func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// PasteClipboard operation middleware
+func (siw *ServerInterfaceWrapper) PasteClipboard(w http.ResponseWriter, r *http.Request) {
+    handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        siw.Handler.PasteClipboard(w, r)
+    }))
+    for _, middleware := range siw.HandlerMiddlewares {
+        handler = middleware(handler)
+    }
+    handler.ServeHTTP(w, r)
+}
+
 // DownloadRecording operation middleware
 func (siw *ServerInterfaceWrapper) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 
@@ -1279,6 +1365,7 @@ func (siw *ServerInterfaceWrapper) StopRecording(w http.ResponseWriter, r *http.
 
 	handler.ServeHTTP(w, r)
 }
+
 
 type UnescapedCookieParamError struct {
 	ParamName string
@@ -1398,6 +1485,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/paste", wrapper.PasteClipboard)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/recording/download", wrapper.DownloadRecording)
@@ -1669,6 +1759,42 @@ func (response StopRecording500JSONResponse) VisitStopRecordingResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+// PasteClipboardRequestObject defines the request for POST /computer/paste
+type PasteClipboardRequestObject struct {
+    Body *PasteClipboardJSONRequestBody
+}
+
+// PasteClipboardResponseObject is the interface for responses from POST /computer/paste
+type PasteClipboardResponseObject interface {
+    VisitPasteClipboardResponse(w http.ResponseWriter) error
+}
+
+// PasteClipboard200Response indicates a successful paste
+type PasteClipboard200Response struct{}
+
+func (response PasteClipboard200Response) VisitPasteClipboardResponse(w http.ResponseWriter) error {
+    w.WriteHeader(200)
+    return nil
+}
+
+// PasteClipboard400JSONResponse indicates a bad request
+type PasteClipboard400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response PasteClipboard400JSONResponse) VisitPasteClipboardResponse(w http.ResponseWriter) error {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(400)
+    return json.NewEncoder(w).Encode(response)
+}
+
+// PasteClipboard500JSONResponse indicates an internal server error
+type PasteClipboard500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response PasteClipboard500JSONResponse) VisitPasteClipboardResponse(w http.ResponseWriter) error {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(500)
+    return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Simulate a mouse click action on the host computer
@@ -1689,6 +1815,10 @@ type StrictServerInterface interface {
 	// Stop the recording
 	// (POST /recording/stop)
 	StopRecording(ctx context.Context, request StopRecordingRequestObject) (StopRecordingResponseObject, error)
+
+	// Paste text via system clipboard and simulate paste
+	// (POST /computer/paste)
+	PasteClipboard(ctx context.Context, request PasteClipboardRequestObject) (PasteClipboardResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -1893,6 +2023,36 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
 	}
 }
+
+// PasteClipboard operation middleware
+func (sh *strictHandler) PasteClipboard(w http.ResponseWriter, r *http.Request) {
+    var request PasteClipboardRequestObject
+    var body PasteClipboardJSONRequestBody
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+        sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+        return
+    }
+    request.Body = &body
+
+    handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, req interface{}) (interface{}, error) {
+        return sh.ssi.PasteClipboard(ctx, req.(PasteClipboardRequestObject))
+    }
+    for _, mw := range sh.middlewares {
+        handler = mw(handler, "PasteClipboard")
+    }
+
+    resp, err := handler(r.Context(), w, r, request)
+    if err != nil {
+        sh.options.ResponseErrorHandlerFunc(w, r, err)
+    } else if okResp, ok := resp.(PasteClipboardResponseObject); ok {
+        if err := okResp.VisitPasteClipboardResponse(w); err != nil {
+            sh.options.ResponseErrorHandlerFunc(w, r, err)
+        }
+    } else if resp != nil {
+        sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", resp))
+    }
+}
+
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
