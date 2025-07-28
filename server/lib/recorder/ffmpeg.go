@@ -273,27 +273,18 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 	}, nil
 }
 
-// Delete removes the recording file from disk if the recorder is not currently recording.
+// Delete removes the recording file from disk
 func (fr *FFmpegRecorder) Delete(ctx context.Context) error {
 	fr.mu.Lock()
+	defer fr.mu.Unlock()
 	if fr.deleted {
-		fr.mu.Unlock()
 		return nil // already deleted
 	}
-	if fr.cmd != nil && fr.exitCode < exitCodeProcessDoneMinValue {
-		fr.mu.Unlock()
-		return fmt.Errorf("cannot delete while recording is in progress")
-	}
-	outputPath := fr.outputPath
-	fr.mu.Unlock()
-
-	if err := os.Remove(outputPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(fr.outputPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete recording file: %w", err)
 	}
 
-	fr.mu.Lock()
 	fr.deleted = true
-	fr.mu.Unlock()
 	return nil
 }
 

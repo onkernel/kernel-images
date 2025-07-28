@@ -193,10 +193,11 @@ func (s *ApiService) DeleteRecording(ctx context.Context, req oapi.DeleteRecordi
 
 	// fine to do this async
 	go func() {
-		if err := rec.Delete(ctx); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := rec.Delete(context.Background()); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
+		} else {
+			log.Info("recording deleted", "recorder_id", recorderID)
 		}
-		log.Info("recording deleted", "recorder_id", recorderID)
 	}()
 
 	return oapi.DeleteRecording200Response{}, nil
