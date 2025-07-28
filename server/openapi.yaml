@@ -101,6 +101,25 @@ paths:
                   $ref: "#/components/schemas/RecorderInfo"
         "500":
           $ref: "#/components/responses/InternalError"
+  /recording/delete:
+    post:
+      summary: Delete a previously recorded video file
+      operationId: deleteRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteRecordingRequest"
+      responses:
+        "200":
+          description: Recording deleted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /computer/click_mouse:
     post:
       summary: Simulate a mouse click action on the host computer
@@ -242,6 +261,14 @@ components:
           description: Modifier keys to hold during the move
           items:
             type: string
+      additionalProperties: false
+    DeleteRecordingRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identifier of the recording to delete. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
       additionalProperties: false
   responses:
     BadRequestError:
