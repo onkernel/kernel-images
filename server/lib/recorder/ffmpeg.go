@@ -46,6 +46,7 @@ type FFmpegRecorder struct {
 	ffmpegErr  error
 	exitCode   int
 	exited     chan struct{}
+	deleted    bool
 	stz        *scaletozero.Oncer
 }
 
@@ -225,6 +226,12 @@ func (fr *FFmpegRecorder) IsRecording(ctx context.Context) bool {
 	return fr.cmd != nil && fr.exitCode < exitCodeProcessDoneMinValue
 }
 
+func (fr *FFmpegRecorder) IsDeleted(ctx context.Context) bool {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	return fr.deleted
+}
+
 // Metadata is an incomplete snapshot of the recording metadata.
 func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
 	fr.mu.Lock()
@@ -238,6 +245,13 @@ func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
 
 // Recording returns the recording file as an io.ReadCloser.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
+	fr.mu.Lock()
+	if fr.deleted {
+		fr.mu.Unlock()
+		return nil, nil, fmt.Errorf("recording deleted: %w", os.ErrNotExist)
+	}
+	fr.mu.Unlock()
+
 	file, err := os.Open(fr.outputPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open recording file: %w", err)
@@ -257,6 +271,30 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 		StartTime: fr.startTime,
 		EndTime:   fr.endTime,
 	}, nil
+}
+
+// Delete removes the recording file from disk if the recorder is not currently recording.
+func (fr *FFmpegRecorder) Delete(ctx context.Context) error {
+	fr.mu.Lock()
+	if fr.deleted {
+		fr.mu.Unlock()
+		return nil // already deleted
+	}
+	if fr.cmd != nil && fr.exitCode < exitCodeProcessDoneMinValue {
+		fr.mu.Unlock()
+		return fmt.Errorf("cannot delete while recording is in progress")
+	}
+	outputPath := fr.outputPath
+	fr.mu.Unlock()
+
+	if err := os.Remove(outputPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete recording file: %w", err)
+	}
+
+	fr.mu.Lock()
+	fr.deleted = true
+	fr.mu.Unlock()
+	return nil
 }
 
 // ffmpegArgs generates platform-specific ffmpeg command line arguments. Allegedly order matters.
@@ -436,7 +474,9 @@ func (fm *FFmpegManager) ListActiveRecorders(ctx context.Context) []Recorder {
 
 	recorders := make([]Recorder, 0, len(fm.recorders))
 	for _, recorder := range fm.recorders {
-		recorders = append(recorders, recorder)
+		if !recorder.IsDeleted(ctx) {
+			recorders = append(recorders, recorder)
+		}
 	}
 
 	return recorders

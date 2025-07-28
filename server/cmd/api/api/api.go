@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -92,7 +94,7 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 
 	rec, exists := s.recordManager.GetRecorder(recorderID)
 	if !exists {
-		log.Warn("attempted to stop recording when none is active", "recorder_id", recorderID)
+		log.Error("attempted to stop recording when none is active", "recorder_id", recorderID)
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
 	} else if !rec.IsRecording(ctx) {
 		log.Warn("recording already stopped", "recorder_id", recorderID)
@@ -140,6 +142,10 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 		log.Error("attempted to download non-existent recording", "recorder_id", recorderID)
 		return oapi.DownloadRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
 	}
+	if rec.IsDeleted(ctx) {
+		log.Error("attempted to download deleted recording", "recorder_id", recorderID)
+		return oapi.DownloadRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "requested recording has been deleted"}}, nil
+	}
 
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
@@ -165,6 +171,35 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 		},
 		ContentLength: meta.Size,
 	}, nil
+}
+
+func (s *ApiService) DeleteRecording(ctx context.Context, req oapi.DeleteRecordingRequestObject) (oapi.DeleteRecordingResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	recorderID := s.defaultRecorderID
+	if req.Body != nil && req.Body.Id != nil && *req.Body.Id != "" {
+		recorderID = *req.Body.Id
+	}
+	rec, exists := s.recordManager.GetRecorder(recorderID)
+	if !exists {
+		log.Error("attempted to delete non-existent recording", "recorder_id", recorderID)
+		return oapi.DeleteRecording404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "no recording found"}}, nil
+	}
+
+	if rec.IsRecording(ctx) {
+		log.Error("attempted to delete recording while still in progress", "recorder_id", recorderID)
+		return oapi.DeleteRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording must be stopped first"}}, nil
+	}
+
+	// fine to do this async
+	go func() {
+		if err := rec.Delete(ctx); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
+		}
+		log.Info("recording deleted", "recorder_id", recorderID)
+	}()
+
+	return oapi.DeleteRecording200Response{}, nil
 }
 
 // ListRecorders returns a list of all registered recorders and whether each one is currently recording.

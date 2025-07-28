@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
 	"testing"
 
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -217,6 +218,7 @@ type mockRecorder struct {
 	forceStopErr  error
 	recordingErr  error
 	recordingData []byte
+	deleted       bool
 }
 
 func (m *mockRecorder) ID() string { return m.id }
@@ -251,6 +253,9 @@ func (m *mockRecorder) ForceStop(ctx context.Context) error {
 func (m *mockRecorder) IsRecording(ctx context.Context) bool { return m.isRecordingFlag }
 
 func (m *mockRecorder) Recording(ctx context.Context) (io.ReadCloser, *recorder.RecordingMetadata, error) {
+	if m.deleted {
+		return nil, nil, fmt.Errorf("deleted: %w", os.ErrNotExist)
+	}
 	if m.recordingErr != nil {
 		return nil, nil, m.recordingErr
 	}
@@ -262,6 +267,16 @@ func (m *mockRecorder) Recording(ctx context.Context) (io.ReadCloser, *recorder.
 func (m *mockRecorder) Metadata() *recorder.RecordingMetadata {
 	return &recorder.RecordingMetadata{}
 }
+
+func (m *mockRecorder) Delete(ctx context.Context) error {
+	if m.isRecordingFlag {
+		return fmt.Errorf("still recording")
+	}
+	m.deleted = true
+	return nil
+}
+
+func (m *mockRecorder) IsDeleted(ctx context.Context) bool { return m.deleted }
 
 func newMockFactory() recorder.FFmpegRecorderFactory {
 	return func(id string, _ recorder.FFmpegRecordingParams) (recorder.Recorder, error) {

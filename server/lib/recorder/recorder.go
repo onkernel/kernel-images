@@ -14,7 +14,9 @@ type Recorder interface {
 	ForceStop(ctx context.Context) error
 	IsRecording(ctx context.Context) bool
 	Metadata() *RecordingMetadata
-	Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) // Returns the recording file as a ReadCloser
+	Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error)
+	Delete(ctx context.Context) error
+	IsDeleted(ctx context.Context) bool
 }
 
 type RecordingMetadata struct {
