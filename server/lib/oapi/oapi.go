@@ -66,6 +66,12 @@ type ClickMouseRequestButton string
 // ClickMouseRequestClickType Type of click action
 type ClickMouseRequestClickType string
 
+// DeleteRecordingRequest defines model for DeleteRecordingRequest.
+type DeleteRecordingRequest struct {
+	// Id Identifier of the recording to delete. Alphanumeric or hyphen.
+	Id *string `json:"id,omitempty"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Message string `json:"message"`
@@ -141,6 +147,9 @@ type ClickMouseJSONRequestBody = ClickMouseRequest
 
 // MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
 type MoveMouseJSONRequestBody = MoveMouseRequest
+
+// DeleteRecordingJSONRequestBody defines body for DeleteRecording for application/json ContentType.
+type DeleteRecordingJSONRequestBody = DeleteRecordingRequest
 
 // StartRecordingJSONRequestBody defines body for StartRecording for application/json ContentType.
 type StartRecordingJSONRequestBody = StartRecordingRequest
@@ -231,6 +240,11 @@ type ClientInterface interface {
 
 	MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteRecordingWithBody request with any body
+	DeleteRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DeleteRecording(ctx context.Context, body DeleteRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DownloadRecording request
 	DownloadRecording(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -286,6 +300,30 @@ func (c *Client) MoveMouseWithBody(ctx context.Context, contentType string, body
 
 func (c *Client) MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMoveMouseRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRecordingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteRecording(ctx context.Context, body DeleteRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRecordingRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -429,6 +467,46 @@ func NewMoveMouseRequestWithBody(server string, contentType string, body io.Read
 	}
 
 	operationPath := fmt.Sprintf("/computer/move_mouse")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteRecordingRequest calls the generic DeleteRecording builder with application/json body
+func NewDeleteRecordingRequest(server string, body DeleteRecordingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteRecordingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDeleteRecordingRequestWithBody generates requests for DeleteRecording with any type of body
+func NewDeleteRecordingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/recording/delete")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -657,6 +735,11 @@ type ClientWithResponsesInterface interface {
 
 	MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
 
+	// DeleteRecordingWithBodyWithResponse request with any body
+	DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error)
+
+	DeleteRecordingWithResponse(ctx context.Context, body DeleteRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error)
+
 	// DownloadRecordingWithResponse request
 	DownloadRecordingWithResponse(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error)
 
@@ -714,6 +797,30 @@ func (r MoveMouseResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r MoveMouseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteRecordingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteRecordingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteRecordingResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -848,6 +955,23 @@ func (c *ClientWithResponses) MoveMouseWithResponse(ctx context.Context, body Mo
 	return ParseMoveMouseResponse(rsp)
 }
 
+// DeleteRecordingWithBodyWithResponse request with arbitrary body returning *DeleteRecordingResponse
+func (c *ClientWithResponses) DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error) {
+	rsp, err := c.DeleteRecordingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRecordingResponse(rsp)
+}
+
+func (c *ClientWithResponses) DeleteRecordingWithResponse(ctx context.Context, body DeleteRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error) {
+	rsp, err := c.DeleteRecording(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRecordingResponse(rsp)
+}
+
 // DownloadRecordingWithResponse request returning *DownloadRecordingResponse
 func (c *ClientWithResponses) DownloadRecordingWithResponse(ctx context.Context, params *DownloadRecordingParams, reqEditors ...RequestEditorFn) (*DownloadRecordingResponse, error) {
 	rsp, err := c.DownloadRecording(ctx, params, reqEditors...)
@@ -953,6 +1077,46 @@ func ParseMoveMouseResponse(rsp *http.Response) (*MoveMouseResponse, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteRecordingResponse parses an HTTP response from a DeleteRecordingWithResponse call
+func ParseDeleteRecordingResponse(rsp *http.Response) (*DeleteRecordingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteRecordingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -1120,6 +1284,9 @@ type ServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(w http.ResponseWriter, r *http.Request)
+	// Delete a previously recorded video file
+	// (POST /recording/delete)
+	DeleteRecording(w http.ResponseWriter, r *http.Request)
 	// Download the most recently recorded video file
 	// (GET /recording/download)
 	DownloadRecording(w http.ResponseWriter, r *http.Request, params DownloadRecordingParams)
@@ -1147,6 +1314,12 @@ func (_ Unimplemented) ClickMouse(w http.ResponseWriter, r *http.Request) {
 // Move the mouse cursor to the specified coordinates on the host computer
 // (POST /computer/move_mouse)
 func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a previously recorded video file
+// (POST /recording/delete)
+func (_ Unimplemented) DeleteRecording(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1202,6 +1375,20 @@ func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveMouse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRecording operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRecording(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRecording(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1400,6 +1587,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/recording/delete", wrapper.DeleteRecording)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/recording/download", wrapper.DownloadRecording)
 	})
 	r.Group(func(r chi.Router) {
@@ -1485,6 +1675,49 @@ func (response MoveMouse400JSONResponse) VisitMoveMouseResponse(w http.ResponseW
 type MoveMouse500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response MoveMouse500JSONResponse) VisitMoveMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteRecordingRequestObject struct {
+	Body *DeleteRecordingJSONRequestBody
+}
+
+type DeleteRecordingResponseObject interface {
+	VisitDeleteRecordingResponse(w http.ResponseWriter) error
+}
+
+type DeleteRecording200Response struct {
+}
+
+func (response DeleteRecording200Response) VisitDeleteRecordingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DeleteRecording400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response DeleteRecording400JSONResponse) VisitDeleteRecordingResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteRecording404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response DeleteRecording404JSONResponse) VisitDeleteRecordingResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteRecording500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DeleteRecording500JSONResponse) VisitDeleteRecordingResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -1677,6 +1910,9 @@ type StrictServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
+	// Delete a previously recorded video file
+	// (POST /recording/delete)
+	DeleteRecording(ctx context.Context, request DeleteRecordingRequestObject) (DeleteRecordingResponseObject, error)
 	// Download the most recently recorded video file
 	// (GET /recording/download)
 	DownloadRecording(ctx context.Context, request DownloadRecordingRequestObject) (DownloadRecordingResponseObject, error)
@@ -1775,6 +2011,37 @@ func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveMouseResponseObject); ok {
 		if err := validResponse.VisitMoveMouseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRecording operation middleware
+func (sh *strictHandler) DeleteRecording(w http.ResponseWriter, r *http.Request) {
+	var request DeleteRecordingRequestObject
+
+	var body DeleteRecordingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRecording(ctx, request.(DeleteRecordingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRecording")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRecordingResponseObject); ok {
+		if err := validResponse.VisitDeleteRecordingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -1897,33 +2164,34 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"xeGFqmAYAAA=",
+	"H4sIAAAAAAAC/9RZ3W/cuBH/Vwj2HlpU++E4fci+OUlTLFrfHewDem2QBlxxtOKFIpkhZVsx9n8vhtTu",
+	"Spa8/s7hnryiyJnh/ObjN/I1z23lrAETPF9ccwTvrPEQH94KeQZfa/Dh74gWaSm3JoAJ9FM4p1UugrJm",
+	"9pu3htZ8XkIl6NcPCAVf8D/N9vJn6a2fJWmbzSbjEnyOypEQviCFrNXINxl/Z02hVf69tG/VkeqlCYBG",
+	"6O+kequOnQNeALJ2Y8Z/tOGDrY38Tnb8aAOL+ji9a7eTtHda5V9Obe1hiw8ZIKWig0L/jNYBBkVxUwjt",
+	"IeOus3TNV3UIycK+wiiSpbcsWKbIESIP7FKFkmccTF3xxUeuoQg846jWJf2tlJQaeMZXIv/CM15YvBQo",
+	"+aeMh8YBX3AfUJk1uTAn0z+n5Zvqf2kcMFuwuIeJPC7vtUp7SY+1462YUQWl1fLzF2j82PWkKhQgo9d0",
+	"P9rLZE1HWSghKeYZVwGqeH4gvV0QiKKhZ1NXn+OpVl0hah344mgAZV2tAOlyQVUQlSM4EKGnt5VObl9D",
+	"jLir4S1+Zbm1KJURIXprJ4A561Xrs6GkZijpP4+RtMk4wtdaIUgC5YqT6D0QdvUbpKR9DxoCnEEeVawf",
+	"F6lKDs1eSjAhAdkajVsl5FcZ9U7ZiXalMHUFqHJmkZWNK8FMecadCJTgfMH/91FMvp1M/jufvJl8+usP",
+	"fBBPm5GL7bK/b2oF3os1jITNDZdtN4457dRewBMS+ynBX9kLeFDs3xWbwUaZKaxq9BZZsI+KzftKunds",
+	"pqgEXJrCDpEslFG+BPlZhJEiRfkbROXYZQmmE3rbU6kAVnSWSxFgQhnPqVRoLVYa+CJgDSOVK8X6cNnv",
+	"cqjzfmWtBmFogw8Cw0OtbQ890tgbjlYkp2vnmM/PSeMTy0GBogIUYaR5nO2B2G5iyrDCefZnewGISoJn",
+	"PnX0tlD/hZqXuFIVNZhXc+pkJj0cjYXpWDH6ySXTmdpXpYLis1eWPHivrHmmohSNfl9jJBtLcw65NXIs",
+	"5dPVOnbI9hB5xqdjd3jnoEMqcfVBaThX32BpTt/ebkGhNDCvvkVITt/eE5Gj+XzeA2U+mvIjkWbdUwPN",
+	"Yg4kp9fW26032lFVgVQigG6YD9ZFsmTrwNYocihqzXxZByIvU/ZLqTyrRMMQfK0DeUOw3CLWLoBkF0qC",
+	"jc6a7lHvZPpDuiFQjYwGvVgrpCXVVtCgAlUL/k9AA5otK7EGz05+XvKMXwD6ZOx8ejSd002sAyOc4gt+",
+	"PJ1Pj5MlZXR9pMh1AJwlrlhRO4xF2iYYCacU+pLmhB0X5qkogQ9vrWyejZ4PyfamX/+oQsaFzrD2aj6/",
+	"jV4nXsscIFVekOSO12n7mBk7sbObA+Am43+7z7n+9BRHibqqBDZ8wc9VVWsqlYJFP/e4N6MpoARWWh/Y",
+	"FpUoYI8R9eW7INqRmhdCaECangZQyzDoZr8vOKdbzlN17Qo2rnkHOaW97BAlfwCxXROYJYJ8O1w3iPsL",
+	"gXbLeLBpsbsLqn27T9d5ElKv56/vPtcf/p8D3+QCJphDuFC29rrZFu9uLxjgZy+NtiL2gjWMAdhu6ELo",
+	"BLGiAOj54uOtJGbXOvZsZsr+TczRVioEkFmKvdSza0+TbAnb5r07Tp1FkeCvNWBDdFJUsWsTT9yHx0Oa",
+	"z6fxoOiEYnTYrHKv+zG4o7crZUQ05qbowXeXDpVU8btGCUJGz13zXye7t5MPLeOfnBxk3rZI5LtPCbfj",
+	"wpT9oxYoTACQlNsrYGcf3h0fH7+Z9pw17MZdU84TnX+UJe0o8FhDyJRX81eHUlR55oPSmviOQ7tG8D5j",
+	"ToPwwAI2TKyFMowaEfbdfQYBm8lJQS8GCs7r9Ro8EadLoUL8stIltisoLNJFAzYpCfaXOMRr443+aKWk",
+	"Tfm2XfiYi2DC/SqKVqkPjFaTfykftvOy53em4eGOsPu6cKg19KbzwYeHYb6ShRTbuLPyOVwapQqtu2L7",
+	"bouJc3sf7Q+8L9RGx6fq0S56dChFt98DnhT6b+4+1/8vwrNQWLKcCeZzhO4njin7yeiGWdOtdQ6QLd+z",
+	"XBiqbwhr5QMgSCZIBFWQ6RDlNAXeBnJn1nwxjEfm2YcTJbqI+73nDRqQe+0nXuT/AQAA//9WTA/u+RoA",
+	"AA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
