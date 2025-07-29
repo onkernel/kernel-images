@@ -32,7 +32,9 @@ RUN set -eux; \
     make -j$(nproc); \
     make install;
 
-FROM ghcr.io/m1k1o/neko/chromium:3.0.6 AS neko
+#FROM ghcr.io/m1k1o/neko/chromium:3.0.6 AS neko
+FROM ghcr.io/raiden-staging/neko/chromium:3.0.6-kernel-editv1 AS neko
+# ^--------- edited + rebuilt neko:chromium to disable host only on clipboard events
 FROM docker.io/ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive

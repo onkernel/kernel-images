@@ -5,7 +5,32 @@ desktop:
   screen: "1024x768@60"
 
 member:
-  provider: "noauth"
+  provider: multiuser
+  multiuser:
+    admin_password: "admin"
+    admin_profile:
+      name: "" # if empty, the login username is used
+      is_admin: true
+      can_login: true
+      can_connect: true
+      can_watch: true
+      can_host: true
+      can_share_media: true
+      can_access_clipboard: true
+      sends_inactive_cursor: true
+      can_see_inactive_cursors: true
+    user_password: "neko"
+    user_profile:
+      name: "" # if empty, the login username is used
+      is_admin: false
+      can_login: true
+      can_connect: true
+      can_watch: true
+      can_host: true
+      can_share_media: true
+      can_access_clipboard: true
+      sends_inactive_cursor: true
+      can_see_inactive_cursors: false
 
 session:
   merciful_reconnect: true

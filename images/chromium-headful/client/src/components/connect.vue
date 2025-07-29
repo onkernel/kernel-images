@@ -169,7 +169,7 @@
       }
 
       // KERNEL: auto-login
-      this.$accessor.login({ displayname: 'dummy', password: 'dummy' })
+      this.$accessor.login({ displayname: 'kernel', password: 'admin' })
       this.autoPassword = null
     }
 
