@@ -69,12 +69,11 @@ RUN apt-get update && \
     # Network tools
     net-tools \
     netcat \
+    ncat \
     # PPA req
     software-properties-common && \
     # Userland apps
-    sudo add-apt-repository ppa:mozillateam/ppa && \
     sudo apt-get install -y --no-install-recommends \
-    chromium-browser \
     libreoffice \
     x11-apps \
     xpdf \
@@ -136,9 +135,27 @@ RUN set -eux; \
     apt-get clean -y; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/
 
-# install chromium & ncat for proxying the remote debugging port
-RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
+# install chrome & ncat for proxying the remote debugging port
+ARG CHROME_VERSION=138.0.7204.183-1
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg; \
+    \
+    # Download the exact build
+    CHROME_PKG="google-chrome-stable_${CHROME_VERSION}_amd64.deb"; \
+    curl -fsSL "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/${CHROME_PKG}" \
+    -o "/tmp/${CHROME_PKG}"; \
+    \
+    # Install it (this pulls any missing deps from the distro repos)
+    apt-get install -y --no-install-recommends "/tmp/${CHROME_PKG}"; \
+    \
+    # Hold the package so it never upgrades unless you change CHROME_VERSION
+    apt-mark hold google-chrome-stable; \
+    \
+    # Clean up
+    rm "/tmp/${CHROME_PKG}"; \
+    rm -rf /var/lib/apt/lists/*
 
 # Install noVNC
 RUN git clone --branch v1.5.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
