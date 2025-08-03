@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -18,6 +19,9 @@ type ApiService struct {
 
 	recordManager recorder.RecordManager
 	factory       recorder.FFmpegRecorderFactory
+	// Filesystem watch management
+	watchMu sync.RWMutex
+	watches map[string]*fsWatch
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -34,6 +38,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		recordManager:     recordManager,
 		factory:           factory,
 		defaultRecorderID: "default",
+		watches:           make(map[string]*fsWatch),
 	}, nil
 }
 

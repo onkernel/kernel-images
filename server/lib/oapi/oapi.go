@@ -1292,6 +1292,7 @@ type DownloadFileResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1315,6 +1316,7 @@ type ReadFileResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1338,6 +1340,7 @@ type WriteFileResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1361,6 +1364,7 @@ type UploadFilesResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1388,6 +1392,7 @@ type StartFsWatchResponse struct {
 	}
 	JSON400 *BadRequestError
 	JSON404 *NotFoundError
+	JSON500 *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1411,6 +1416,7 @@ type StopFsWatchResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1434,6 +1440,7 @@ type StreamFsEventsResponse struct {
 	HTTPResponse *http.Response
 	JSON400      *BadRequestError
 	JSON404      *NotFoundError
+	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
@@ -1838,6 +1845,13 @@ func ParseDownloadFileResponse(rsp *http.Response) (*DownloadFileResponse, error
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil
@@ -1870,6 +1884,13 @@ func ParseReadFileResponse(rsp *http.Response) (*ReadFileResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -1904,6 +1925,13 @@ func ParseWriteFileResponse(rsp *http.Response) (*WriteFileResponse, error) {
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil
@@ -1936,6 +1964,13 @@ func ParseUploadFilesResponse(rsp *http.Response) (*UploadFilesResponse, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -1980,6 +2015,13 @@ func ParseStartFsWatchResponse(rsp *http.Response) (*StartFsWatchResponse, error
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil
@@ -2013,6 +2055,13 @@ func ParseStopFsWatchResponse(rsp *http.Response) (*StopFsWatchResponse, error) 
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil
@@ -2045,6 +2094,13 @@ func ParseStreamFsEventsResponse(rsp *http.Response) (*StreamFsEventsResponse, e
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -2951,6 +3007,15 @@ func (response DownloadFile404JSONResponse) VisitDownloadFileResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
+type DownloadFile500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DownloadFile500JSONResponse) VisitDownloadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ReadFileRequestObject struct {
 	Params ReadFileParams
 }
@@ -2996,6 +3061,15 @@ func (response ReadFile404JSONResponse) VisitReadFileResponse(w http.ResponseWri
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ReadFile500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ReadFile500JSONResponse) VisitReadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type WriteFileRequestObject struct {
 	Params WriteFileParams
 	Body   io.Reader
@@ -3031,6 +3105,15 @@ func (response WriteFile404JSONResponse) VisitWriteFileResponse(w http.ResponseW
 	return json.NewEncoder(w).Encode(response)
 }
 
+type WriteFile500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response WriteFile500JSONResponse) VisitWriteFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UploadFilesRequestObject struct {
 	Body *multipart.Reader
 }
@@ -3061,6 +3144,15 @@ type UploadFiles404JSONResponse struct{ NotFoundErrorJSONResponse }
 func (response UploadFiles404JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFiles500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response UploadFiles500JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3103,6 +3195,15 @@ func (response StartFsWatch404JSONResponse) VisitStartFsWatchResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
+type StartFsWatch500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response StartFsWatch500JSONResponse) VisitStartFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type StopFsWatchRequestObject struct {
 	WatchId string `json:"watch_id"`
 }
@@ -3133,6 +3234,15 @@ type StopFsWatch404JSONResponse struct{ NotFoundErrorJSONResponse }
 func (response StopFsWatch404JSONResponse) VisitStopFsWatchResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StopFsWatch500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response StopFsWatch500JSONResponse) VisitStopFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3184,6 +3294,15 @@ type StreamFsEvents404JSONResponse struct{ NotFoundErrorJSONResponse }
 func (response StreamFsEvents404JSONResponse) VisitStreamFsEventsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StreamFsEvents500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response StreamFsEvents500JSONResponse) VisitStreamFsEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3886,45 +4005,45 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"KrulH7sywgaplX7cRf4XAAD//5SX97iTKwAA",
+	"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",
+	"qiqzv3ZYR2VVJ/y4g/wvAAD//3HvbdENLQAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

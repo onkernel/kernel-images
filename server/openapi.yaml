@@ -178,6 +178,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
     put:
       summary: Write or create a file
       operationId: writeFile
@@ -202,6 +204,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /fs/upload:
     post:
@@ -233,6 +237,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /fs/download:
     get:
@@ -256,6 +262,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /fs/watch:
     post:
@@ -282,6 +290,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /fs/watch/{watch_id}/events:
     get:
@@ -310,6 +320,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /fs/watch/{watch_id}:
     delete:
@@ -328,6 +340,8 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:

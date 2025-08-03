@@ -3,10 +3,12 @@ module github.com/onkernel/kernel-images/server
 go 1.24.3
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/nrednav/cuid2 v1.1.0
 	github.com/oapi-codegen/runtime v1.1.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.15.0
@@ -25,6 +27,8 @@ require (
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
