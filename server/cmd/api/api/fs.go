@@ -191,20 +191,30 @@ func (s *ApiService) ListFiles(ctx context.Context, req oapi.ListFilesRequestObj
 	}
 	var list oapi.ListFiles
 	for _, entry := range entries {
-		info, _ := entry.Info()
+		// Retrieve FileInfo for each entry. If this fails (e.g. broken symlink, permission
+		// error) we surface the failure to the client instead of silently ignoring it so
+		// that consumers do not unknowingly operate on incomplete or unreliable metadata.
+		info, err := entry.Info()
+		if err != nil {
+			log.Error("failed to stat directory entry", "err", err, "dir", path, "entry", entry.Name())
+			return oapi.ListFiles500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to stat directory entry"}}, nil
+		}
+
+		// By specification SizeBytes should be 0 for directories.
+		size := 0
+		if !info.IsDir() {
+			size = int(info.Size())
+		}
+
 		fi := oapi.FileInfo{
 			Name:      entry.Name(),
 			Path:      filepath.Join(path, entry.Name()),
 			IsDir:     entry.IsDir(),
-			SizeBytes: 0,
-			ModTime:   time.Time{},
-			Mode:      "",
+			SizeBytes: size,
+			ModTime:   info.ModTime(),
+			Mode:      info.Mode().String(),
 		}
-		if info != nil {
-			fi.SizeBytes = int(info.Size())
-			fi.ModTime = info.ModTime()
-			fi.Mode = info.Mode().String()
-		}
+
 		list = append(list, fi)
 	}
 	return oapi.ListFiles200JSONResponse(list), nil
