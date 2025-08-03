@@ -2,10 +2,8 @@ package api
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"io"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,8 +12,8 @@ import (
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 )
 
-// TestWriteReadDownloadFile verifies that files can be written, read back, and downloaded successfully.
-func TestWriteReadDownloadFile(t *testing.T) {
+// TestWriteReadFile verifies that files can be written and read back successfully.
+func TestWriteReadFile(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -51,19 +49,7 @@ func TestWriteReadDownloadFile(t *testing.T) {
 		t.Fatalf("ReadFile content mismatch: got %q want %q", got, content)
 	}
 
-	// Download the file
-	dlResp, err := svc.DownloadFile(ctx, oapi.DownloadFileRequestObject{Params: oapi.DownloadFileParams{Path: filePath}})
-	if err != nil {
-		t.Fatalf("DownloadFile returned error: %v", err)
-	}
-	d200, ok := dlResp.(oapi.DownloadFile200ApplicationoctetStreamResponse)
-	if !ok {
-		t.Fatalf("unexpected response type from DownloadFile: %T", dlResp)
-	}
-	dlData, _ := io.ReadAll(d200.Body)
-	if got := string(dlData); got != content {
-		t.Fatalf("DownloadFile content mismatch: got %q want %q", got, content)
-	}
+	// (Download functionality removed)
 
 	// Attempt to read non-existent file
 	missingResp, err := svc.ReadFile(ctx, oapi.ReadFileRequestObject{Params: oapi.ReadFileParams{Path: filepath.Join(tmpDir, "missing.txt")}})
@@ -84,8 +70,8 @@ func TestWriteReadDownloadFile(t *testing.T) {
 	}
 }
 
-// TestUploadFiles verifies multipart upload and filesystem watch event generation.
-func TestUploadFilesAndWatch(t *testing.T) {
+// TestWriteFileAndWatch verifies WriteFile operation and filesystem watch event generation.
+func TestWriteFileAndWatch(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -108,37 +94,25 @@ func TestUploadFilesAndWatch(t *testing.T) {
 	}
 	watchID := *sr201.WatchId
 
-	// Build multipart payload
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	destPath := filepath.Join(dir, "upload.txt")
+	destPath := filepath.Join(dir, "write.txt")
+	content := "write content"
 
-	// dest_path part
-	if err := mw.WriteField("dest_path", destPath); err != nil {
-		t.Fatalf("WriteField error: %v", err)
-	}
-	// file part
-	fw, err := mw.CreateFormFile("file", "upload.txt")
-	if err != nil {
-		t.Fatalf("CreateFormFile error: %v", err)
-	}
-	content := "upload content"
-	fw.Write([]byte(content))
-	mw.Close()
-
-	uploadReq := oapi.UploadFilesRequestObject{Body: multipart.NewReader(&buf, mw.Boundary())}
-	if resp, err := svc.UploadFiles(ctx, uploadReq); err != nil {
-		t.Fatalf("UploadFiles error: %v", err)
+	// Perform WriteFile to trigger watch events
+	if resp, err := svc.WriteFile(ctx, oapi.WriteFileRequestObject{
+		Params: oapi.WriteFileParams{Path: destPath},
+		Body:   strings.NewReader(content),
+	}); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
 	} else {
-		if _, ok := resp.(oapi.UploadFiles201Response); !ok {
-			t.Fatalf("unexpected response type from UploadFiles: %T", resp)
+		if _, ok := resp.(oapi.WriteFile201Response); !ok {
+			t.Fatalf("unexpected response type from WriteFile: %T", resp)
 		}
 	}
 
 	// Verify file exists
 	data, err := os.ReadFile(destPath)
 	if err != nil || string(data) != content {
-		t.Fatalf("uploaded file mismatch: %v", err)
+		t.Fatalf("written file mismatch: %v", err)
 	}
 
 	// Stream events (should at least receive one)
@@ -168,5 +142,93 @@ func TestUploadFilesAndWatch(t *testing.T) {
 	}
 	if _, ok := stopResp.(oapi.StopFsWatch204Response); !ok {
 		t.Fatalf("unexpected response type from StopFsWatch: %T", stopResp)
+	}
+}
+
+// TestFileDirOperations covers the new filesystem management endpoints.
+func TestFileDirOperations(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	tmp := t.TempDir()
+	dirPath := filepath.Join(tmp, "mydir")
+
+	// Create directory
+	modeStr := "755"
+	createReq := oapi.CreateDirectoryRequestObject{Body: &oapi.CreateDirectoryRequest{Path: dirPath, Mode: &modeStr}}
+	if resp, err := svc.CreateDirectory(ctx, createReq); err != nil {
+		t.Fatalf("CreateDirectory error: %v", err)
+	} else {
+		if _, ok := resp.(oapi.CreateDirectory201Response); !ok {
+			t.Fatalf("unexpected response type from CreateDirectory: %T", resp)
+		}
+	}
+
+	// Write a file inside the directory
+	filePath := filepath.Join(dirPath, "file.txt")
+	content := "data"
+	if resp, err := svc.WriteFile(ctx, oapi.WriteFileRequestObject{Params: oapi.WriteFileParams{Path: filePath}, Body: strings.NewReader(content)}); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	} else if _, ok := resp.(oapi.WriteFile201Response); !ok {
+		t.Fatalf("unexpected WriteFile resp type: %T", resp)
+	}
+
+	// List files
+	listResp, err := svc.ListFiles(ctx, oapi.ListFilesRequestObject{Params: oapi.ListFilesParams{Path: dirPath}})
+	if err != nil {
+		t.Fatalf("ListFiles error: %v", err)
+	}
+	lf200, ok := listResp.(oapi.ListFiles200JSONResponse)
+	if !ok {
+		t.Fatalf("unexpected ListFiles resp type: %T", listResp)
+	}
+	if len(lf200) != 1 || lf200[0].Name != "file.txt" {
+		t.Fatalf("ListFiles unexpected content: %+v", lf200)
+	}
+
+	// FileInfo
+	fiResp, err := svc.FileInfo(ctx, oapi.FileInfoRequestObject{Params: oapi.FileInfoParams{Path: filePath}})
+	if err != nil {
+		t.Fatalf("FileInfo error: %v", err)
+	}
+	fi200, ok := fiResp.(oapi.FileInfo200JSONResponse)
+	if !ok {
+		t.Fatalf("unexpected FileInfo resp: %T", fiResp)
+	}
+	if fi200.Name != "file.txt" || fi200.SizeBytes == 0 {
+		t.Fatalf("FileInfo unexpected: %+v", fi200)
+	}
+
+	// Move file
+	newFilePath := filepath.Join(dirPath, "moved.txt")
+	moveReq := oapi.MovePathRequestObject{Body: &oapi.MovePathRequest{SrcPath: filePath, DestPath: newFilePath}}
+	if resp, err := svc.MovePath(ctx, moveReq); err != nil {
+		t.Fatalf("MovePath error: %v", err)
+	} else if _, ok := resp.(oapi.MovePath200Response); !ok {
+		t.Fatalf("unexpected MovePath resp type: %T", resp)
+	}
+
+	// Set permissions
+	chmodReq := oapi.SetFilePermissionsRequestObject{Body: &oapi.SetFilePermissionsRequest{Path: newFilePath, Mode: "600"}}
+	if resp, err := svc.SetFilePermissions(ctx, chmodReq); err != nil {
+		t.Fatalf("SetFilePermissions error: %v", err)
+	} else if _, ok := resp.(oapi.SetFilePermissions200Response); !ok {
+		t.Fatalf("unexpected SetFilePermissions resp: %T", resp)
+	}
+
+	// Delete file
+	if resp, err := svc.DeleteFile(ctx, oapi.DeleteFileRequestObject{Body: &oapi.DeletePathRequest{Path: newFilePath}}); err != nil {
+		t.Fatalf("DeleteFile error: %v", err)
+	} else if _, ok := resp.(oapi.DeleteFile200Response); !ok {
+		t.Fatalf("unexpected DeleteFile resp: %T", resp)
+	}
+
+	// Delete directory
+	if resp, err := svc.DeleteDirectory(ctx, oapi.DeleteDirectoryRequestObject{Body: &oapi.DeletePathRequest{Path: dirPath}}); err != nil {
+		t.Fatalf("DeleteDirectory error: %v", err)
+	} else if _, ok := resp.(oapi.DeleteDirectory200Response); !ok {
+		t.Fatalf("unexpected DeleteDirectory resp: %T", resp)
 	}
 }

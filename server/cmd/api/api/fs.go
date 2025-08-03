@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
+
+	"os/user"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/nrednav/cuid2"
@@ -34,36 +37,6 @@ func addRecursive(w *fsnotify.Watcher, root string) error {
 		}
 		return nil
 	})
-}
-
-// DownloadFile serves the requested path as an octet-stream.
-func (s *ApiService) DownloadFile(ctx context.Context, req oapi.DownloadFileRequestObject) (oapi.DownloadFileResponseObject, error) {
-	log := logger.FromContext(ctx)
-	path := req.Params.Path
-	if path == "" {
-		return oapi.DownloadFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return oapi.DownloadFile404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "file not found"}}, nil
-		}
-		log.Error("failed to open file", "err", err, "path", path)
-		return oapi.DownloadFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to open file"}}, nil
-	}
-
-	stat, err := f.Stat()
-	if err != nil {
-		f.Close()
-		log.Error("failed to stat file", "err", err, "path", path)
-		return oapi.DownloadFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to stat file"}}, nil
-	}
-
-	return oapi.DownloadFile200ApplicationoctetStreamResponse{
-		Body:          f,
-		ContentLength: stat.Size(),
-	}, nil
 }
 
 // ReadFile returns the contents of a file specified by the path param.
@@ -128,55 +101,199 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 	return oapi.WriteFile201Response{}, nil
 }
 
-// UploadFiles stores one or more files provided in a multipart form. This implementation
-// supports parts named "file" and an accompanying part named "dest_path" which must appear
-// before its corresponding file part.
-func (s *ApiService) UploadFiles(ctx context.Context, req oapi.UploadFilesRequestObject) (oapi.UploadFilesResponseObject, error) {
+// CreateDirectory creates a new directory (recursively) with an optional mode.
+func (s *ApiService) CreateDirectory(ctx context.Context, req oapi.CreateDirectoryRequestObject) (oapi.CreateDirectoryResponseObject, error) {
 	log := logger.FromContext(ctx)
 	if req.Body == nil {
-		return oapi.UploadFiles400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "multipart body required"}}, nil
+		return oapi.CreateDirectory400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
 	}
-
-	reader := req.Body
-	var currentDest string
-	for {
-		part, err := reader.NextPart()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			log.Error("failed to read multipart part", "err", err)
-			return oapi.UploadFiles400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid multipart payload"}}, nil
-		}
-		switch part.FormName() {
-		case "dest_path":
-			data, _ := io.ReadAll(part)
-			currentDest = string(data)
-		case "file":
-			if currentDest == "" {
-				return oapi.UploadFiles400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "dest_path must precede each file part"}}, nil
-			}
-			if err := os.MkdirAll(filepath.Dir(currentDest), 0o755); err != nil {
-				return oapi.UploadFiles400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("failed to create directories: %v", err)}}, nil
-			}
-			out, err := os.Create(currentDest)
-			if err != nil {
-				log.Error("failed to create file for upload", "err", err, "path", currentDest)
-				return oapi.UploadFiles500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create file"}}, nil
-			}
-			if _, err := io.Copy(out, part); err != nil {
-				out.Close()
-				log.Error("failed to write uploaded data", "err", err, "path", currentDest)
-				return oapi.UploadFiles500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write file"}}, nil
-			}
-			out.Close()
-			currentDest = "" // reset for next file
-		default:
-			// ignore unknown parts
+	path := req.Body.Path
+	if path == "" {
+		return oapi.CreateDirectory400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	// default to 0o755
+	perm := os.FileMode(0o755)
+	if req.Body.Mode != nil {
+		if v, err := strconv.ParseUint(*req.Body.Mode, 8, 32); err == nil {
+			perm = os.FileMode(v)
 		}
 	}
+	if err := os.MkdirAll(path, perm); err != nil {
+		log.Error("failed to create directory", "err", err, "path", path)
+		return oapi.CreateDirectory500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create directory"}}, nil
+	}
+	return oapi.CreateDirectory201Response{}, nil
+}
 
-	return oapi.UploadFiles201Response{}, nil
+// DeleteFile removes a single file.
+func (s *ApiService) DeleteFile(ctx context.Context, req oapi.DeleteFileRequestObject) (oapi.DeleteFileResponseObject, error) {
+	log := logger.FromContext(ctx)
+	if req.Body == nil {
+		return oapi.DeleteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+	path := req.Body.Path
+	if path == "" {
+		return oapi.DeleteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.DeleteFile404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "file not found"}}, nil
+		}
+		log.Error("failed to delete file", "err", err, "path", path)
+		return oapi.DeleteFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to delete file"}}, nil
+	}
+	return oapi.DeleteFile200Response{}, nil
+}
+
+// DeleteDirectory removes a directory and its contents.
+func (s *ApiService) DeleteDirectory(ctx context.Context, req oapi.DeleteDirectoryRequestObject) (oapi.DeleteDirectoryResponseObject, error) {
+	log := logger.FromContext(ctx)
+	if req.Body == nil {
+		return oapi.DeleteDirectory400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+	path := req.Body.Path
+	if path == "" {
+		return oapi.DeleteDirectory400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	if err := os.RemoveAll(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.DeleteDirectory404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "directory not found"}}, nil
+		}
+		log.Error("failed to delete directory", "err", err, "path", path)
+		return oapi.DeleteDirectory500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to delete directory"}}, nil
+	}
+	return oapi.DeleteDirectory200Response{}, nil
+}
+
+// ListFiles returns FileInfo entries for the contents of a directory.
+func (s *ApiService) ListFiles(ctx context.Context, req oapi.ListFilesRequestObject) (oapi.ListFilesResponseObject, error) {
+	log := logger.FromContext(ctx)
+	path := req.Params.Path
+	if path == "" {
+		return oapi.ListFiles400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.ListFiles404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "directory not found"}}, nil
+		}
+		log.Error("failed to read directory", "err", err, "path", path)
+		return oapi.ListFiles500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read directory"}}, nil
+	}
+	var list oapi.ListFiles
+	for _, entry := range entries {
+		info, _ := entry.Info()
+		fi := oapi.FileInfo{
+			Name:      entry.Name(),
+			Path:      filepath.Join(path, entry.Name()),
+			IsDir:     entry.IsDir(),
+			SizeBytes: 0,
+			ModTime:   time.Time{},
+			Mode:      "",
+		}
+		if info != nil {
+			fi.SizeBytes = int(info.Size())
+			fi.ModTime = info.ModTime()
+			fi.Mode = info.Mode().String()
+		}
+		list = append(list, fi)
+	}
+	return oapi.ListFiles200JSONResponse(list), nil
+}
+
+// FileInfo returns metadata about a file or directory.
+func (s *ApiService) FileInfo(ctx context.Context, req oapi.FileInfoRequestObject) (oapi.FileInfoResponseObject, error) {
+	log := logger.FromContext(ctx)
+	path := req.Params.Path
+	if path == "" {
+		return oapi.FileInfo400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.FileInfo404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "path not found"}}, nil
+		}
+		log.Error("failed to stat path", "err", err, "path", path)
+		return oapi.FileInfo500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to stat path"}}, nil
+	}
+	fi := oapi.FileInfo{
+		Name:      filepath.Base(path),
+		Path:      path,
+		IsDir:     stat.IsDir(),
+		SizeBytes: int(stat.Size()),
+		ModTime:   stat.ModTime(),
+		Mode:      stat.Mode().String(),
+	}
+	return oapi.FileInfo200JSONResponse(fi), nil
+}
+
+// MovePath renames or moves a file/directory.
+func (s *ApiService) MovePath(ctx context.Context, req oapi.MovePathRequestObject) (oapi.MovePathResponseObject, error) {
+	log := logger.FromContext(ctx)
+	if req.Body == nil {
+		return oapi.MovePath400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+	src := req.Body.SrcPath
+	dst := req.Body.DestPath
+	if src == "" || dst == "" {
+		return oapi.MovePath400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "src_path and dest_path required"}}, nil
+	}
+	if err := os.Rename(src, dst); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.MovePath404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "source not found"}}, nil
+		}
+		log.Error("failed to move path", "err", err, "src", src, "dst", dst)
+		return oapi.MovePath500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to move path"}}, nil
+	}
+	return oapi.MovePath200Response{}, nil
+}
+
+// SetFilePermissions changes mode (and optionally owner/group) of a path.
+func (s *ApiService) SetFilePermissions(ctx context.Context, req oapi.SetFilePermissionsRequestObject) (oapi.SetFilePermissionsResponseObject, error) {
+	log := logger.FromContext(ctx)
+	if req.Body == nil {
+		return oapi.SetFilePermissions400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+	path := req.Body.Path
+	if path == "" {
+		return oapi.SetFilePermissions400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+	// parse mode
+	modeVal, err := strconv.ParseUint(req.Body.Mode, 8, 32)
+	if err != nil {
+		return oapi.SetFilePermissions400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid mode"}}, nil
+	}
+	if err := os.Chmod(path, os.FileMode(modeVal)); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.SetFilePermissions404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "path not found"}}, nil
+		}
+		log.Error("failed to chmod", "err", err, "path", path)
+		return oapi.SetFilePermissions500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod"}}, nil
+	}
+	// chown if owner/group provided (best effort)
+	if req.Body.Owner != nil || req.Body.Group != nil {
+		uid := -1
+		gid := -1
+		if req.Body.Owner != nil {
+			if u, err := user.Lookup(*req.Body.Owner); err == nil {
+				if id, _ := strconv.Atoi(u.Uid); id >= 0 {
+					uid = id
+				}
+			}
+		}
+		if req.Body.Group != nil {
+			if g, err := user.LookupGroup(*req.Body.Group); err == nil {
+				if id, _ := strconv.Atoi(g.Gid); id >= 0 {
+					gid = id
+				}
+			}
+		}
+		// only attempt if at least one resolved
+		if uid != -1 || gid != -1 {
+			_ = os.Chown(path, uid, gid) // ignore error (likely EPERM) to keep API simpler
+		}
+	}
+	return oapi.SetFilePermissions200Response{}, nil
 }
 
 // StartFsWatch is not implemented in this basic filesystem handler. It returns a 400 error to the client.
