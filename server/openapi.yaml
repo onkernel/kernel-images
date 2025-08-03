@@ -154,6 +154,180 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  # File system operations
+  /fs/file:
+    get:
+      summary: Read file contents
+      operationId: readFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Absolute or relative file path to read.
+      responses:
+        "200":
+          description: File read successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    put:
+      summary: Write or create a file
+      operationId: writeFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Destination file path.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: File written successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /fs/upload:
+    post:
+      summary: Upload one or more files
+      operationId: uploadFiles
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      file:
+                        type: string
+                        format: binary
+                      dest_path:
+                        type: string
+                    required: [file, dest_path]
+              required: [files]
+      responses:
+        "201":
+          description: Files uploaded successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /fs/download:
+    get:
+      summary: Download a file
+      operationId: downloadFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File downloaded successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /fs/watch:
+    post:
+      summary: Watch a directory for changes
+      operationId: startFsWatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartFsWatchRequest"
+      responses:
+        "201":
+          description: Watch started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  watch_id:
+                    type: string
+                    description: Unique identifier for the directory watch
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /fs/watch/{watch_id}/events:
+    get:
+      summary: Stream filesystem events for a watch
+      operationId: streamFsEvents
+      parameters:
+        - name: watch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream of filesystem events
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/FileSystemEvent"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /fs/watch/{watch_id}:
+    delete:
+      summary: Stop watching a directory
+      operationId: stopFsWatch
+      parameters:
+        - name: watch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Watch stopped successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 components:
   schemas:
     StartRecordingRequest:
@@ -262,6 +436,37 @@ components:
           items:
             type: string
       additionalProperties: false
+    StartFsWatchRequest:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: string
+          description: Directory to watch.
+        recursive:
+          type: boolean
+          description: Whether to watch recursively.
+          default: false
+      additionalProperties: false
+    FileSystemEvent:
+      type: object
+      description: Filesystem change event.
+      required: [type, path]
+      properties:
+        type:
+          type: string
+          enum: [CREATE, WRITE, DELETE, RENAME]
+          description: Event type.
+        name:
+          type: string
+          description: Base name of the file or directory affected.
+        path:
+          type: string
+          description: Absolute path of the file or directory.
+        is_dir:
+          type: boolean
+          description: Whether the affected path is a directory.
     DeleteRecordingRequest:
       type: object
       properties:

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ClickMouseRequestButton.
@@ -37,6 +39,14 @@ const (
 	Click ClickMouseRequestClickType = "click"
 	Down  ClickMouseRequestClickType = "down"
 	Up    ClickMouseRequestClickType = "up"
+)
+
+// Defines values for FileSystemEventType.
+const (
+	CREATE FileSystemEventType = "CREATE"
+	DELETE FileSystemEventType = "DELETE"
+	RENAME FileSystemEventType = "RENAME"
+	WRITE  FileSystemEventType = "WRITE"
 )
 
 // ClickMouseRequest defines model for ClickMouseRequest.
@@ -77,6 +87,24 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// FileSystemEvent Filesystem change event.
+type FileSystemEvent struct {
+	// IsDir Whether the affected path is a directory.
+	IsDir *bool `json:"is_dir,omitempty"`
+
+	// Name Base name of the file or directory affected.
+	Name *string `json:"name,omitempty"`
+
+	// Path Absolute path of the file or directory.
+	Path string `json:"path"`
+
+	// Type Event type.
+	Type FileSystemEventType `json:"type"`
+}
+
+// FileSystemEventType Event type.
+type FileSystemEventType string
+
 // MoveMouseRequest defines model for MoveMouseRequest.
 type MoveMouseRequest struct {
 	// HoldKeys Modifier keys to hold during the move
@@ -98,6 +126,15 @@ type RecorderInfo struct {
 
 	// StartedAt Timestamp when recording started
 	StartedAt *time.Time `json:"started_at"`
+}
+
+// StartFsWatchRequest defines model for StartFsWatchRequest.
+type StartFsWatchRequest struct {
+	// Path Directory to watch.
+	Path string `json:"path"`
+
+	// Recursive Whether to watch recursively.
+	Recursive *bool `json:"recursive,omitempty"`
 }
 
 // StartRecordingRequest defines model for StartRecordingRequest.
@@ -136,6 +173,31 @@ type InternalError = Error
 // NotFoundError defines model for NotFoundError.
 type NotFoundError = Error
 
+// DownloadFileParams defines parameters for DownloadFile.
+type DownloadFileParams struct {
+	Path string `form:"path" json:"path"`
+}
+
+// ReadFileParams defines parameters for ReadFile.
+type ReadFileParams struct {
+	// Path Absolute or relative file path to read.
+	Path string `form:"path" json:"path"`
+}
+
+// WriteFileParams defines parameters for WriteFile.
+type WriteFileParams struct {
+	// Path Destination file path.
+	Path string `form:"path" json:"path"`
+}
+
+// UploadFilesMultipartBody defines parameters for UploadFiles.
+type UploadFilesMultipartBody struct {
+	Files []struct {
+		DestPath string             `json:"dest_path"`
+		File     openapi_types.File `json:"file"`
+	} `json:"files"`
+}
+
 // DownloadRecordingParams defines parameters for DownloadRecording.
 type DownloadRecordingParams struct {
 	// Id Optional recorder identifier. When omitted, the server uses the default recorder.
@@ -147,6 +209,12 @@ type ClickMouseJSONRequestBody = ClickMouseRequest
 
 // MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
 type MoveMouseJSONRequestBody = MoveMouseRequest
+
+// UploadFilesMultipartRequestBody defines body for UploadFiles for multipart/form-data ContentType.
+type UploadFilesMultipartRequestBody UploadFilesMultipartBody
+
+// StartFsWatchJSONRequestBody defines body for StartFsWatch for application/json ContentType.
+type StartFsWatchJSONRequestBody = StartFsWatchRequest
 
 // DeleteRecordingJSONRequestBody defines body for DeleteRecording for application/json ContentType.
 type DeleteRecordingJSONRequestBody = DeleteRecordingRequest
@@ -240,6 +308,29 @@ type ClientInterface interface {
 
 	MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DownloadFile request
+	DownloadFile(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReadFile request
+	ReadFile(ctx context.Context, params *ReadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// WriteFileWithBody request with any body
+	WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadFilesWithBody request with any body
+	UploadFilesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartFsWatchWithBody request with any body
+	StartFsWatchWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	StartFsWatch(ctx context.Context, body StartFsWatchJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StopFsWatch request
+	StopFsWatch(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StreamFsEvents request
+	StreamFsEvents(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteRecordingWithBody request with any body
 	DeleteRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -300,6 +391,102 @@ func (c *Client) MoveMouseWithBody(ctx context.Context, contentType string, body
 
 func (c *Client) MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMoveMouseRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DownloadFile(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadFileRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReadFile(ctx context.Context, params *ReadFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReadFileRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewWriteFileRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UploadFilesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadFilesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartFsWatchWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartFsWatchRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartFsWatch(ctx context.Context, body StartFsWatchJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartFsWatchRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StopFsWatch(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStopFsWatchRequest(c.Server, watchId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StreamFsEvents(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStreamFsEventsRequest(c.Server, watchId)
 	if err != nil {
 		return nil, err
 	}
@@ -482,6 +669,280 @@ func NewMoveMouseRequestWithBody(server string, contentType string, body io.Read
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDownloadFileRequest generates requests for DownloadFile
+func NewDownloadFileRequest(server string, params *DownloadFileParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/download")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReadFileRequest generates requests for ReadFile
+func NewReadFileRequest(server string, params *ReadFileParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/file")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewWriteFileRequestWithBody generates requests for WriteFile with any type of body
+func NewWriteFileRequestWithBody(server string, params *WriteFileParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/file")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUploadFilesRequestWithBody generates requests for UploadFiles with any type of body
+func NewUploadFilesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/upload")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewStartFsWatchRequest calls the generic StartFsWatch builder with application/json body
+func NewStartFsWatchRequest(server string, body StartFsWatchJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartFsWatchRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewStartFsWatchRequestWithBody generates requests for StartFsWatch with any type of body
+func NewStartFsWatchRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/watch")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewStopFsWatchRequest generates requests for StopFsWatch
+func NewStopFsWatchRequest(server string, watchId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "watch_id", runtime.ParamLocationPath, watchId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/watch/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStreamFsEventsRequest generates requests for StreamFsEvents
+func NewStreamFsEventsRequest(server string, watchId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "watch_id", runtime.ParamLocationPath, watchId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/watch/%s/events", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -735,6 +1196,29 @@ type ClientWithResponsesInterface interface {
 
 	MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
 
+	// DownloadFileWithResponse request
+	DownloadFileWithResponse(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*DownloadFileResponse, error)
+
+	// ReadFileWithResponse request
+	ReadFileWithResponse(ctx context.Context, params *ReadFileParams, reqEditors ...RequestEditorFn) (*ReadFileResponse, error)
+
+	// WriteFileWithBodyWithResponse request with any body
+	WriteFileWithBodyWithResponse(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteFileResponse, error)
+
+	// UploadFilesWithBodyWithResponse request with any body
+	UploadFilesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFilesResponse, error)
+
+	// StartFsWatchWithBodyWithResponse request with any body
+	StartFsWatchWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartFsWatchResponse, error)
+
+	StartFsWatchWithResponse(ctx context.Context, body StartFsWatchJSONRequestBody, reqEditors ...RequestEditorFn) (*StartFsWatchResponse, error)
+
+	// StopFsWatchWithResponse request
+	StopFsWatchWithResponse(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*StopFsWatchResponse, error)
+
+	// StreamFsEventsWithResponse request
+	StreamFsEventsWithResponse(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*StreamFsEventsResponse, error)
+
 	// DeleteRecordingWithBodyWithResponse request with any body
 	DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error)
 
@@ -797,6 +1281,171 @@ func (r MoveMouseResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r MoveMouseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DownloadFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReadFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r ReadFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReadFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type WriteFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r WriteFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r WriteFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UploadFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StartFsWatchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *struct {
+		// WatchId Unique identifier for the directory watch
+		WatchId *string `json:"watch_id,omitempty"`
+	}
+	JSON400 *BadRequestError
+	JSON404 *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r StartFsWatchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartFsWatchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StopFsWatchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r StopFsWatchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StopFsWatchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StreamFsEventsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+}
+
+// Status returns HTTPResponse.Status
+func (r StreamFsEventsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StreamFsEventsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -955,6 +1604,77 @@ func (c *ClientWithResponses) MoveMouseWithResponse(ctx context.Context, body Mo
 	return ParseMoveMouseResponse(rsp)
 }
 
+// DownloadFileWithResponse request returning *DownloadFileResponse
+func (c *ClientWithResponses) DownloadFileWithResponse(ctx context.Context, params *DownloadFileParams, reqEditors ...RequestEditorFn) (*DownloadFileResponse, error) {
+	rsp, err := c.DownloadFile(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadFileResponse(rsp)
+}
+
+// ReadFileWithResponse request returning *ReadFileResponse
+func (c *ClientWithResponses) ReadFileWithResponse(ctx context.Context, params *ReadFileParams, reqEditors ...RequestEditorFn) (*ReadFileResponse, error) {
+	rsp, err := c.ReadFile(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReadFileResponse(rsp)
+}
+
+// WriteFileWithBodyWithResponse request with arbitrary body returning *WriteFileResponse
+func (c *ClientWithResponses) WriteFileWithBodyWithResponse(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteFileResponse, error) {
+	rsp, err := c.WriteFileWithBody(ctx, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWriteFileResponse(rsp)
+}
+
+// UploadFilesWithBodyWithResponse request with arbitrary body returning *UploadFilesResponse
+func (c *ClientWithResponses) UploadFilesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFilesResponse, error) {
+	rsp, err := c.UploadFilesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadFilesResponse(rsp)
+}
+
+// StartFsWatchWithBodyWithResponse request with arbitrary body returning *StartFsWatchResponse
+func (c *ClientWithResponses) StartFsWatchWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartFsWatchResponse, error) {
+	rsp, err := c.StartFsWatchWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartFsWatchResponse(rsp)
+}
+
+func (c *ClientWithResponses) StartFsWatchWithResponse(ctx context.Context, body StartFsWatchJSONRequestBody, reqEditors ...RequestEditorFn) (*StartFsWatchResponse, error) {
+	rsp, err := c.StartFsWatch(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartFsWatchResponse(rsp)
+}
+
+// StopFsWatchWithResponse request returning *StopFsWatchResponse
+func (c *ClientWithResponses) StopFsWatchWithResponse(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*StopFsWatchResponse, error) {
+	rsp, err := c.StopFsWatch(ctx, watchId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStopFsWatchResponse(rsp)
+}
+
+// StreamFsEventsWithResponse request returning *StreamFsEventsResponse
+func (c *ClientWithResponses) StreamFsEventsWithResponse(ctx context.Context, watchId string, reqEditors ...RequestEditorFn) (*StreamFsEventsResponse, error) {
+	rsp, err := c.StreamFsEvents(ctx, watchId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStreamFsEventsResponse(rsp)
+}
+
 // DeleteRecordingWithBodyWithResponse request with arbitrary body returning *DeleteRecordingResponse
 func (c *ClientWithResponses) DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error) {
 	rsp, err := c.DeleteRecordingWithBody(ctx, contentType, body, reqEditors...)
@@ -1084,6 +1804,247 @@ func ParseMoveMouseResponse(rsp *http.Response) (*MoveMouseResponse, error) {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadFileResponse parses an HTTP response from a DownloadFileWithResponse call
+func ParseDownloadFileResponse(rsp *http.Response) (*DownloadFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReadFileResponse parses an HTTP response from a ReadFileWithResponse call
+func ParseReadFileResponse(rsp *http.Response) (*ReadFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReadFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseWriteFileResponse parses an HTTP response from a WriteFileWithResponse call
+func ParseWriteFileResponse(rsp *http.Response) (*WriteFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &WriteFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadFilesResponse parses an HTTP response from a UploadFilesWithResponse call
+func ParseUploadFilesResponse(rsp *http.Response) (*UploadFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartFsWatchResponse parses an HTTP response from a StartFsWatchWithResponse call
+func ParseStartFsWatchResponse(rsp *http.Response) (*StartFsWatchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartFsWatchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest struct {
+			// WatchId Unique identifier for the directory watch
+			WatchId *string `json:"watch_id,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStopFsWatchResponse parses an HTTP response from a StopFsWatchWithResponse call
+func ParseStopFsWatchResponse(rsp *http.Response) (*StopFsWatchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StopFsWatchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStreamFsEventsResponse parses an HTTP response from a StreamFsEventsWithResponse call
+func ParseStreamFsEventsResponse(rsp *http.Response) (*StreamFsEventsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StreamFsEventsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
@@ -1284,6 +2245,27 @@ type ServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(w http.ResponseWriter, r *http.Request)
+	// Download a file
+	// (GET /fs/download)
+	DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams)
+	// Read file contents
+	// (GET /fs/file)
+	ReadFile(w http.ResponseWriter, r *http.Request, params ReadFileParams)
+	// Write or create a file
+	// (PUT /fs/file)
+	WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams)
+	// Upload one or more files
+	// (POST /fs/upload)
+	UploadFiles(w http.ResponseWriter, r *http.Request)
+	// Watch a directory for changes
+	// (POST /fs/watch)
+	StartFsWatch(w http.ResponseWriter, r *http.Request)
+	// Stop watching a directory
+	// (DELETE /fs/watch/{watch_id})
+	StopFsWatch(w http.ResponseWriter, r *http.Request, watchId string)
+	// Stream filesystem events for a watch
+	// (GET /fs/watch/{watch_id}/events)
+	StreamFsEvents(w http.ResponseWriter, r *http.Request, watchId string)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(w http.ResponseWriter, r *http.Request)
@@ -1314,6 +2296,48 @@ func (_ Unimplemented) ClickMouse(w http.ResponseWriter, r *http.Request) {
 // Move the mouse cursor to the specified coordinates on the host computer
 // (POST /computer/move_mouse)
 func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Download a file
+// (GET /fs/download)
+func (_ Unimplemented) DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Read file contents
+// (GET /fs/file)
+func (_ Unimplemented) ReadFile(w http.ResponseWriter, r *http.Request, params ReadFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Write or create a file
+// (PUT /fs/file)
+func (_ Unimplemented) WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Upload one or more files
+// (POST /fs/upload)
+func (_ Unimplemented) UploadFiles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Watch a directory for changes
+// (POST /fs/watch)
+func (_ Unimplemented) StartFsWatch(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Stop watching a directory
+// (DELETE /fs/watch/{watch_id})
+func (_ Unimplemented) StopFsWatch(w http.ResponseWriter, r *http.Request, watchId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Stream filesystem events for a watch
+// (GET /fs/watch/{watch_id}/events)
+func (_ Unimplemented) StreamFsEvents(w http.ResponseWriter, r *http.Request, watchId string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1375,6 +2399,186 @@ func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveMouse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadFileParams
+
+	// ------------- Required query parameter "path" -------------
+
+	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadFile(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadFile operation middleware
+func (siw *ServerInterfaceWrapper) ReadFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReadFileParams
+
+	// ------------- Required query parameter "path" -------------
+
+	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadFile(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// WriteFile operation middleware
+func (siw *ServerInterfaceWrapper) WriteFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WriteFileParams
+
+	// ------------- Required query parameter "path" -------------
+
+	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WriteFile(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadFiles operation middleware
+func (siw *ServerInterfaceWrapper) UploadFiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadFiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartFsWatch operation middleware
+func (siw *ServerInterfaceWrapper) StartFsWatch(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartFsWatch(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopFsWatch operation middleware
+func (siw *ServerInterfaceWrapper) StopFsWatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "watch_id" -------------
+	var watchId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "watch_id", chi.URLParam(r, "watch_id"), &watchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopFsWatch(w, r, watchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamFsEvents operation middleware
+func (siw *ServerInterfaceWrapper) StreamFsEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "watch_id" -------------
+	var watchId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "watch_id", chi.URLParam(r, "watch_id"), &watchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamFsEvents(w, r, watchId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1587,6 +2791,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/fs/download", wrapper.DownloadFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/fs/file", wrapper.ReadFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/fs/file", wrapper.WriteFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fs/upload", wrapper.UploadFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fs/watch", wrapper.StartFsWatch)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/fs/watch/{watch_id}", wrapper.StopFsWatch)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/fs/watch/{watch_id}/events", wrapper.StreamFsEvents)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/recording/delete", wrapper.DeleteRecording)
 	})
 	r.Group(func(r chi.Router) {
@@ -1677,6 +2902,288 @@ type MoveMouse500JSONResponse struct{ InternalErrorJSONResponse }
 func (response MoveMouse500JSONResponse) VisitMoveMouseResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadFileRequestObject struct {
+	Params DownloadFileParams
+}
+
+type DownloadFileResponseObject interface {
+	VisitDownloadFileResponse(w http.ResponseWriter) error
+}
+
+type DownloadFile200ApplicationoctetStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadFile200ApplicationoctetStreamResponse) VisitDownloadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadFile400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response DownloadFile400JSONResponse) VisitDownloadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadFile404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response DownloadFile404JSONResponse) VisitDownloadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReadFileRequestObject struct {
+	Params ReadFileParams
+}
+
+type ReadFileResponseObject interface {
+	VisitReadFileResponse(w http.ResponseWriter) error
+}
+
+type ReadFile200ApplicationoctetStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ReadFile200ApplicationoctetStreamResponse) VisitReadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ReadFile400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ReadFile400JSONResponse) VisitReadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ReadFile404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response ReadFile404JSONResponse) VisitReadFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type WriteFileRequestObject struct {
+	Params WriteFileParams
+	Body   io.Reader
+}
+
+type WriteFileResponseObject interface {
+	VisitWriteFileResponse(w http.ResponseWriter) error
+}
+
+type WriteFile201Response struct {
+}
+
+func (response WriteFile201Response) VisitWriteFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type WriteFile400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response WriteFile400JSONResponse) VisitWriteFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type WriteFile404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response WriteFile404JSONResponse) VisitWriteFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFilesRequestObject struct {
+	Body *multipart.Reader
+}
+
+type UploadFilesResponseObject interface {
+	VisitUploadFilesResponse(w http.ResponseWriter) error
+}
+
+type UploadFiles201Response struct {
+}
+
+func (response UploadFiles201Response) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type UploadFiles400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response UploadFiles400JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFiles404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response UploadFiles404JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFsWatchRequestObject struct {
+	Body *StartFsWatchJSONRequestBody
+}
+
+type StartFsWatchResponseObject interface {
+	VisitStartFsWatchResponse(w http.ResponseWriter) error
+}
+
+type StartFsWatch201JSONResponse struct {
+	// WatchId Unique identifier for the directory watch
+	WatchId *string `json:"watch_id,omitempty"`
+}
+
+func (response StartFsWatch201JSONResponse) VisitStartFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFsWatch400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response StartFsWatch400JSONResponse) VisitStartFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFsWatch404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response StartFsWatch404JSONResponse) VisitStartFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StopFsWatchRequestObject struct {
+	WatchId string `json:"watch_id"`
+}
+
+type StopFsWatchResponseObject interface {
+	VisitStopFsWatchResponse(w http.ResponseWriter) error
+}
+
+type StopFsWatch204Response struct {
+}
+
+func (response StopFsWatch204Response) VisitStopFsWatchResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type StopFsWatch400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response StopFsWatch400JSONResponse) VisitStopFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StopFsWatch404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response StopFsWatch404JSONResponse) VisitStopFsWatchResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StreamFsEventsRequestObject struct {
+	WatchId string `json:"watch_id"`
+}
+
+type StreamFsEventsResponseObject interface {
+	VisitStreamFsEventsResponse(w http.ResponseWriter) error
+}
+
+type StreamFsEvents200ResponseHeaders struct {
+	XSSEContentType string
+}
+
+type StreamFsEvents200TexteventStreamResponse struct {
+	Body          io.Reader
+	Headers       StreamFsEvents200ResponseHeaders
+	ContentLength int64
+}
+
+func (response StreamFsEvents200TexteventStreamResponse) VisitStreamFsEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("X-SSE-Content-Type", fmt.Sprint(response.Headers.XSSEContentType))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type StreamFsEvents400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response StreamFsEvents400JSONResponse) VisitStreamFsEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StreamFsEvents404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response StreamFsEvents404JSONResponse) VisitStreamFsEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1910,6 +3417,27 @@ type StrictServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
+	// Download a file
+	// (GET /fs/download)
+	DownloadFile(ctx context.Context, request DownloadFileRequestObject) (DownloadFileResponseObject, error)
+	// Read file contents
+	// (GET /fs/file)
+	ReadFile(ctx context.Context, request ReadFileRequestObject) (ReadFileResponseObject, error)
+	// Write or create a file
+	// (PUT /fs/file)
+	WriteFile(ctx context.Context, request WriteFileRequestObject) (WriteFileResponseObject, error)
+	// Upload one or more files
+	// (POST /fs/upload)
+	UploadFiles(ctx context.Context, request UploadFilesRequestObject) (UploadFilesResponseObject, error)
+	// Watch a directory for changes
+	// (POST /fs/watch)
+	StartFsWatch(ctx context.Context, request StartFsWatchRequestObject) (StartFsWatchResponseObject, error)
+	// Stop watching a directory
+	// (DELETE /fs/watch/{watch_id})
+	StopFsWatch(ctx context.Context, request StopFsWatchRequestObject) (StopFsWatchResponseObject, error)
+	// Stream filesystem events for a watch
+	// (GET /fs/watch/{watch_id}/events)
+	StreamFsEvents(ctx context.Context, request StreamFsEventsRequestObject) (StreamFsEventsResponseObject, error)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(ctx context.Context, request DeleteRecordingRequestObject) (DeleteRecordingResponseObject, error)
@@ -2011,6 +3539,200 @@ func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveMouseResponseObject); ok {
 		if err := validResponse.VisitMoveMouseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadFile operation middleware
+func (sh *strictHandler) DownloadFile(w http.ResponseWriter, r *http.Request, params DownloadFileParams) {
+	var request DownloadFileRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadFile(ctx, request.(DownloadFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadFileResponseObject); ok {
+		if err := validResponse.VisitDownloadFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadFile operation middleware
+func (sh *strictHandler) ReadFile(w http.ResponseWriter, r *http.Request, params ReadFileParams) {
+	var request ReadFileRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadFile(ctx, request.(ReadFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadFileResponseObject); ok {
+		if err := validResponse.VisitReadFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WriteFile operation middleware
+func (sh *strictHandler) WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams) {
+	var request WriteFileRequestObject
+
+	request.Params = params
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WriteFile(ctx, request.(WriteFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WriteFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WriteFileResponseObject); ok {
+		if err := validResponse.VisitWriteFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadFiles operation middleware
+func (sh *strictHandler) UploadFiles(w http.ResponseWriter, r *http.Request) {
+	var request UploadFilesRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadFiles(ctx, request.(UploadFilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadFiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadFilesResponseObject); ok {
+		if err := validResponse.VisitUploadFilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartFsWatch operation middleware
+func (sh *strictHandler) StartFsWatch(w http.ResponseWriter, r *http.Request) {
+	var request StartFsWatchRequestObject
+
+	var body StartFsWatchJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartFsWatch(ctx, request.(StartFsWatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartFsWatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartFsWatchResponseObject); ok {
+		if err := validResponse.VisitStartFsWatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopFsWatch operation middleware
+func (sh *strictHandler) StopFsWatch(w http.ResponseWriter, r *http.Request, watchId string) {
+	var request StopFsWatchRequestObject
+
+	request.WatchId = watchId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopFsWatch(ctx, request.(StopFsWatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopFsWatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopFsWatchResponseObject); ok {
+		if err := validResponse.VisitStopFsWatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamFsEvents operation middleware
+func (sh *strictHandler) StreamFsEvents(w http.ResponseWriter, r *http.Request, watchId string) {
+	var request StreamFsEventsRequestObject
+
+	request.WatchId = watchId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamFsEvents(ctx, request.(StreamFsEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamFsEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamFsEventsResponseObject); ok {
+		if err := validResponse.VisitStreamFsEventsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2164,34 +3886,45 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"AA==",
+	"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",
+	"KrulH7sywgaplX7cRf4XAAD//5SX97iTKwAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
