@@ -346,8 +346,13 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 
 	// goroutine to forward events
 	go func() {
+		defer close(w.events) // ensure channel is closed exactly once when goroutine exits
 		for {
 			select {
+			case <-ctx.Done():
+				// Context cancelled – stop watching to avoid leaks
+				watcher.Close()
+				return
 			case ev, ok := <-watcher.Events:
 				if !ok {
 					return
@@ -372,7 +377,9 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 
 				// if recursive and new directory created, add watch
 				if recursive && evType == "CREATE" && isDir {
-					watcher.Add(ev.Name)
+					if err := watcher.Add(ev.Name); err != nil {
+						log.Error("failed to watch new directory", "err", err, "path", ev.Name)
+					}
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -398,7 +405,7 @@ func (s *ApiService) StopFsWatch(ctx context.Context, req oapi.StopFsWatchReques
 	if ok {
 		delete(s.watches, id)
 		w.watcher.Close()
-		close(w.events)
+		// channel will be closed by the event forwarding goroutine
 	}
 	s.watchMu.Unlock()
 
