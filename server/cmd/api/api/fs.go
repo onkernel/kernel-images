@@ -344,15 +344,28 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 		watcher:   watcher,
 	}
 
-	// goroutine to forward events
-	go func() {
-		defer close(w.events) // ensure channel is closed exactly once when goroutine exits
+	// Start background goroutine to forward events. We intentionally decouple
+	// its lifetime from the HTTP request context so that the watch continues
+	// to run until it is explicitly stopped via StopFsWatch or until watcher
+	// channels are closed.
+	go func(s *ApiService, id string) {
+		// Ensure resources are cleaned up no matter how the goroutine exits.
+		defer func() {
+			// Best-effort close (idempotent).
+			watcher.Close()
+
+			// Remove stale entry to avoid map/chan leak if the watch stops on
+			// its own (e.g. underlying fs error, watcher overflow, etc.). It
+			// is safe to call delete even if StopFsWatch already removed it.
+			s.watchMu.Lock()
+			delete(s.watches, id)
+			s.watchMu.Unlock()
+
+			close(w.events) // close after map cleanup so readers can finish
+		}()
+
 		for {
 			select {
-			case <-ctx.Done():
-				// Context cancelled – stop watching to avoid leaks
-				watcher.Close()
-				return
 			case ev, ok := <-watcher.Events:
 				if !ok {
 					return
@@ -375,7 +388,7 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 				name := filepath.Base(ev.Name)
 				w.events <- oapi.FileSystemEvent{Type: evType, Path: ev.Name, Name: &name, IsDir: &isDir}
 
-				// if recursive and new directory created, add watch
+				// If recursive and new directory created, add watch.
 				if recursive && evType == "CREATE" && isDir {
 					if err := watcher.Add(ev.Name); err != nil {
 						log.Error("failed to watch new directory", "err", err, "path", ev.Name)
@@ -388,7 +401,7 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 				log.Error("fsnotify error", "err", err)
 			}
 		}
-	}()
+	}(s, watchID)
 
 	s.watchMu.Lock()
 	s.watches[watchID] = w
