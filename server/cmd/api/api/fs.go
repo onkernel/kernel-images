@@ -86,7 +86,16 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 		return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to create directories"}}, nil
 	}
 
-	f, err := os.Create(path)
+	// determine desired file mode (default 0o644)
+	perm := os.FileMode(0o644)
+	if req.Params.Mode != nil {
+		if v, err := strconv.ParseUint(*req.Params.Mode, 8, 32); err == nil {
+			perm = os.FileMode(v)
+		}
+	}
+
+	// open the file with the specified permissions
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		log.Error("failed to create file", "err", err, "path", path)
 		return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to create file"}}, nil
