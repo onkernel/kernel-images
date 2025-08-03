@@ -363,6 +363,12 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 		watcher:   watcher,
 	}
 
+	// Register the watch before starting the forwarding goroutine to avoid a
+	// race where the goroutine might exit before it is added to the map.
+	s.watchMu.Lock()
+	s.watches[watchID] = w
+	s.watchMu.Unlock()
+
 	// Start background goroutine to forward events. We intentionally decouple
 	// its lifetime from the HTTP request context so that the watch continues
 	// to run until it is explicitly stopped via StopFsWatch or until watcher
@@ -405,7 +411,13 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 				info, _ := os.Stat(ev.Name)
 				isDir := info != nil && info.IsDir()
 				name := filepath.Base(ev.Name)
-				w.events <- oapi.FileSystemEvent{Type: evType, Path: ev.Name, Name: &name, IsDir: &isDir}
+				// Attempt a non-blocking send so that event production never blocks
+				// even if the consumer is slow or absent. When the buffer is full we
+				// simply drop the event, preferring liveness over completeness.
+				select {
+				case w.events <- oapi.FileSystemEvent{Type: evType, Path: ev.Name, Name: &name, IsDir: &isDir}:
+				default:
+				}
 
 				// If recursive and new directory created, add watch.
 				if recursive && evType == "CREATE" && isDir {
@@ -421,10 +433,6 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 			}
 		}
 	}(s, watchID)
-
-	s.watchMu.Lock()
-	s.watches[watchID] = w
-	s.watchMu.Unlock()
 
 	return oapi.StartFsWatch201JSONResponse{WatchId: &watchID}, nil
 }
