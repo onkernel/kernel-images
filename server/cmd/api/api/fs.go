@@ -294,14 +294,14 @@ func (s *ApiService) SetFilePermissions(ctx context.Context, req oapi.SetFilePer
 		gid := -1
 		if req.Body.Owner != nil {
 			if u, err := user.Lookup(*req.Body.Owner); err == nil {
-				if id, _ := strconv.Atoi(u.Uid); id >= 0 {
+				if id, err := strconv.Atoi(u.Uid); err == nil && id >= 0 {
 					uid = id
 				}
 			}
 		}
 		if req.Body.Group != nil {
 			if g, err := user.LookupGroup(*req.Body.Group); err == nil {
-				if id, _ := strconv.Atoi(g.Gid); id >= 0 {
+				if id, err := strconv.Atoi(g.Gid); err == nil && id >= 0 {
 					gid = id
 				}
 			}
