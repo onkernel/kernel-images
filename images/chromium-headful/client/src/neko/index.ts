@@ -149,7 +149,12 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
 
     if (heartbeat_interval > 0) {
       if (this._ws_heartbeat) clearInterval(this._ws_heartbeat)
-      this._ws_heartbeat = window.setInterval(() => this.sendMessage(EVENT.CLIENT.HEARTBEAT), heartbeat_interval * 1000)
+      this._ws_heartbeat = window.setInterval(() => {
+        this.emit('debug', `sending client/heartbeat`)
+        this.sendMessage(EVENT.CLIENT.HEARTBEAT)
+        this.emit('debug', `sending chat/message`)
+        this.sendMessage(EVENT.CHAT.MESSAGE, { content: `heartbeat/fake [${Date.now()}]` })
+      }, heartbeat_interval * 1000)
     }
   }
 

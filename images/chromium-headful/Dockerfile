@@ -32,7 +32,7 @@ RUN set -eux; \
     make -j$(nproc); \
     make install;
 
-FROM ghcr.io/m1k1o/neko/chromium:3.0.6 AS neko
+FROM ghcr.io/onkernel/neko/base:3.0.6-v1.0 AS neko
 FROM docker.io/ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
