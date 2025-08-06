@@ -63,7 +63,7 @@ func (s *ApiService) ReadFile(ctx context.Context, req oapi.ReadFileRequestObjec
 			return oapi.ReadFile404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "file not found"}}, nil
 		}
 		log.Error("failed to open file", "err", err, "path", path)
-		return oapi.ReadFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to open file"}}, nil
+		return oapi.ReadFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unable to open file"}}, nil
 	}
 
 	stat, err := f.Stat()
@@ -93,7 +93,7 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 	// create parent directories if necessary
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		log.Error("failed to create directories", "err", err, "path", path)
-		return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to create directories"}}, nil
+		return oapi.WriteFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unable to create directories"}}, nil
 	}
 
 	// determine desired file mode (default 0o644)
@@ -111,7 +111,7 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
 	if err != nil {
 		log.Error("failed to create file", "err", err, "path", path)
-		return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to create file"}}, nil
+		return oapi.WriteFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unable to create file"}}, nil
 	}
 	defer f.Close()
 
