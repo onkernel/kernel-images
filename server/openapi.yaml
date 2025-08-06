@@ -183,7 +183,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/write_file:
-    post:
+    put:
       summary: Write or create a file
       operationId: writeFile
       parameters:
@@ -245,7 +245,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/create_directory:
-    post:
+    put:
       summary: Create a new directory
       operationId: createDirectory
       requestBody:
@@ -263,7 +263,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/delete_file:
-    post:
+    put:
       summary: Delete a file
       operationId: deleteFile
       requestBody:
@@ -283,7 +283,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/delete_directory:
-    post:
+    put:
       summary: Delete a directory
       operationId: deleteDirectory
       requestBody:
@@ -303,7 +303,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/set_file_permissions:
-    post:
+    put:
       summary: Set file or directory permissions/ownership
       operationId: setFilePermissions
       requestBody:
@@ -349,7 +349,7 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /fs/move:
-    post:
+    put:
       summary: Move or rename a file or directory
       operationId: movePath
       requestBody:

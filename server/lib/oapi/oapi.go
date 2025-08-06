@@ -923,7 +923,7 @@ func NewCreateDirectoryRequestWithBody(server string, contentType string, body i
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -963,7 +963,7 @@ func NewDeleteDirectoryRequestWithBody(server string, contentType string, body i
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -1003,7 +1003,7 @@ func NewDeleteFileRequestWithBody(server string, contentType string, body io.Rea
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -1133,7 +1133,7 @@ func NewMovePathRequestWithBody(server string, contentType string, body io.Reade
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -1218,7 +1218,7 @@ func NewSetFilePermissionsRequestWithBody(server string, contentType string, bod
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -1389,7 +1389,7 @@ func NewWriteFileRequestWithBody(server string, params *WriteFileParams, content
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -3192,13 +3192,13 @@ type ServerInterface interface {
 	// (POST /computer/move_mouse)
 	MoveMouse(w http.ResponseWriter, r *http.Request)
 	// Create a new directory
-	// (POST /fs/create_directory)
+	// (PUT /fs/create_directory)
 	CreateDirectory(w http.ResponseWriter, r *http.Request)
 	// Delete a directory
-	// (POST /fs/delete_directory)
+	// (PUT /fs/delete_directory)
 	DeleteDirectory(w http.ResponseWriter, r *http.Request)
 	// Delete a file
-	// (POST /fs/delete_file)
+	// (PUT /fs/delete_file)
 	DeleteFile(w http.ResponseWriter, r *http.Request)
 	// Get information about a file or directory
 	// (GET /fs/file_info)
@@ -3207,13 +3207,13 @@ type ServerInterface interface {
 	// (GET /fs/list_files)
 	ListFiles(w http.ResponseWriter, r *http.Request, params ListFilesParams)
 	// Move or rename a file or directory
-	// (POST /fs/move)
+	// (PUT /fs/move)
 	MovePath(w http.ResponseWriter, r *http.Request)
 	// Read file contents
 	// (GET /fs/read_file)
 	ReadFile(w http.ResponseWriter, r *http.Request, params ReadFileParams)
 	// Set file or directory permissions/ownership
-	// (POST /fs/set_file_permissions)
+	// (PUT /fs/set_file_permissions)
 	SetFilePermissions(w http.ResponseWriter, r *http.Request)
 	// Watch a directory for changes
 	// (POST /fs/watch)
@@ -3225,7 +3225,7 @@ type ServerInterface interface {
 	// (GET /fs/watch/{watch_id}/events)
 	StreamFsEvents(w http.ResponseWriter, r *http.Request, watchId string)
 	// Write or create a file
-	// (POST /fs/write_file)
+	// (PUT /fs/write_file)
 	WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
@@ -3261,19 +3261,19 @@ func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
 }
 
 // Create a new directory
-// (POST /fs/create_directory)
+// (PUT /fs/create_directory)
 func (_ Unimplemented) CreateDirectory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Delete a directory
-// (POST /fs/delete_directory)
+// (PUT /fs/delete_directory)
 func (_ Unimplemented) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // Delete a file
-// (POST /fs/delete_file)
+// (PUT /fs/delete_file)
 func (_ Unimplemented) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -3291,7 +3291,7 @@ func (_ Unimplemented) ListFiles(w http.ResponseWriter, r *http.Request, params 
 }
 
 // Move or rename a file or directory
-// (POST /fs/move)
+// (PUT /fs/move)
 func (_ Unimplemented) MovePath(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -3303,7 +3303,7 @@ func (_ Unimplemented) ReadFile(w http.ResponseWriter, r *http.Request, params R
 }
 
 // Set file or directory permissions/ownership
-// (POST /fs/set_file_permissions)
+// (PUT /fs/set_file_permissions)
 func (_ Unimplemented) SetFilePermissions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -3327,7 +3327,7 @@ func (_ Unimplemented) StreamFsEvents(w http.ResponseWriter, r *http.Request, wa
 }
 
 // Write or create a file
-// (POST /fs/write_file)
+// (PUT /fs/write_file)
 func (_ Unimplemented) WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
@@ -3880,13 +3880,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/create_directory", wrapper.CreateDirectory)
+		r.Put(options.BaseURL+"/fs/create_directory", wrapper.CreateDirectory)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/delete_directory", wrapper.DeleteDirectory)
+		r.Put(options.BaseURL+"/fs/delete_directory", wrapper.DeleteDirectory)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/delete_file", wrapper.DeleteFile)
+		r.Put(options.BaseURL+"/fs/delete_file", wrapper.DeleteFile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/fs/file_info", wrapper.FileInfo)
@@ -3895,13 +3895,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/fs/list_files", wrapper.ListFiles)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/move", wrapper.MovePath)
+		r.Put(options.BaseURL+"/fs/move", wrapper.MovePath)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/fs/read_file", wrapper.ReadFile)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/set_file_permissions", wrapper.SetFilePermissions)
+		r.Put(options.BaseURL+"/fs/set_file_permissions", wrapper.SetFilePermissions)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/fs/watch", wrapper.StartFsWatch)
@@ -3913,7 +3913,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/fs/watch/{watch_id}/events", wrapper.StreamFsEvents)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/fs/write_file", wrapper.WriteFile)
+		r.Put(options.BaseURL+"/fs/write_file", wrapper.WriteFile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/recording/delete", wrapper.DeleteRecording)
@@ -4804,13 +4804,13 @@ type StrictServerInterface interface {
 	// (POST /computer/move_mouse)
 	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
 	// Create a new directory
-	// (POST /fs/create_directory)
+	// (PUT /fs/create_directory)
 	CreateDirectory(ctx context.Context, request CreateDirectoryRequestObject) (CreateDirectoryResponseObject, error)
 	// Delete a directory
-	// (POST /fs/delete_directory)
+	// (PUT /fs/delete_directory)
 	DeleteDirectory(ctx context.Context, request DeleteDirectoryRequestObject) (DeleteDirectoryResponseObject, error)
 	// Delete a file
-	// (POST /fs/delete_file)
+	// (PUT /fs/delete_file)
 	DeleteFile(ctx context.Context, request DeleteFileRequestObject) (DeleteFileResponseObject, error)
 	// Get information about a file or directory
 	// (GET /fs/file_info)
@@ -4819,13 +4819,13 @@ type StrictServerInterface interface {
 	// (GET /fs/list_files)
 	ListFiles(ctx context.Context, request ListFilesRequestObject) (ListFilesResponseObject, error)
 	// Move or rename a file or directory
-	// (POST /fs/move)
+	// (PUT /fs/move)
 	MovePath(ctx context.Context, request MovePathRequestObject) (MovePathResponseObject, error)
 	// Read file contents
 	// (GET /fs/read_file)
 	ReadFile(ctx context.Context, request ReadFileRequestObject) (ReadFileResponseObject, error)
 	// Set file or directory permissions/ownership
-	// (POST /fs/set_file_permissions)
+	// (PUT /fs/set_file_permissions)
 	SetFilePermissions(ctx context.Context, request SetFilePermissionsRequestObject) (SetFilePermissionsResponseObject, error)
 	// Watch a directory for changes
 	// (POST /fs/watch)
@@ -4837,7 +4837,7 @@ type StrictServerInterface interface {
 	// (GET /fs/watch/{watch_id}/events)
 	StreamFsEvents(ctx context.Context, request StreamFsEventsRequestObject) (StreamFsEventsResponseObject, error)
 	// Write or create a file
-	// (POST /fs/write_file)
+	// (PUT /fs/write_file)
 	WriteFile(ctx context.Context, request WriteFileRequestObject) (WriteFileResponseObject, error)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
@@ -5437,54 +5437,54 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"LE/fSD4AAA==",
+	"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",
+	"//+ThhMPQj4AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

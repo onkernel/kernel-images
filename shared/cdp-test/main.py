@@ -383,7 +383,7 @@ async def _watch_filesystem(endpoint: str) -> None:
         try:
             # Ensure /tmp/downloads exists on the remote filesystem
             print(f"Ensuring /tmp/downloads exists via {fs_api_url}/fs/create_directory", file=sys.stderr)
-            async with session.post(
+            async with session.put(
                 f"{fs_api_url}/fs/create_directory",
                 json={"path": "/tmp/downloads", "recursive": True},
             ) as resp:
@@ -393,7 +393,7 @@ async def _watch_filesystem(endpoint: str) -> None:
 
             # Start watching the root directory
             print(f"Starting filesystem watch on /tmp/downloads at {fs_api_url}/fs/watch", file=sys.stderr)
-            async with session.post(
+            async with session.put(
                 f"{fs_api_url}/fs/watch",
                 json={"path": "/tmp/downloads", "recursive": True}
             ) as resp:
