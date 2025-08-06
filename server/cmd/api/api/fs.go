@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"sync"
+
 	"os/user"
 
 	"github.com/fsnotify/fsnotify"
@@ -23,6 +25,7 @@ type fsWatch struct {
 	recursive bool
 	events    chan oapi.FileSystemEvent
 	watcher   *fsnotify.Watcher
+	closeOnce sync.Once
 }
 
 // addRecursive walks the directory and registers all subdirectories when recursive=true.
@@ -35,6 +38,13 @@ func addRecursive(w *fsnotify.Watcher, root string) error {
 			return w.Add(path)
 		}
 		return nil
+	})
+}
+
+// Close safely shuts down the underlying fsnotify.Watcher exactly once.
+func (fw *fsWatch) Close() {
+	fw.closeOnce.Do(func() {
+		_ = fw.watcher.Close()
 	})
 }
 
@@ -393,7 +403,7 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 		// Ensure resources are cleaned up no matter how the goroutine exits.
 		defer func() {
 			// Best-effort close (idempotent).
-			watcher.Close()
+			w.Close()
 
 			// Remove stale entry to avoid map/chan leak if the watch stops on
 			// its own (e.g. underlying fs error, watcher overflow, etc.). It
@@ -435,10 +445,11 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 				default:
 				}
 
-				// If recursive and new directory created, add watch.
+				// If recursive and new directory created, add watch recursively so that
+				// any nested sub-directories are also monitored.
 				if recursive && evType == "CREATE" && isDir {
-					if err := watcher.Add(ev.Name); err != nil {
-						log.Error("failed to watch new directory", "err", err, "path", ev.Name)
+					if err := addRecursive(watcher, ev.Name); err != nil {
+						log.Error("failed to recursively watch new directory", "err", err, "path", ev.Name)
 					}
 				}
 			case err, ok := <-watcher.Errors:
@@ -460,7 +471,7 @@ func (s *ApiService) StopFsWatch(ctx context.Context, req oapi.StopFsWatchReques
 	w, ok := s.watches[id]
 	if ok {
 		delete(s.watches, id)
-		w.watcher.Close()
+		w.Close()
 		// channel will be closed by the event forwarding goroutine
 	}
 	s.watchMu.Unlock()
