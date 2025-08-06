@@ -292,17 +292,34 @@ func (s *ApiService) SetFilePermissions(ctx context.Context, req oapi.SetFilePer
 	if req.Body.Owner != nil || req.Body.Group != nil {
 		uid := -1
 		gid := -1
+		// Handle owner (uid)
 		if req.Body.Owner != nil {
-			if u, err := user.Lookup(*req.Body.Owner); err == nil {
-				if id, err := strconv.Atoi(u.Uid); err == nil && id >= 0 {
-					uid = id
+			ownerStr := *req.Body.Owner
+			// 1. Try parsing as a numeric UID directly
+			if id, err := strconv.Atoi(ownerStr); err == nil && id >= 0 {
+				uid = id
+			} else {
+				// 2. Fall back to name lookup
+				if u, err := user.Lookup(ownerStr); err == nil {
+					if id, err := strconv.Atoi(u.Uid); err == nil && id >= 0 {
+						uid = id
+					}
 				}
 			}
 		}
+
+		// Handle group (gid)
 		if req.Body.Group != nil {
-			if g, err := user.LookupGroup(*req.Body.Group); err == nil {
-				if id, err := strconv.Atoi(g.Gid); err == nil && id >= 0 {
-					gid = id
+			groupStr := *req.Body.Group
+			// 1. Try parsing as a numeric GID directly
+			if id, err := strconv.Atoi(groupStr); err == nil && id >= 0 {
+				gid = id
+			} else {
+				// 2. Fall back to name lookup
+				if g, err := user.LookupGroup(groupStr); err == nil {
+					if id, err := strconv.Atoi(g.Gid); err == nil && id >= 0 {
+						gid = id
+					}
 				}
 			}
 		}
