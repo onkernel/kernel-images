@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-source common.sh
+# Move to the script's directory so relative paths work regardless of the caller CWD
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+cd "$SCRIPT_DIR"
+source ../../shared/ensure-common-build-run-vars.sh chromium-headless
 source ../../shared/erofs-utils.sh
 
 # Ensure the mkfs.erofs tool is present
@@ -14,8 +17,10 @@ set -euo pipefail
 cd image/
 
 # Build the root file system
-source ../../shared/start-buildkit.sh
+source ../../../shared/start-buildkit.sh
 rm -rf ./.rootfs || true
+# Build the API binary
+source ../../../shared/build-server.sh "$(pwd)/bin"
 app_name=chromium-headless-build
 docker build --platform linux/amd64 -t "$IMAGE" .
 docker rm cnt-"$app_name" || true

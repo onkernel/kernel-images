@@ -4,9 +4,7 @@ set -ex -o pipefail
 # Move to the script's directory so relative paths work regardless of the caller CWD
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 cd "$SCRIPT_DIR"
-
-IMAGE="${IMAGE:-onkernel/kernel-cu-test:latest}"
-NAME="${NAME:-kernel-cu-test}"
+source ../../shared/ensure-common-build-run-vars.sh chromium-headful
 
 # Directory on host where recordings will be saved
 HOST_RECORDINGS_DIR="$SCRIPT_DIR/recordings"

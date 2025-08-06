@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-source common.sh
-name=chromium-headful-test
-kraft cloud inst rm $name || true
+# Move to the script's directory so relative paths work regardless of the caller CWD
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+cd "$SCRIPT_DIR"
+source ../../shared/ensure-common-build-run-vars.sh chromium-headful
+
+kraft cloud inst rm $NAME || true
 
 # Name for the Kraft Cloud volume that will carry Chromium flags
-volume_name="${name}-flags"
+volume_name="${NAME}-flags"
 
 # ------------------------------------------------------------------------------
 # Prepare Kraft Cloud volume containing Chromium flags
@@ -45,7 +49,7 @@ deploy_args=(
   -e HOME=/
   -e RUN_AS_ROOT="$RUN_AS_ROOT" \
   -v "$volume_name":/chromium
-  -n "$name"
+  -n "$NAME"
 )
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then

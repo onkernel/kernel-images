@@ -108,6 +108,9 @@ cleanup () {
   echo "Cleaning up..."
   kill -TERM $pid 2>/dev/null || true
   kill -TERM $pid2 2>/dev/null || true
+  if [[ -n "${pid3:-}" ]]; then
+    kill -TERM $pid3 2>/dev/null || true
+  fi
   if [ -n "${dbus_pid:-}" ]; then
     kill -TERM $dbus_pid 2>/dev/null || true
   fi
@@ -115,6 +118,7 @@ cleanup () {
 trap cleanup TERM INT
 pid=
 pid2=
+pid3=
 INTERNAL_PORT=9223
 CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
@@ -138,11 +142,34 @@ ncat \
   -l "$CHROME_PORT" \
   --keep-open & pid2=$!
 
+# Optionally start the kernel-images API server file i/o
+if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
+  echo "✨ Starting kernel-images API."
+  API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
+  API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
+  API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-${DISPLAY_NUM:-1}}"
+  API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
+  API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
+
+  mkdir -p "$API_OUTPUT_DIR"
+
+  PORT="$API_PORT" \
+  FRAME_RATE="$API_FRAME_RATE" \
+  DISPLAY_NUM="$API_DISPLAY_NUM" \
+  MAX_SIZE_MB="$API_MAX_SIZE_MB" \
+  OUTPUT_DIR="$API_OUTPUT_DIR" \
+  /usr/local/bin/kernel-images-api & pid3=$!
+fi
+
 # Wait for Chromium to exit; propagate its exit code
 wait "$pid"
 exit_code=$?
 echo "Chromium exited with code $exit_code"
 # Ensure ncat proxy is terminated
 kill -TERM "$pid2" 2>/dev/null || true
+# Ensure kernel-images API server is terminated
+if [[ -n "${pid3:-}" ]]; then
+  kill -TERM "$pid3" 2>/dev/null || true
+fi
 
 exit "$exit_code"

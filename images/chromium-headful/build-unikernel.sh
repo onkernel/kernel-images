@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
-source common.sh
-source ../../shared/erofs-utils.sh
+# Move to the script's directory so relative paths work regardless of the caller CWD
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+cd "$SCRIPT_DIR"
+source "$SCRIPT_DIR/../../shared/ensure-common-build-run-vars.sh" chromium-headful
+source "$SCRIPT_DIR/../../shared/erofs-utils.sh"
 
 # Ensure the mkfs.erofs tool is available
 if ! check_mkfs_erofs; then

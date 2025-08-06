@@ -34,6 +34,16 @@ RUN set -xe; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium ncat
 
+# Install FFmpeg (latest static build) for the recording server
+RUN set -eux; \
+    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
+    echo "Downloading FFmpeg static build from $URL"; \
+    curl -fsSL "$URL" -o /tmp/ffmpeg.tar.xz; \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
+    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
+    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
+    rm -rf /tmp/ffmpeg*
+
 # Remove upower to prevent spurious D-Bus activations and logs
 RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 
@@ -44,3 +54,7 @@ COPY ./xvfb_startup.sh /usr/bin/xvfb_startup.sh
 
 # Wrapper script set environment
 COPY ./wrapper.sh /usr/bin/wrapper.sh
+
+# Copy the kernel-images API binary built during the build process
+COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
+ENV WITH_KERNEL_IMAGES_API=false

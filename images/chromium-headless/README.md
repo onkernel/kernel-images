@@ -5,7 +5,6 @@
 1. Build and run the image, tagging it with a name you'd like to use:
 
 ```bash
-export IMAGE=onkernel/chromium-headless
 ./build-docker.sh
 ./run-docker.sh
 ```
@@ -25,7 +24,6 @@ uv run python main.py http://localhost:9222
 1. Build and run the image, tagging it with a name you'd like to use:
 
 ```bash
-export IMAGE=onkernel/chromium-headless
 export UKC_TOKEN=
 export UKC_METRO=
 # latest UKC also allows pushing to metro-specific indexes
