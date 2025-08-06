@@ -7,7 +7,7 @@ if [ -z "$IMAGE_TYPE" ]; then
     echo "e.g. source ensure-common-build-run-vars.sh chromium-headful"
     echo "This will set the defaults for the image name and test instance name"
     echo "You can override the defaults by setting the IMAGE and NAME variables"
-    exit 1
+    return 1
 fi
 IMAGE="${IMAGE:-onkernel/${IMAGE_TYPE}-test:latest}"
 NAME="${NAME:-${IMAGE_TYPE}-test}"
