@@ -43,7 +43,7 @@ plugins:
   enabled: false
 
 chat:
-  enabled: true
+  enabled: false
 
 filetransfer:
   enabled: false

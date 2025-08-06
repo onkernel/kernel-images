@@ -13,6 +13,7 @@ export const EVENT = {
     INIT: 'system/init',
     DISCONNECT: 'system/disconnect',
     ERROR: 'system/error',
+    PONG: 'system/pong',
   },
   CLIENT: {
     HEARTBEAT: 'client/heartbeat',
@@ -90,7 +91,7 @@ export type ControlEvents =
   | typeof EVENT.CONTROL.CLIPBOARD
   | typeof EVENT.CONTROL.KEYBOARD
 
-export type SystemEvents = typeof EVENT.SYSTEM.DISCONNECT
+export type SystemEvents = typeof EVENT.SYSTEM.DISCONNECT | typeof EVENT.SYSTEM.PONG
 export type ClientEvents = typeof EVENT.CLIENT.HEARTBEAT
 export type MemberEvents = typeof EVENT.MEMBER.LIST | typeof EVENT.MEMBER.CONNECTED | typeof EVENT.MEMBER.DISCONNECTED
 

@@ -152,8 +152,6 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
       this._ws_heartbeat = window.setInterval(() => {
         this.emit('debug', `sending client/heartbeat`)
         this.sendMessage(EVENT.CLIENT.HEARTBEAT)
-        this.emit('debug', `sending chat/message`)
-        this.sendMessage(EVENT.CHAT.MESSAGE, { content: `heartbeat/fake [${Date.now()}]` })
       }, heartbeat_interval * 1000)
     }
   }
@@ -181,6 +179,10 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
       icon: 'error',
       confirmButtonText: this.$vue.$t('connection.button_confirm') as string,
     })
+  }
+
+  protected [EVENT.SYSTEM.PONG]({ timestamp }: { timestamp: string }) {
+    // this.emit('debug', `received system/pong with timestamp: ${timestamp}`)
   }
 
   /////////////////////////////

@@ -25,6 +25,7 @@ export type WebSocketMessages =
   | ScreenResolutionMessage
   | ScreenConfigurationsMessage
   | ChatMessage
+  | SystemPongMessage
 
 export type WebSocketPayloads =
   | SignalProvidePayload
@@ -45,6 +46,7 @@ export type WebSocketPayloads =
   | AdminLockPayload
   | BroadcastStatusPayload
   | BroadcastCreatePayload
+  | SystemPongPayload
 
 export interface WebSocketMessage {
   event: WebSocketEvents | string
@@ -72,6 +74,14 @@ export interface SystemMessage extends WebSocketMessage, SystemMessagePayload {
 export interface SystemMessagePayload {
   title: string
   message: string
+}
+
+// system/pong
+export interface SystemPongMessage extends WebSocketMessage, SystemPongPayload {
+  event: typeof EVENT.SYSTEM.PONG
+}
+export interface SystemPongPayload {
+  timestamp: string
 }
 
 /*
