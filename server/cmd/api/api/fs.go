@@ -490,12 +490,18 @@ func (s *ApiService) StreamFsEvents(ctx context.Context, req oapi.StreamFsEvents
 		enc := json.NewEncoder(pw)
 		for ev := range w.events {
 			// Write SSE formatted event: data: <json>\n\n
-			pw.Write([]byte("data: "))
+			if _, err := pw.Write([]byte("data: ")); err != nil {
+				log.Error("failed to write SSE prefix", "err", err)
+				return
+			}
 			if err := enc.Encode(ev); err != nil {
 				log.Error("failed to encode fs event", "err", err)
 				return
 			}
-			pw.Write([]byte("\n"))
+			if _, err := pw.Write([]byte("\n")); err != nil {
+				log.Error("failed to write SSE terminator", "err", err)
+				return
+			}
 		}
 	}()
 
