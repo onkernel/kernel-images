@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -69,7 +70,7 @@ func (s *ApiService) ReadFile(ctx context.Context, req oapi.ReadFileRequestObjec
 	if err != nil {
 		f.Close()
 		log.Error("failed to stat file", "err", err, "path", path)
-		return oapi.ReadFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to stat file"}}, nil
+		return oapi.ReadFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unable to stat file"}}, nil
 	}
 
 	return oapi.ReadFile200ApplicationoctetStreamResponse{
@@ -100,6 +101,9 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 	if req.Params.Mode != nil {
 		if v, err := strconv.ParseUint(*req.Params.Mode, 8, 32); err == nil {
 			perm = os.FileMode(v)
+		} else {
+			log.Error("invalid mode", "mode", *req.Params.Mode)
+			return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid mode"}}, nil
 		}
 	}
 
@@ -113,7 +117,7 @@ func (s *ApiService) WriteFile(ctx context.Context, req oapi.WriteFileRequestObj
 
 	if _, err := io.Copy(f, req.Body); err != nil {
 		log.Error("failed to write file", "err", err, "path", path)
-		return oapi.WriteFile400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to write data"}}, nil
+		return oapi.WriteFile500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write data"}}, nil
 	}
 
 	return oapi.WriteFile201Response{}, nil
@@ -134,6 +138,9 @@ func (s *ApiService) CreateDirectory(ctx context.Context, req oapi.CreateDirecto
 	if req.Body.Mode != nil {
 		if v, err := strconv.ParseUint(*req.Body.Mode, 8, 32); err == nil {
 			perm = os.FileMode(v)
+		} else {
+			log.Error("invalid mode", "mode", *req.Body.Mode)
+			return oapi.CreateDirectory400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid mode"}}, nil
 		}
 	}
 	if err := os.MkdirAll(path, perm); err != nil {
@@ -244,11 +251,17 @@ func (s *ApiService) FileInfo(ctx context.Context, req oapi.FileInfoRequestObjec
 		log.Error("failed to stat path", "err", err, "path", path)
 		return oapi.FileInfo500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to stat path"}}, nil
 	}
+	// By specification SizeBytes should be 0 for directories.
+	// Match behaviour of ListFiles for consistency.
+	size := 0
+	if !stat.IsDir() {
+		size = int(stat.Size())
+	}
 	fi := oapi.FileInfo{
 		Name:      filepath.Base(path),
 		Path:      path,
 		IsDir:     stat.IsDir(),
-		SizeBytes: int(stat.Size()),
+		SizeBytes: size,
 		ModTime:   stat.ModTime(),
 		Mode:      stat.Mode().String(),
 	}
@@ -357,7 +370,8 @@ func (s *ApiService) StartFsWatch(ctx context.Context, req oapi.StartFsWatchRequ
 		if errors.Is(err, os.ErrNotExist) {
 			return oapi.StartFsWatch404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "path not found"}}, nil
 		}
-		return oapi.StartFsWatch400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "unable to stat path"}}, nil
+		log.Error("failed to stat path", "err", err, "path", path)
+		return oapi.StartFsWatch500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unable to stat path"}}, nil
 	}
 
 	watcher, err := fsnotify.NewWatcher()
@@ -498,19 +512,22 @@ func (s *ApiService) StreamFsEvents(ctx context.Context, req oapi.StreamFsEvents
 	pr, pw := io.Pipe()
 	go func() {
 		defer pw.Close()
-		enc := json.NewEncoder(pw)
 		for ev := range w.events {
-			// Write SSE formatted event: data: <json>\n\n
-			if _, err := pw.Write([]byte("data: ")); err != nil {
-				log.Error("failed to write SSE prefix", "err", err)
+			// Build SSE formatted event: data: <json>\n\n using a buffer and write in a single call
+			data, err := json.Marshal(ev)
+			if err != nil {
+				log.Error("failed to marshal fs event", "err", err)
 				return
 			}
-			if err := enc.Encode(ev); err != nil {
-				log.Error("failed to encode fs event", "err", err)
-				return
-			}
-			if _, err := pw.Write([]byte("\n")); err != nil {
-				log.Error("failed to write SSE terminator", "err", err)
+
+			var buf bytes.Buffer
+			buf.Grow(len("data: ") + len(data) + 2) // 2 for the separating newlines
+			buf.WriteString("data: ")
+			buf.Write(data)
+			buf.WriteString("\n\n")
+
+			if _, err := pw.Write(buf.Bytes()); err != nil {
+				log.Error("failed to write SSE event", "err", err)
 				return
 			}
 		}
