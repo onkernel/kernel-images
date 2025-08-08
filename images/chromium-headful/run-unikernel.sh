@@ -34,7 +34,8 @@ echo "$CHROMIUM_FLAGS" > "$FLAGS_DIR/flags"
 kraft cloud volume rm "$volume_name" || true
 kraft cloud volume create -n "$volume_name" -s 16M
 # Import the flags directory into the freshly created volume
-kraft cloud volume import --image onkernel/utils/volimport:1.0 -s "$FLAGS_DIR" -v "$volume_name"
+# kraft cloud volume import --image onkernel/utils/volimport:1.0 -s "$FLAGS_DIR" -v "$volume_name"
+kraft cloud volume import -s "$FLAGS_DIR" -v "$volume_name"
 
 # Ensure the temp directory is cleaned up on exit
 trap 'rm -rf "$FLAGS_DIR"' EXIT
