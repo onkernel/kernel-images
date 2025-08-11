@@ -1,0 +1,2844 @@
+openapi: 3.1.0
+info:
+  title: Kernel Images API
+  version: 0.1.0
+paths:
+  # -------------------------
+  # PREVIOUS, UNCHANGED PATHS
+  # -------------------------
+  /recording/start:
+    post:
+      summary: Start a screen recording. Only one recording per ID can be registered at a time.
+      operationId: startRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRecordingRequest"
+      responses:
+        "201":
+          description: Recording started
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          description: A recording is already in progress
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/stop:
+    post:
+      summary: Stop the recording
+      operationId: stopRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StopRecordingRequest"
+      responses:
+        "200":
+          description: Recording stopped
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/download:
+    get:
+      summary: Download the most recently recorded video file
+      parameters:
+        - name: id
+          in: query
+          description: Optional recorder identifier. When omitted, the server uses the default recorder.
+          schema:
+            type: string
+            pattern: "^[a-zA-Z0-9-]+$"
+      operationId: downloadRecording
+      responses:
+        "200":
+          description: Recording file
+          headers:
+            X-Recording-Started-At:
+              description: Timestamp of when the recording started. Guaranteed to be RFC3339.
+              schema:
+                type: string
+            X-Recording-Finished-At:
+              description: Timestamp of when the recording finished. Guaranteed to be RFC3339.
+              schema:
+                type: string
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "202":
+          description: Recording is still in progress, please try again later
+          headers:
+            Retry-After:
+              description: Suggested wait time in seconds before retrying
+              schema:
+                type: integer
+                minimum: 1
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/list:
+    get:
+      summary: List all recorders
+      operationId: listRecorders
+      responses:
+        "200":
+          description: List of recorders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecorderInfo"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recording/delete:
+    post:
+      summary: Delete a previously recorded video file
+      operationId: deleteRecording
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteRecordingRequest"
+      responses:
+        "200":
+          description: Recording deleted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/read_file:
+    get:
+      summary: Read file contents
+      operationId: readFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Absolute file path to read.
+      responses:
+        "200":
+          description: File read successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/write_file:
+    put:
+      summary: Write or create a file
+      operationId: writeFile
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Destination absolute file path.
+        - name: mode
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[0-7]{3,4}$"
+          description: Optional file mode (octal string, e.g. 644). Defaults to 644.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: File written successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/list_files:
+    get:
+      summary: List files in a directory
+      operationId: listFiles
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Absolute directory path.
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListFiles"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/create_directory:
+    put:
+      summary: Create a new directory
+      operationId: createDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDirectoryRequest"
+      responses:
+        "201":
+          description: Directory created successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/delete_file:
+    put:
+      summary: Delete a file
+      operationId: deleteFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeletePathRequest"
+      responses:
+        "200":
+          description: File deleted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/delete_directory:
+    put:
+      summary: Delete a directory
+      operationId: deleteDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeletePathRequest"
+      responses:
+        "200":
+          description: Directory deleted
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/set_file_permissions:
+    put:
+      summary: Set file or directory permissions/ownership
+      operationId: setFilePermissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetFilePermissionsRequest"
+      responses:
+        "200":
+          description: Permissions updated
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/file_info:
+    get:
+      summary: Get information about a file or directory
+      operationId: fileInfo
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Absolute path of the file or directory.
+      responses:
+        "200":
+          description: File information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileInfo"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/move:
+    put:
+      summary: Move or rename a file or directory
+      operationId: movePath
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovePathRequest"
+      responses:
+        "200":
+          description: Move successful
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/watch:
+    post:
+      summary: Watch a directory for changes
+      operationId: startFsWatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartFsWatchRequest"
+      responses:
+        "201":
+          description: Watch started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  watch_id:
+                    type: string
+                    description: Unique identifier for the directory watch
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/watch/{watch_id}/events:
+    get:
+      summary: Stream filesystem events for a watch
+      operationId: streamFsEvents
+      parameters:
+        - name: watch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream of filesystem events
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/FileSystemEvent"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /fs/watch/{watch_id}:
+    delete:
+      summary: Stop watching a directory
+      operationId: stopFsWatch
+      parameters:
+        - name: watch_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Watch stopped successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # --------------------------------
+  # COMPAT ALIASES FOR XDOTool START
+  # --------------------------------
+  /computer/click_mouse:
+    post:
+      summary: Click mouse (compat)
+      operationId: computerClickMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClickMouseRequest"
+            examples:
+              default:
+                value: { button: left, click_type: click, x: 640, y: 360, num_clicks: 1 }
+      responses:
+        "200":
+          description: Clicked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/move_mouse:
+    post:
+      summary: Move mouse (compat)
+      operationId: computerMoveMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveMouseRequest"
+            examples:
+              default:
+                value: { x: 800, y: 450 }
+      responses:
+        "200":
+          description: Moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # -------------------------
+  # NEW ENDPOINTS (ADDITIVE)
+  # -------------------------
+  /screenshot/capture:
+    post:
+      summary: Capture a still image of the desktop
+      operationId: captureScreenshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScreenshotCaptureRequest"
+            examples:
+              default:
+                value:
+                  region: { x: 0, y: 0, width: 1280, height: 720 }
+                  include_cursor: false
+                  display: 0
+                  format: png
+      responses:
+        "200":
+          description: Screenshot captured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreenshotCaptureResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /screenshot/{screenshot_id}:
+    get:
+      summary: Retrieve captured screenshot by ID
+      operationId: getScreenshot
+      parameters:
+        - in: path
+          name: screenshot_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /stream/start:
+    post:
+      summary: Start an RTMPS live stream from the desktop
+      operationId: startStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamStartRequest"
+            examples:
+              default:
+                value:
+                  region: null
+                  display: 0
+                  fps: 30
+                  video_codec: h264
+                  video_bitrate_kbps: 3500
+                  audio: { capture_system: true, capture_mic: false }
+                  rtmps_url: "rtmps://live.example.com/app"
+                  stream_key: "secret_key"
+      responses:
+        "200":
+          description: Stream starting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamStartResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /stream/stop:
+    post:
+      summary: Stop an RTMPS stream
+      operationId: stopStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StreamStopRequest"
+      responses:
+        "200":
+          description: Stream stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamStopResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /stream/{stream_id}/metrics/stream:
+    get:
+      summary: SSE of stream metrics
+      operationId: streamStreamMetrics
+      parameters:
+        - in: path
+          name: stream_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: text/event-stream of metrics
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              examples:
+                default:
+                  value: |
+                    event: data
+                    data: {"ts":"2025-08-09T10:00:00Z","fps":29.9,"bitrate_kbps":3400,"dropped_frames":2}
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /input/mouse/move:
+    post:
+      summary: Move mouse cursor
+      operationId: inputMouseMove
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseMoveRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/mouse/click:
+    post:
+      summary: Click mouse button
+      operationId: inputMouseClick
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseClickRequest" }
+            examples:
+              default:
+                value: { button: left, count: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/mouse/scroll:
+    post:
+      summary: Scroll mouse wheel
+      operationId: inputMouseScroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseScrollRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /input/keyboard/type:
+    post:
+      summary: Type text (IME-aware)
+      operationId: inputKeyboardType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyboardTypeRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/keyboard/key_down:
+    post:
+      summary: Key down
+      operationId: inputKeyDown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/keyboard/key_up:
+    post:
+      summary: Key up
+      operationId: inputKeyUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /input/window/activate:
+    post:
+      summary: Activate window by match
+      operationId: inputWindowActivate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200":
+          description: Activated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WindowActivateResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/window/move_resize:
+    post:
+      summary: Move and resize window
+      operationId: inputWindowMoveResize
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowMoveResizeRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /input/window/close:
+    post:
+      summary: Close window by match
+      operationId: inputWindowClose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowCloseRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /input/mouse/move_relative:
+    post:
+      summary: Move mouse cursor relative
+      operationId: inputMouseMoveRelative
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseMoveRelativeRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /input/mouse/down:
+    post:
+      summary: Mouse button down
+      operationId: inputMouseDown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseButtonRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+  /input/mouse/up:
+    post:
+      summary: Mouse button up
+      operationId: inputMouseUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MouseButtonRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+  /input/mouse/location:
+    get:
+      summary: Get mouse location
+      operationId: inputMouseLocation
+      responses:
+        "200":
+          description: Location
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MouseLocationResponse" }
+
+  /input/keyboard/key:
+    post:
+      summary: Send one or more key strokes
+      operationId: inputKeyboardKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KeyboardKeysRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+  /input/window/focus:
+    post:
+      summary: Focus window by match
+      operationId: inputWindowFocus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200":
+          description: Focused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WindowFocusResponse" }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+  /input/window/raise:
+    post:
+      summary: Raise window
+      operationId: inputWindowRaise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/window/minimize:
+    post:
+      summary: Minimize window
+      operationId: inputWindowMinimize
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/window/map:
+    post:
+      summary: Map (show) window
+      operationId: inputWindowMap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/window/unmap:
+    post:
+      summary: Unmap (hide) window
+      operationId: inputWindowUnmap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/window/kill:
+    post:
+      summary: Kill window
+      operationId: inputWindowKill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowActivateRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/window/active:
+    get:
+      summary: Get active window
+      operationId: inputWindowActive
+      responses:
+        "200": { description: Active, content: { application/json: { schema: { $ref: "#/components/schemas/ActiveWindowResponse" } } } }
+
+  /input/window/focused:
+    get:
+      summary: Get focused window
+      operationId: inputWindowFocused
+      responses:
+        "200": { description: Focused, content: { application/json: { schema: { $ref: "#/components/schemas/ActiveWindowResponse" } } } }
+
+  /input/window/name:
+    post:
+      summary: Get window name
+      operationId: inputWindowName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowIdRequest" }
+      responses:
+        "200": { description: Name, content: { application/json: { schema: { $ref: "#/components/schemas/WindowNameResponse" } } } }
+
+  /input/window/pid:
+    post:
+      summary: Get window pid
+      operationId: inputWindowPid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowIdRequest" }
+      responses:
+        "200": { description: PID, content: { application/json: { schema: { $ref: "#/components/schemas/WindowPidResponse" } } } }
+
+  /input/window/geometry:
+    post:
+      summary: Get window geometry
+      operationId: inputWindowGeometry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowIdRequest" }
+      responses:
+        "200": { description: Geometry, content: { application/json: { schema: { $ref: "#/components/schemas/WindowGeometryResponse" } } } }
+
+  /input/display/geometry:
+    get:
+      summary: Get display geometry
+      operationId: inputDisplayGeometry
+      responses:
+        "200": { description: Geometry, content: { application/json: { schema: { $ref: "#/components/schemas/DisplayGeometryResponse" } } } }
+
+  /input/desktop/count:
+    get:
+      summary: Get number of desktops
+      operationId: inputDesktopCountGet
+      responses:
+        "200": { description: Count, content: { application/json: { schema: { $ref: "#/components/schemas/DesktopCountResponse" } } } }
+    post:
+      summary: Set number of desktops
+      operationId: inputDesktopCountSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DesktopCountRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/desktop/current:
+    get:
+      summary: Get current desktop index
+      operationId: inputDesktopCurrentGet
+      responses:
+        "200": { description: Index, content: { application/json: { schema: { $ref: "#/components/schemas/DesktopIndexResponse" } } } }
+    post:
+      summary: Set current desktop index
+      operationId: inputDesktopCurrentSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DesktopIndexRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/desktop/window_desktop:
+    post:
+      summary: Move window to desktop
+      operationId: inputDesktopWindowDesktop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowDesktopRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/desktop/viewport:
+    get:
+      summary: Get desktop viewport
+      operationId: inputDesktopViewportGet
+      responses:
+        "200": { description: Viewport, content: { application/json: { schema: { $ref: "#/components/schemas/DesktopViewportResponse" } } } }
+    post:
+      summary: Set desktop viewport
+      operationId: inputDesktopViewportSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DesktopViewportRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+
+  /input/combo/activate_and_type:
+    post:
+      summary: Activate a window then type
+      operationId: comboActivateAndType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivateAndTypeRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ComboWindowResponse" } } } }
+
+  /input/combo/activate_and_keys:
+    post:
+      summary: Activate a window then send key sequence
+      operationId: comboActivateAndKeys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivateAndKeysRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ComboWindowResponse" } } } }
+
+  /input/combo/window/center:
+    post:
+      summary: Center and optionally size a window
+      operationId: comboWindowCenter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowCenterRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/WindowCenterResponse" } } } }
+
+  /input/combo/window/snap:
+    post:
+      summary: Snap window to position
+      operationId: comboWindowSnap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowSnapRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/WindowSnapResponse" } } } }
+
+  /input/system/exec:
+    post:
+      summary: Run a system command via xdotool wrapper
+      operationId: inputSystemExec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SystemExecRequest" }
+      responses:
+        "200":
+          description: Result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemExecResponse" }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+  /input/system/sleep:
+    post:
+      summary: Sleep via xdotool
+      operationId: inputSystemSleep
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SleepRequest" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/OkResponse" } } } }
+        "400": { $ref: "#/components/responses/BadRequestError" }
+
+
+
+  /fs/upload:
+    post:
+      summary: Upload a file into the VM
+      operationId: fsUpload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [path, file]
+              properties:
+                path: { type: string, description: Destination absolute path }
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UploadResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /fs/download:
+    get:
+      summary: Download a file from the VM
+      operationId: fsDownload
+      parameters:
+        - in: query
+          name: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: File bytes
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /fs/tail/stream:
+    get:
+      summary: Tail-follow a file as SSE
+      operationId: fsTailStream
+      parameters:
+        - in: query
+          name: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: text/event-stream of lines
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"line":"hello","ts":"2025-08-09T10:00:00Z"}
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /process/exec:
+    post:
+      summary: Execute a command synchronously (optional streaming)
+      operationId: processExec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProcessExecRequest" }
+      responses:
+        "200":
+          description: Execution result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessExecResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /process/spawn:
+    post:
+      summary: Execute a command asynchronously
+      operationId: processSpawn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProcessSpawnRequest" }
+      responses:
+        "200":
+          description: Spawned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessSpawnResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /process/{process_id}/status:
+    get:
+      summary: Get process status
+      operationId: processStatus
+      parameters:
+        - in: path
+          name: process_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessStatusResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /process/{process_id}/stdout/stream:
+    get:
+      summary: Stream process stdout/stderr (SSE)
+      operationId: processStdoutStream
+      parameters:
+        - in: path
+          name: process_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: text/event-stream of stdout/stderr
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"stream":"stdout","data_b64":"SGVsbG8K"}
+                  event: data
+                  data: {"event":"exit","exit_code":0}
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /process/{process_id}/stdin:
+    post:
+      summary: Write to process stdin
+      operationId: processStdin
+      parameters:
+        - in: path
+          name: process_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProcessStdinRequest" }
+      responses:
+        "200":
+          description: Bytes written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  written_bytes: { type: integer }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /process/{process_id}/kill:
+    post:
+      summary: Send signal to process
+      operationId: processKill
+      parameters:
+        - in: path
+          name: process_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProcessKillRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /network/proxy/socks5/start:
+    post:
+      summary: Start a lightweight SOCKS5 proxy in the VM
+      operationId: networkSocksStart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Socks5StartRequest" }
+      responses:
+        "200":
+          description: Proxy started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Socks5StartResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /network/proxy/socks5/stop:
+    post:
+      summary: Stop a SOCKS5 proxy
+      operationId: networkSocksStop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Socks5StopRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /network/intercept/rules:
+    post:
+      summary: Apply realtime network intercept rules
+      operationId: networkInterceptApply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetworkInterceptRulesRequest" }
+      responses:
+        "200":
+          description: Rule set applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetworkInterceptRulesResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /network/intercept/rules/{rule_set_id}:
+    delete:
+      summary: Remove intercept rule set
+      operationId: networkInterceptDelete
+      parameters:
+        - in: path
+          name: rule_set_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /network/har/stream:
+    get:
+      summary: Stream HAR entries from proxy/browser (SSE)
+      operationId: networkHarStream
+      responses:
+        "200":
+          description: text/event-stream of HAR entries
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","entry":{"request":{"method":"GET","url":"https://..."},"response":{"status":200}}}
+  /network/forward:
+    post:
+      summary: Configure port forwarding host↔VM
+      operationId: networkForward
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForwardRequest" }
+      responses:
+        "200":
+          description: Forward active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForwardResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /network/forward/{forward_id}:
+    delete:
+      summary: Remove a port forward
+      operationId: networkForwardDelete
+      parameters:
+        - in: path
+          name: forward_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /bus/publish:
+    post:
+      summary: Publish a message to in-VM agent subscribers
+      operationId: busPublish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BusPublishRequest" }
+      responses:
+        "200":
+          description: Delivered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BusPublishResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /bus/subscribe:
+    get:
+      summary: Subscribe to agent-emitted messages (SSE)
+      operationId: busSubscribe
+      parameters:
+        - in: query
+          name: channel
+          required: true
+          schema: { type: string, example: "agent" }
+      responses:
+        "200":
+          description: text/event-stream of messages
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","type":"custom_event","payload":{"ok":true}}
+
+  /logs/stream:
+    get:
+      summary: Subscribe to logs via SSE
+      operationId: logsStream
+      parameters:
+        - in: query
+          name: source
+          required: true
+          schema:
+            type: string
+            enum: [kernel, syslog, application, path]
+        - in: query
+          name: path
+          required: false
+          schema: { type: string }
+        - in: query
+          name: follow
+          required: false
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: text/event-stream of log lines
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"source":"path","line":"started","ts":"2025-08-09T10:00:00Z"}
+
+  /clipboard:
+    get:
+      summary: Get clipboard
+      operationId: clipboardGet
+      responses:
+        "200":
+          description: Clipboard
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClipboardData" }
+    post:
+      summary: Set clipboard
+      operationId: clipboardSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClipboardData" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /clipboard/stream:
+    get:
+      summary: Subscribe to clipboard changes (SSE)
+      operationId: clipboardStream
+      responses:
+        "200":
+          description: text/event-stream of clipboard previews
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","type":"text","preview":"hello..."}
+
+  /metrics/snapshot:
+    get:
+      summary: One-shot system metrics snapshot
+      operationId: metricsSnapshot
+      responses:
+        "200":
+          description: Snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricsSnapshot" }
+  /metrics/stream:
+    get:
+      summary: Stream metrics (SSE)
+      operationId: metricsStream
+      responses:
+        "200":
+          description: text/event-stream of metrics
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","cpu_pct":12.3,"gpu_pct":34.5,"mem":{"used_bytes":123,"total_bytes":456}}
+
+  /macros/create:
+    post:
+      summary: Create a macro from steps
+      operationId: macrosCreate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MacroCreateRequest" }
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MacroCreateResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /macros/run:
+    post:
+      summary: Run a macro
+      operationId: macrosRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MacroRunRequest" }
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MacroRunResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /macros/list:
+    get:
+      summary: List macros
+      operationId: macrosList
+      responses:
+        "200":
+          description: Macro list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MacroListResponse" }
+  /macros/{macro_id}:
+    delete:
+      summary: Delete a macro
+      operationId: macrosDelete
+      parameters:
+        - in: path
+          name: macro_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /scripts/upload:
+    post:
+      summary: Upload a script file
+      operationId: scriptsUpload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [path, file]
+              properties:
+                path: { type: string }
+                file: { type: string, format: binary }
+                executable: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptUploadResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /scripts/run:
+    post:
+      summary: Run an uploaded script (sync or async)
+      operationId: scriptsRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptRunRequest" }
+      responses:
+        "200":
+          description: Run result or handle
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ProcessExecResponse"
+                  - $ref: "#/components/schemas/ScriptRunAsyncResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /scripts/run/{run_id}/logs/stream:
+    get:
+      summary: Stream logs for an async script run (SSE)
+      operationId: scriptsRunLogsStream
+      parameters:
+        - in: path
+          name: run_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: text/event-stream of stdout/stderr
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"stream":"stdout","data_b64":"SGVsbG8K"}
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /scripts/list:
+    get:
+      summary: List uploaded scripts
+      operationId: scriptsList
+      responses:
+        "200":
+          description: Scripts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScriptListResponse" }
+  /scripts/delete:
+    delete:
+      summary: Delete an uploaded script
+      operationId: scriptsDelete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScriptDeleteRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /os/locale:
+    get:
+      summary: Get OS locale, keyboard layout, timezone
+      operationId: osLocaleGet
+      responses:
+        "200":
+          description: Locale info
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LocaleInfo" }
+    post:
+      summary: Set OS locale, keyboard layout, timezone
+      operationId: osLocaleSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LocaleUpdateRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LocaleUpdateResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+  /browser/har/start:
+    post:
+      summary: Start capturing HAR from default browser profile
+      operationId: browserHarStart
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BrowserHarStartRequest" }
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BrowserHarStartResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /browser/har/{har_session_id}/stream:
+    get:
+      summary: Stream HAR entries for a HAR session (SSE)
+      operationId: browserHarStream
+      parameters:
+        - in: path
+          name: har_session_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: text/event-stream of HAR entries
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","entry":{"request":{"method":"GET","url":"https://..."}}}
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /browser/har/stop:
+    post:
+      summary: Stop HAR capture
+      operationId: browserHarStop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [har_session_id]
+              properties:
+                har_session_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OkResponse" }
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /browser/extension/add/unpacked:
+    post:
+      summary: Add an unpacked browser extension
+      operationId: browserExtensionAddUnpacked
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                github_url:
+                  type: string
+                  description: GitHub repository URL for the extension
+                archive_file:
+                  type: string
+                  format: binary
+                  description: ZIP archive containing the extension (manifest at root or in first-level dir)
+              oneOf:
+                - required: [github_url]
+                - required: [archive_file]
+      responses:
+        "201":
+          description: Extension added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Extension ID
+                  version:
+                    type: string
+                    description: Extension version
+                  crx_path:
+                    type: string
+                    description: Path to the CRX file
+                  update_xml_path:
+                    type: string
+                    description: Path to the update XML file
+                  update_url:
+                    type: string
+                    description: URL for extension updates
+                  policy_path:
+                    type: string
+                    description: Path to the policy file
+                  installed:
+                    type: boolean
+                    description: Whether the extension was installed
+                  profile_extensions_dir:
+                    type: string
+                    description: Directory where the extension is installed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+
+  /pipe/send:
+    post:
+      summary: Send a JSON object onto a named pipe channel
+      operationId: pipeSend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PipeSendRequest" }
+      responses:
+        "200":
+          description: Enqueued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipeSendResponse" }
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+  /pipe/recv/stream:
+    get:
+      summary: Receive JSON objects from a named pipe channel (SSE)
+      operationId: pipeRecvStream
+      parameters:
+        - in: query
+          name: channel
+          required: true
+          schema: { type: string, default: "default" }
+      responses:
+        "200":
+          description: text/event-stream of objects
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: data
+                  data: {"ts":"2025-08-09T10:00:00Z","object":{"event":"ready"}}
+
+  /health:
+    get:
+      summary: Health status
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  uptime_sec: { type: number, example: 12345 }
+
+components:
+  schemas:
+    # -------------------------
+    # PREVIOUS, UNCHANGED SCHEMAS
+    # -------------------------
+    StartRecordingRequest:
+      type: object
+      properties:
+        maxFileSizeInMB:
+          type: integer
+          description: Maximum file size in MB (overrides server default)
+          minimum: 10
+          maximum: 10000
+        framerate:
+          type: integer
+          description: Recording framerate in fps (overrides server default)
+          minimum: 1
+          maximum: 20
+        maxDurationInSeconds:
+          type: integer
+          description: Maximum recording duration in seconds (overrides server default)
+          minimum: 1
+        id:
+          type: string
+          description: Optional identifier for the recording session. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
+      additionalProperties: false
+    StopRecordingRequest:
+      type: object
+      properties:
+        forceStop:
+          type: boolean
+          description: Immediately stop without graceful shutdown. This may result in a corrupted video file.
+          default: false
+        id:
+          type: string
+          description: Identifier of the recorder to stop. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
+      additionalProperties: false
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    RecorderInfo:
+      type: object
+      required: [id, isRecording]
+      properties:
+        id:
+          type: string
+        isRecording:
+          type: boolean
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording started
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when recording finished
+    ClickMouseRequest:
+      type: object
+      properties:
+        button:
+          type: string
+          description: Mouse button to interact with
+          enum: [left, right, middle, back, forward]
+        click_type:
+          type: string
+          description: Type of click action
+          enum: [down, up, click]
+        x:
+          type: integer
+          description: X coordinate of the click position
+        y:
+          type: integer
+          description: Y coordinate of the click position
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the click
+          items:
+            type: string
+        num_clicks:
+          type: integer
+          description: Number of times to repeat the click
+          default: 1
+      additionalProperties: false
+    MoveMouseRequest:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          description: X coordinate to move the cursor to
+        y:
+          type: integer
+          description: Y coordinate to move the cursor to
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the move
+          items:
+            type: string
+      additionalProperties: false
+    StartFsWatchRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Directory to watch.
+        recursive:
+          type: boolean
+          description: Whether to watch recursively.
+          default: false
+      additionalProperties: false
+    FileSystemEvent:
+      type: object
+      description: Filesystem change event.
+      required: [type, path]
+      properties:
+        type:
+          type: string
+          enum: [CREATE, WRITE, DELETE, RENAME]
+          description: Event type.
+        name:
+          type: string
+          description: Base name of the file or directory affected.
+        path:
+          type: string
+          description: Absolute path of the file or directory.
+        is_dir:
+          type: boolean
+          description: Whether the affected path is a directory.
+    DeleteRecordingRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identifier of the recording to delete. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
+      additionalProperties: false
+    FileInfo:
+      type: object
+      required: [name, path, size_bytes, is_dir, mod_time, mode]
+      properties:
+        name:
+          type: string
+          description: Base name of the file or directory.
+        path:
+          type: string
+          description: Absolute path.
+        size_bytes:
+          type: integer
+          description: Size in bytes. 0 for directories.
+        is_dir:
+          type: boolean
+          description: Whether the path is a directory.
+        mod_time:
+          type: string
+          format: date-time
+          description: Last modification time.
+        mode:
+          type: string
+          description: File mode bits (e.g., "drwxr-xr-x" or "-rw-r--r--").
+    ListFiles:
+      type: array
+      description: Array of file or directory information entries.
+      items:
+        $ref: "#/components/schemas/FileInfo"
+    CreateDirectoryRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute directory path to create.
+          pattern: "^/.*"
+        mode:
+          type: string
+          description: Optional directory mode (octal string, e.g. 755). Defaults to 755.
+          pattern: "^[0-7]{3,4}$"
+      additionalProperties: false
+    DeletePathRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Absolute path to delete.
+          pattern: "^/.*"
+      additionalProperties: false
+    SetFilePermissionsRequest:
+      type: object
+      required: [path, mode]
+      properties:
+        path:
+          type: string
+          description: Absolute path whose permissions are to be changed.
+          pattern: "^/.*"
+        owner:
+          type: string
+          description: New owner username or UID.
+        group:
+          type: string
+          description: New group name or GID.
+        mode:
+          type: string
+          description: File mode bits (octal string, e.g. 644).
+          pattern: "^[0-7]{3,4}$"
+      additionalProperties: false
+    MovePathRequest:
+      type: object
+      required: [src_path, dest_path]
+      properties:
+        src_path:
+          type: string
+          description: Absolute source path.
+          pattern: "^/.*"
+        dest_path:
+          type: string
+          description: Absolute destination path.
+          pattern: "^/.*"
+      additionalProperties: false
+
+    # -------------------------
+    # NEW SCHEMAS (ADDITIVE)
+    # -------------------------
+    OkResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+
+    Region:
+      type: object
+      properties:
+        x: { type: integer, minimum: 0 }
+        y: { type: integer, minimum: 0 }
+        width: { type: integer, minimum: 1 }
+        height: { type: integer, minimum: 1 }
+      required: [x, y, width, height]
+
+    ScreenshotCaptureRequest:
+      type: object
+      properties:
+        region: { $ref: "#/components/schemas/Region", nullable: true }
+        include_cursor: { type: boolean, default: false }
+        display: { type: integer, default: 0 }
+        format: { type: string, enum: [png, jpeg], default: png }
+        quality: { type: integer, minimum: 1, maximum: 100, nullable: true, description: JPEG only }
+      required: [format]
+    ScreenshotCaptureResponse:
+      type: object
+      properties:
+        screenshot_id: { type: string, format: uuid }
+        content_type: { type: string, example: image/png }
+        bytes_b64: { type: string }
+
+    StreamStartRequest:
+      type: object
+      properties:
+        region: { $ref: "#/components/schemas/Region", nullable: true }
+        display: { type: integer, default: 0 }
+        fps: { type: integer, default: 30 }
+        video_codec: { type: string, enum: [h264, h265, av1], default: h264 }
+        video_bitrate_kbps: { type: integer, default: 3500 }
+        audio:
+          type: object
+          properties:
+            capture_system: { type: boolean, default: true }
+            capture_mic: { type: boolean, default: false }
+        rtmps_url: { type: string }
+        stream_key: { type: string }
+      required: [fps, video_codec, rtmps_url, stream_key]
+    StreamStartResponse:
+      type: object
+      properties:
+        stream_id: { type: string, format: uuid }
+        status: { type: string, example: starting }
+        metrics_endpoint: { type: string, example: "/stream/{stream_id}/metrics/stream" }
+    StreamStopRequest:
+      type: object
+      properties:
+        stream_id: { type: string, format: uuid }
+      required: [stream_id]
+    StreamStopResponse:
+      type: object
+      properties:
+        stream_id: { type: string, format: uuid }
+        status: { type: string, example: stopped }
+
+    MouseClickRequest:
+      type: object
+      properties:
+        button:
+          oneOf:
+            - type: string
+              enum: [left, middle, right, back, forward]
+            - type: integer
+        count: { type: integer, default: 1 }
+      required: [button]
+    MouseScrollRequest:
+      type: object
+      properties:
+        dx: { type: integer, default: 0 }
+        dy: { type: integer, default: -120 }
+      required: [dx, dy]
+
+    KeyboardTypeRequest:
+      type: object
+      properties:
+        text: { type: string }
+        wpm: { type: integer, default: 300 }
+        enter: { type: boolean, default: false }
+      required: [text]
+    KeyRequest:
+      type: object
+      properties:
+        key: { type: string }
+      required: [key]
+
+    WindowMatch:
+      type: object
+      properties:
+        title_contains: { type: string, nullable: true }
+        class: { type: string, nullable: true }
+        pid: { type: integer, nullable: true }
+    WindowActivateRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+      required: [match]
+    WindowActivateResponse:
+      type: object
+      properties:
+        activated: { type: boolean }
+        wid: { type: string }
+    WindowMoveResizeRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+      required: [match]
+
+    MouseMoveRelativeRequest:
+      type: object
+      properties:
+        dx: { type: integer, default: 0 }
+        dy: { type: integer, default: 0 }
+      required: [dx, dy]
+
+    MouseButtonRequest:
+      type: object
+      properties:
+        button:
+          oneOf:
+            - type: string
+              enum: [left, middle, right, back, forward]
+            - type: integer
+      required: [button]
+
+    MouseLocationResponse:
+      type: object
+      properties:
+        x: { type: integer }
+        y: { type: integer }
+        screen: { type: integer }
+        window: { type: string }
+
+    KeyboardKeysRequest:
+      type: object
+      properties:
+        keys:
+          type: array
+          items: { type: string }
+      required: [keys]
+
+    WindowIdRequest:
+      type: object
+      properties:
+        wid: { type: string }
+      required: [wid]
+
+    WindowFocusResponse:
+      type: object
+      properties:
+        focused: { type: boolean }
+        wid: { type: string }
+
+    ActiveWindowResponse:
+      type: object
+      properties:
+        wid: { type: string }
+
+    WindowNameResponse:
+      type: object
+      properties:
+        wid: { type: string }
+        name: { type: string }
+
+    WindowPidResponse:
+      type: object
+      properties:
+        wid: { type: string }
+        pid: { type: integer }
+
+    WindowGeometryResponse:
+      type: object
+      properties:
+        wid: { type: string }
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        screen: { type: integer }
+
+    DisplayGeometryResponse:
+      type: object
+      properties:
+        width: { type: integer }
+        height: { type: integer }
+
+    DesktopCountRequest:
+      type: object
+      properties:
+        count: { type: integer, minimum: 1 }
+      required: [count]
+
+    DesktopCountResponse:
+      type: object
+      properties:
+        count: { type: integer }
+
+    DesktopIndexRequest:
+      type: object
+      properties:
+        index: { type: integer, minimum: 0 }
+      required: [index]
+
+    DesktopIndexResponse:
+      type: object
+      properties:
+        index: { type: integer }
+
+    WindowDesktopRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        index: { type: integer, minimum: 0 }
+      required: [match, index]
+
+    DesktopViewportRequest:
+      type: object
+      properties:
+        x: { type: integer }
+        y: { type: integer }
+      required: [x, y]
+
+    DesktopViewportResponse:
+      type: object
+      properties:
+        x: { type: integer }
+        y: { type: integer }
+
+    ActivateAndTypeRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        text: { type: string, default: "" }
+        enter: { type: boolean, default: false }
+        wpm: { type: integer, default: 300 }
+      required: [match]
+
+    ActivateAndKeysRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        keys:
+          type: array
+          items: { type: string }
+      required: [match, keys]
+
+    ComboWindowResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        wid: { type: string }
+
+    WindowCenterRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+      required: [match]
+
+    WindowCenterResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        wid: { type: string }
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+
+    WindowSnapRequest:
+      type: object
+      properties:
+        match: { $ref: "#/components/schemas/WindowMatch" }
+        position:
+          type: string
+          enum: [left, right, top, bottom, topleft, topright, bottomleft, bottomright, maximize]
+      required: [match, position]
+
+    WindowSnapResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        wid: { type: string }
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+
+    SystemExecRequest:
+      type: object
+      properties:
+        command: { type: string }
+        args: { type: array, items: { type: string }, default: [] }
+      required: [command]
+
+    SystemExecResponse:
+      type: object
+      properties:
+        code: { type: integer }
+        stdout: { type: string }
+        stderr: { type: string }
+
+    SleepRequest:
+      type: object
+      properties:
+        seconds: { type: number, minimum: 0 }
+      required: [seconds]
+
+
+    UploadResponse:
+      type: object
+      properties:
+        path: { type: string }
+        size_bytes: { type: integer }
+
+    ProcessExecRequest:
+      type: object
+      properties:
+        command: { type: string }
+        args: { type: array, items: { type: string }, default: [] }
+        cwd: { type: string, nullable: true }
+        env: { type: object, additionalProperties: { type: string }, default: {} }
+        as_user: { type: string, nullable: true }
+        as_root: { type: boolean, default: false }
+        timeout_sec: { type: integer, nullable: true }
+        stream: { type: boolean, default: false }
+      required: [command]
+    ProcessExecResponse:
+      type: object
+      properties:
+        exit_code: { type: integer }
+        stdout_b64: { type: string }
+        stderr_b64: { type: string }
+        duration_ms: { type: integer }
+    ProcessSpawnRequest:
+      allOf:
+        - $ref: "#/components/schemas/ProcessExecRequest"
+      properties:
+        stream: { readOnly: true }
+    ProcessSpawnResponse:
+      type: object
+      properties:
+        process_id: { type: string, format: uuid }
+        pid: { type: integer }
+        started_at: { type: string, format: date-time }
+    ProcessStatusResponse:
+      type: object
+      properties:
+        state: { type: string, enum: [running, exited] }
+        exit_code: { type: integer, nullable: true }
+        cpu_pct: { type: number }
+        mem_bytes: { type: integer }
+    ProcessStdinRequest:
+      type: object
+      properties:
+        data_b64: { type: string }
+      required: [data_b64]
+    ProcessKillRequest:
+      type: object
+      properties:
+        signal: { type: string, enum: [TERM, KILL, INT, HUP], default: TERM }
+      required: [signal]
+
+    Socks5StartRequest:
+      type: object
+      properties:
+        bind_host: { type: string, default: "127.0.0.1" }
+        bind_port: { type: integer, default: 1080 }
+        auth:
+          type: object
+          nullable: true
+          properties:
+            username: { type: string, nullable: true }
+            password: { type: string, nullable: true }
+      required: [bind_host, bind_port]
+    Socks5StartResponse:
+      type: object
+      properties:
+        proxy_id: { type: string, format: uuid }
+        url: { type: string, example: "socks5://127.0.0.1:1080" }
+    Socks5StopRequest:
+      type: object
+      properties:
+        proxy_id: { type: string, format: uuid }
+      required: [proxy_id]
+
+    NetworkInterceptRulesRequest:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/NetworkRule"
+      required: [rules]
+    NetworkInterceptRulesResponse:
+      type: object
+      properties:
+        rule_set_id: { type: string, format: uuid }
+        applied: { type: boolean }
+    NetworkRule:
+      type: object
+      properties:
+        id: { type: string }
+        match:
+          type: object
+          properties:
+            protocol: { type: string, enum: [http, https], nullable: true }
+            host_contains: { type: string, nullable: true }
+            path_regex: { type: string, nullable: true }
+            method: { type: string, enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS], nullable: true }
+        action:
+          type: object
+          properties:
+            type: { type: string, enum: [block, delay, modify_request, modify_response, mock_response] }
+            delay_ms: { type: integer, nullable: true }
+            set_request_headers: { type: object, additionalProperties: { type: string }, nullable: true }
+            set_response_headers: { type: object, additionalProperties: { type: string }, nullable: true }
+            status: { type: integer, nullable: true }
+            body_b64: { type: string, nullable: true }
+      required: [id, match, action]
+
+    HarEntryEvent:
+      type: object
+      properties:
+        ts: { type: string, format: date-time }
+        entry:
+          type: object
+          properties:
+            request:
+              type: object
+              properties:
+                method: { type: string }
+                url: { type: string }
+                headers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      value: { type: string }
+            response:
+              type: object
+              properties:
+                status: { type: integer }
+                headers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      value: { type: string }
+                timings:
+                  type: object
+                  properties:
+                    blocked: { type: number, nullable: true }
+                    dns: { type: number, nullable: true }
+                    connect: { type: number, nullable: true }
+                    wait: { type: number, nullable: true }
+                    receive: { type: number, nullable: true }
+
+    ForwardRequest:
+      type: object
+      properties:
+        direction: { type: string, enum: [host_to_vm, vm_to_host] }
+        host_port: { type: integer }
+        vm_port: { type: integer }
+      required: [direction, host_port, vm_port]
+    ForwardResponse:
+      type: object
+      properties:
+        forward_id: { type: string, format: uuid }
+        active: { type: boolean }
+
+    BusPublishRequest:
+      type: object
+      properties:
+        channel: { type: string, example: agent }
+        type: { type: string, example: custom_event }
+        payload: { type: object }
+      required: [channel, type, payload]
+    BusPublishResponse:
+      type: object
+      properties:
+        delivered: { type: boolean }
+
+    ClipboardData:
+      type: object
+      properties:
+        type: { type: string, enum: [text, image] }
+        text: { type: string, nullable: true }
+        image_b64: { type: string, nullable: true }
+        image_mime: { type: string, nullable: true, example: image/png }
+      required: [type]
+
+    MetricsSnapshot:
+      type: object
+      properties:
+        cpu_pct: { type: number }
+        gpu_pct: { type: number }
+        mem:
+          type: object
+          properties:
+            used_bytes: { type: integer }
+            total_bytes: { type: integer }
+        disk:
+          type: object
+          properties:
+            read_bps: { type: integer }
+            write_bps: { type: integer }
+        net:
+          type: object
+          properties:
+            rx_bps: { type: integer }
+            tx_bps: { type: integer }
+
+    MacroCreateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/MacroStep"
+      required: [name, steps]
+    MacroStep:
+      type: object
+      properties:
+        action: { type: string, example: keyboard.type }
+        text: { type: string, nullable: true }
+        key: { type: string, nullable: true }
+        ms: { type: integer, nullable: true, description: for sleep action }
+      required: [action]
+    MacroCreateResponse:
+      type: object
+      properties:
+        macro_id: { type: string, format: uuid }
+    MacroRunRequest:
+      type: object
+      properties:
+        macro_id: { type: string, format: uuid }
+      required: [macro_id]
+    MacroRunResponse:
+      type: object
+      properties:
+        started: { type: boolean }
+        run_id: { type: string, format: uuid }
+    MacroItem:
+      type: object
+      properties:
+        macro_id: { type: string, format: uuid }
+        name: { type: string }
+        steps_count: { type: integer }
+    MacroListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MacroItem" }
+
+    ScriptUploadResponse:
+      type: object
+      properties:
+        path: { type: string }
+        size_bytes: { type: integer }
+    ScriptRunRequest:
+      type: object
+      properties:
+        path: { type: string }
+        args: { type: array, items: { type: string }, default: [] }
+        cwd: { type: string, nullable: true }
+        env: { type: object, additionalProperties: { type: string }, default: {} }
+        as_user: { type: string, nullable: true }
+        as_root: { type: boolean, default: false }
+        mode: { type: string, enum: [sync, async], default: sync }
+        stream: { type: boolean, default: true }
+      required: [path]
+    ScriptRunAsyncResponse:
+      type: object
+      properties:
+        run_id: { type: string, format: uuid }
+    ScriptListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              size_bytes: { type: integer }
+              updated_at: { type: string, format: date-time }
+    ScriptDeleteRequest:
+      type: object
+      properties:
+        path: { type: string }
+      required: [path]
+
+    LocaleInfo:
+      type: object
+      properties:
+        locale: { type: string, example: en_US.UTF-8 }
+        keyboard_layout: { type: string, example: us }
+        timezone: { type: string, example: UTC }
+    LocaleUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/LocaleInfo"
+      properties:
+        apply_to: { type: string, enum: [current_session, system], default: current_session }
+    LocaleUpdateResponse:
+      type: object
+      properties:
+        updated: { type: boolean }
+        requires_restart: { type: boolean }
+
+    BrowserHarStartRequest:
+      type: object
+      properties:
+        include_content: { type: boolean, default: true }
+    BrowserHarStartResponse:
+      type: object
+      properties:
+        har_session_id: { type: string, format: uuid }
+
+    PipeSendRequest:
+      type: object
+      properties:
+        channel: { type: string, default: default }
+        object: { type: object }
+      required: [channel, object]
+    PipeSendResponse:
+      type: object
+      properties:
+        enqueued: { type: boolean }
+
+  responses:
+    BadRequestError:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ConflictError:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFoundError:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

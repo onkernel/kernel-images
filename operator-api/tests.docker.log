@@ -1,0 +1,497 @@
+──────────────────────────────────────────────────────────────────────────────
+Kernel Computer Operator API — Test Runner
+──────────────────────────────────────────────────────────────────────────────
+Base URL: http://127.0.0.1:10001
+Mode: all
+Server: external only (never spawned)
+Verbosity: always on
+[http] curl -sS -X GET "http://127.0.0.1:10001/health" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "status": "ok",
+  "uptime_sec": 10
+}
+──────────────────────────────────────────────────────────────────────────────
+Suite: health
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X GET "http://127.0.0.1:10001/health" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "status": "ok",
+  "uptime_sec": 10
+}
+ PASS  [health] GET /health is ok  3ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: bus
+──────────────────────────────────────────────────────────────────────────────
+[sse] connect http://127.0.0.1:10001/bus/subscribe?channel=ch1 max=1 timeout=4000
+[http] curl -sS -X POST "http://127.0.0.1:10001/bus/publish" -H "content-type: application/json" -d '{"channel":"ch1","type":"note","payload":{"msg":"hello"}}'
+[sse] data event: data\ndata: {"ts":"2025-08-11T03:04:35.501Z","type":"note","payload":{"msg":"hello"}}\n\n
+[sse] event {"ts":"2025-08-11T03:04:35.501Z","type":"note","payload":{"msg":"hello"}}
+[http] status=200
+[body] {
+  "delivered": true
+}
+ PASS  [bus] publish/subscribe SSE  13ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: clipboard
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X GET "http://127.0.0.1:10001/clipboard" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "type": "text",
+  "text": ""
+}
+ PASS  [clipboard] GET /clipboard responds  38ms
+[http] curl -sS -X POST "http://127.0.0.1:10001/clipboard" -H "content-type: application/json" -d '{"type":"text","text":"Test 1754881475551"}'
+ FAIL  [clipboard] stream detects change (best-effort)  30001ms  :: timeout after 30000ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: fs
+──────────────────────────────────────────────────────────────────────────────
+[tmp] /tmp/fsdir-bewpd29tm3u
+[http] curl -sS -X PUT "http://127.0.0.1:10001/fs/create_directory" -H "content-type: application/json" -d '{"path":"/tmp/fsdir-bewpd29tm3u","mode":"0755"}'
+[http] status=201
+[body] {
+  "ok": true
+}
+[http] curl -sS -X GET "http://127.0.0.1:10001/fs/list_files?path=%2Ftmp" -H "content-type: application/json"
+[http] status=200
+[body] [
+  {
+    "name": "runtime-kernel",
+    "path": "/tmp/runtime-kernel",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:04:23.843Z",
+    "mode": "755"
+  },
+  {
+    "name": ".chromium",
+    "path": "/tmp/.chromium",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:04:24.899Z",
+    "mode": "700"
+  },
+  {
+    "name": "kernel-operator",
+    "path": "/tmp/kernel-operator",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:04:35.383Z",
+    "mode": "755"
+  },
+  {
+    "name": ".X11-unix",
+    "path": "/tmp/.X11-unix",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:04:21.471Z",
+    "mode": "1777"
+  },
+  {
+    "name": "fsdir-bewpd29tm3u",
+    "path": "/tmp/fsdir-bewpd29tm3u",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:05:05.551Z",
+    "mode": "755"
+  },
+  {
+    "name": ".X1-lock",
+    "path": "/tmp/.X1-lock",
+    "size_bytes": 11,
+    "is_dir": false,
+    "mod_time": "2025-08-11T03:04:21.471Z",
+    "mode": "444"
+  },
+  {
+    "name": "xf86-input-neko.sock",
+    "path": "/tmp/xf86-input-neko.sock",
+    "size_bytes": 0,
+    "is_dir": false,
+    "mod_time": "2025-08-11T03:04:21.571Z",
+    "mode": "666"
+  },
+  {
+    "name": "chromium.log",
+    "path": "/tmp/chromium.log",
+    "size_bytes": 381,
+    "is_dir": false,
+    "mod_time": "2025-08-11T03:04:50.895Z",
+    "mode": "644"
+  },
+  {
+    "name": ".org.chromium.Chromium.ZDXFSK",
+    "path": "/tmp/.org.chromium.Chromium.ZDXFSK",
+    "size_bytes": 0,
+    "is_dir": true,
+    "mod_time": "2025-08-11T03:04:24.615Z",
+    "mode": "700"
+  }
+]
+[http] curl -sS -X GET "http://127.0.0.1:10001/fs/file_info?path=%2Ftmp%2Ffsdir-bewpd29tm3u" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "name": "fsdir-bewpd29tm3u",
+  "path": "/tmp/fsdir-bewpd29tm3u",
+  "size_bytes": 0,
+  "is_dir": true,
+  "mod_time": "2025-08-11T03:05:05.551Z",
+  "mode": "d755"
+}
+[http] curl -sS -X PUT "http://127.0.0.1:10001/fs/delete_directory" -H "content-type: application/json" -d '{"path":"/tmp/fsdir-bewpd29tm3u"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [fs] create/list/file_info/delete_directory  11ms
+[tmp] /tmp/fsfile.txt-j9kw33itxy
+[http] raw curl -sS -X PUT "http://127.0.0.1:10001/fs/write_file?path=%2Ftmp%2Ffsfile.txt-j9kw33itxy&mode=0644"
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/fs/read_file?path=%2Ftmp%2Ffsfile.txt-j9kw33itxy"
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/fs/download?path=%2Ftmp%2Ffsfile.txt-j9kw33itxy"
+[tmp] /tmp/fsfile2.txt-hb0n1iijnlv
+[http] curl -sS -X PUT "http://127.0.0.1:10001/fs/move" -H "content-type: application/json" -d '{"src_path":"/tmp/fsfile.txt-j9kw33itxy","dest_path":"/tmp/fsfile2.txt-hb0n1iijnlv"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+[http] curl -sS -X PUT "http://127.0.0.1:10001/fs/delete_file" -H "content-type: application/json" -d '{"path":"/tmp/fsfile2.txt-hb0n1iijnlv"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [fs] write/read/download/move/delete_file  17ms
+[tmp] /tmp/upload.bin-m6triwf7qd
+[http] raw curl -sS -X POST "http://127.0.0.1:10001/fs/upload"
+ PASS  [fs] upload  6ms
+[tmp] /tmp/perm.txt-190q45tab5q
+[http] raw curl -sS -X PUT "http://127.0.0.1:10001/fs/write_file?path=%2Ftmp%2Fperm.txt-190q45tab5q&mode=0644"
+[http] curl -sS -X PUT "http://127.0.0.1:10001/fs/set_file_permissions" -H "content-type: application/json" -d '{"path":"/tmp/perm.txt-190q45tab5q","mode":"0755"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [fs] set_file_permissions  5ms
+[tmp] /tmp/tail.log-n5gkubl324
+[http] raw curl -sS -X PUT "http://127.0.0.1:10001/fs/write_file?path=%2Ftmp%2Ftail.log-n5gkubl324&mode=0644"
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/fs/tail/stream?path=%2Ftmp%2Ftail.log-n5gkubl324"
+ PASS  [fs] tail/stream yields events  1160ms
+[tmp] /tmp/watch-dir-5eazd8pflaa
+[http] curl -sS -X POST "http://127.0.0.1:10001/fs/watch" -H "content-type: application/json" -d '{"path":"/tmp/watch-dir-5eazd8pflaa","recursive":true}'
+[http] status=201
+[body] {
+  "watch_id": "xwnhmq3wlt"
+}
+ FAIL  [fs] watch events  8ms  :: watch start failed
+──────────────────────────────────────────────────────────────────────────────
+Suite: input
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/mouse/move" -H "content-type: application/json" -d '{"x":100,"y":100}'
+[http] status=200
+[body] {
+  "ok": true
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/mouse/click" -H "content-type: application/json" -d '{"button":"left","count":1}'
+[http] status=200
+[body] {
+  "ok": true
+}
+[http] curl -sS -X GET "http://127.0.0.1:10001/input/mouse/location" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "x": 100,
+  "y": 100,
+  "screen": 0,
+  "window": "10485764"
+}
+ PASS  [input] mouse basic  128ms
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/keyboard/type" -H "content-type: application/json" -d '{"text":"test","wpm":300}'
+[http] status=200
+[body] {
+  "ok": true
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/keyboard/key" -H "content-type: application/json" -d '{"keys":["Return"]}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [input] keyboard basic  113ms
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/window/move_resize" -H "content-type: application/json" -d '{"match":{"name":"chromium"},"x":0,"y":0,"width":800,"height":600}'
+[http] status=200
+[body] {
+  "ok": true,
+  "wid": "10485760"
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/combo/window/center" -H "content-type: application/json" -d '{"match":{"name":"chromium"},"width":800,"height":600}'
+[http] status=200
+[body] {
+  "ok": true,
+  "wid": "10485760",
+  "x": 112,
+  "y": 84,
+  "width": 800,
+  "height": 600
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/input/combo/window/snap" -H "content-type: application/json" -d '{"match":{"name":"chromium"},"position":"left"}'
+[http] status=200
+[body] {
+  "ok": true,
+  "wid": "10485760",
+  "x": 0,
+  "y": 0,
+  "width": 512,
+  "height": 768
+}
+ PASS  [input] window ops and combos (best-effort)  76ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: logs
+──────────────────────────────────────────────────────────────────────────────
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/logs/stream"
+ PASS  [logs] rejects bad request  2ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: macros
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/macros/create" -H "content-type: application/json" -d '{"name":"type-hello","steps":[{"action":"sleep","ms":5},{"action":"keyboard.type","text":"hello"}]}'
+[http] status=200
+[body] {
+  "macro_id": "eu72hl09sb"
+}
+[http] curl -sS -X GET "http://127.0.0.1:10001/macros/list" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "items": [
+    {
+      "macro_id": "eu72hl09sb",
+      "name": "type-hello",
+      "steps_count": 2
+    }
+  ]
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/macros/run" -H "content-type: application/json" -d '{"macro_id":"eu72hl09sb"}'
+[http] status=200
+[body] {
+  "started": true,
+  "run_id": "yz1rbmr9r0"
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/macros/run" -H "content-type: application/json" -d '{"macro_id":"nope"}'
+[http] status=404
+[body] {
+  "message": "Not Found"
+}
+[http] curl -sS -X DELETE "http://127.0.0.1:10001/macros/eu72hl09sb" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [macros] create/list/delete + run + invalid run  12ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: metrics
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X GET "http://127.0.0.1:10001/metrics/snapshot" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "cpu_pct": 0,
+  "gpu_pct": 0,
+  "mem": {
+    "used_bytes": 12187107328,
+    "total_bytes": 16776560640
+  },
+  "disk": {
+    "read_bps": 0,
+    "write_bps": 0
+  },
+  "net": {
+    "rx_bps": 0,
+    "tx_bps": 0
+  }
+}
+ PASS  [metrics] snapshot  1ms
+[sse] connect http://127.0.0.1:10001/metrics/stream max=2 timeout=4000
+[sse] data event: data\ndata: {"ts":"2025-08-11T03:05:08.101Z","cpu_pct":0,"gpu_pct":0,"mem":{"used_bytes":12190461952,"total_bytes":16776560640},"disk":{"read_bps":0,"write_bps":0},"net":{"rx_bps":0,"tx_bps":0}}\n\n
+[sse] event {"ts":"2025-08-11T03:05:08.101Z","cpu_pct":0,"gpu_pct":0,"mem":{"used_bytes":12190461952,"total_bytes":16776560640},"disk":{"read_bps":0,"write_bps":0},"net":{"rx_bps":0,"tx_bps":0}}
+[sse] data event: data\ndata: {"ts":"2025-08-11T03:05:09.103Z","cpu_pct":0,"gpu_pct":0,"mem":{"used_bytes":12193042432,"total_bytes":16776560640},"disk":{"read_bps":0,"write_bps":0},"net":{"rx_bps":0,"tx_bps":0}}\n\n
+[sse] event {"ts":"2025-08-11T03:05:09.103Z","cpu_pct":0,"gpu_pct":0,"mem":{"used_bytes":12193042432,"total_bytes":16776560640},"disk":{"read_bps":0,"write_bps":0},"net":{"rx_bps":0,"tx_bps":0}}
+ PASS  [metrics] stream yields  2004ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: network
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/network/intercept/rules" -H "content-type: application/json" -d '{"rules":[{"match":{"method":"GET","host_contains":"example.com"},"action":{"type":"block"}}]}'
+[http] status=200
+[body] {
+  "rule_set_id": "5hxuxp8ymc",
+  "applied": true
+}
+[http] curl -sS -X DELETE "http://127.0.0.1:10001/network/intercept/rules/5hxuxp8ymc" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [network] apply/delete intercept rules  9ms
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/network/har/stream"
+ PASS  [network] HAR stream opens  1ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: os
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X GET "http://127.0.0.1:10001/os/locale" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "locale": "en_US.UTF-8",
+  "keyboard_layout": "us",
+  "timezone": "UTC"
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/os/locale" -H "content-type: application/json" -d '{"locale":"en_US.UTF-8","timezone":"UTC","keyboard_layout":"us"}'
+[http] status=200
+[body] {
+  "updated": true,
+  "requires_restart": false
+}
+ PASS  [os] locale get/post  6ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: pipe
+──────────────────────────────────────────────────────────────────────────────
+[sse] connect http://127.0.0.1:10001/pipe/recv/stream?channel=x max=1 timeout=4000
+[http] curl -sS -X POST "http://127.0.0.1:10001/pipe/send" -H "content-type: application/json" -d '{"channel":"x","object":{"n":42}}'
+[sse] data event: data\ndata: {"ts":"2025-08-11T03:05:09.125Z","object":{"n":42}}\n\n
+[sse] event {"ts":"2025-08-11T03:05:09.125Z","object":{"n":42}}
+[http] status=200
+[body] {
+  "enqueued": true
+}
+ PASS  [pipe] send/recv  4ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: process
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/process/exec" -H "content-type: application/json" -d '{"command":"bash","args":["-lc","printf hi"]}'
+[http] status=200
+[body] {
+  "exit_code": 0,
+  "stdout_b64": "aGk=",
+  "stderr_b64": "",
+  "duration_ms": 0
+}
+ PASS  [process] exec  20ms
+[http] curl -sS -X POST "http://127.0.0.1:10001/process/spawn" -H "content-type: application/json" -d '{"command":"bash","args":["-lc","for i in 1 2 3; do echo $i; sleep 1; done"]}'
+[http] status=200
+[body] {
+  "process_id": "3ijubiskv6",
+  "pid": 320,
+  "started_at": "2025-08-11T03:05:09.150Z"
+}
+[http] curl -sS -X GET "http://127.0.0.1:10001/process/3ijubiskv6/status" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "state": "running",
+  "exit_code": null,
+  "cpu_pct": 0,
+  "mem_bytes": 0
+}
+[sse] connect http://127.0.0.1:10001/process/3ijubiskv6/stdout/stream max=2 timeout=6000
+[sse] data event: data\ndata: {"stream":"stdout","data_b64":"MQo="}\n\n
+[sse] event {"stream":"stdout","data_b64":"MQo="}
+[sse] data event: data\ndata: {"stream":"stdout","data_b64":"Mgo="}\n\n
+[sse] event {"stream":"stdout","data_b64":"Mgo="}
+[http] curl -sS -X POST "http://127.0.0.1:10001/process/3ijubiskv6/kill" -H "content-type: application/json" -d '{"signal":"TERM"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [process] spawn/status/stream/kill  1015ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: recording
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/recording/start" -H "content-type: application/json" -d '{"id":"t1","maxDurationInSeconds":1}'
+[http] status=201
+[body] {
+  "ok": true,
+  "id": "t1",
+  "started_at": "2025-08-11T03:05:10.171Z"
+}
+[http] curl -sS -X GET "http://127.0.0.1:10001/recording/list" -H "content-type: application/json"
+[http] status=200
+[body] [
+  {
+    "id": "t1",
+    "isRecording": true,
+    "started_at": "2025-08-11T03:05:10.171Z",
+    "finished_at": null
+  }
+]
+[http] raw curl -sS -X GET "http://127.0.0.1:10001/recording/download?id=t1"
+[http] curl -sS -X POST "http://127.0.0.1:10001/recording/delete" -H "content-type: application/json" -d '{"id":"t1"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [recording] start/list/stop/download/delete  1512ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: screenshot
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/screenshot/capture" -H "content-type: application/json" -d '{"format":"png"}'
+[http] status=200
+[body] {
+  "screenshot_id": "s6bbl8652a",
+  "content_type": "image/png",
+  "bytes_b64": "iVBORw0KGgoAAAANSUhEUgAABAAAAAMACAIAAAA12IJaAAAACXBIWXMAAAAAAAAAAQCEeRdzAAAQAElEQVR4nOzdd3QTB7vv+/x7y7nrrvOec9e+++61332S7Dc7/Y1NSyCQQBKSAIEQugOmhg4h9BIgQCBA6ITeQgtgCD30GorpvbrI3ZblIncVS74PDBnGapZk2bKt72c9K0uaGc2MRjJ5fpr2wp1kG0VRFEVRFEVRIVIvBH0NKIqiKIqiKIqqtiIAUBRFURRFUVQIFQGAoiiKoiiKokKoCAAURVEURVEUFUJFAKAoiqIoiqKoECqvAsDjDFuCwZaSY9fn27MKXJeMkgl0hicT+7cqsojMPHt+SZnVVgYEi3z95EsoX0X5QlbmT+u28iDp2WO1HCegKIqiKIqq3qogANxPtaXlum363ZW8RF7o/Uo8TLMVm4Pd9wFOisxl8uX0868rqeIJyAAURVEURVV/eQoAcXp7pvuf/D2XvFBe7s0apOTYbfZgN3qAG/LllK+oD39UFfb9TnU7uTTo/xBQFEVRFBU65TYASPvuX+uvrQozQGoOvT9qgVSfMoDvddv32EBRFEVRFOVfuQ4AD1Jtfv/277Af4IH7Y4Eepdns9P+oDWz2ShwLRFEURVEUVZPKdQDw47h/D+cDuFt2sSXYbR3gtSJzWdD/XCmKoiiKoipfLgLAw3RboLp/pWSGzkuJ03OtH9Qysfoq/oPkQCCKoiiKoqq+XASA+MxAdv9SMkPnpaQbKzj6x1ZUkH/2j4Qfh8V2apTQ6q3HEc100wYU3ThnN5WU1bYjh/Ly8v7+97+npaUFe0VQKR52Z1EURVEURdWWchEAUnICHACSc1wsOK/YfZ9lt5t1j/WLxhom9ymIPmnNNpRmZpjTEovv3zIuniTDTbH3yu... [37917 bytes total]
+ PASS  [screenshot] capture returns image bytes (best-effort)  149ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: scripts
+──────────────────────────────────────────────────────────────────────────────
+[tmp] /tmp/script.sh-rg6vkgvxtx
+[http] raw curl -sS -X POST "http://127.0.0.1:10001/scripts/upload"
+[http] curl -sS -X GET "http://127.0.0.1:10001/scripts/list" -H "content-type: application/json"
+[http] status=200
+[body] {
+  "items": []
+}
+[http] curl -sS -X POST "http://127.0.0.1:10001/scripts/run" -H "content-type: application/json" -d '{"path":"/tmp/script.sh-rg6vkgvxtx"}'
+[http] status=200
+[body] {
+  "exit_code": 0,
+  "stdout_b64": "aGkK",
+  "stderr_b64": "",
+  "duration_ms": 0
+}
+[http] curl -sS -X DELETE "http://127.0.0.1:10001/scripts/delete" -H "content-type: application/json" -d '{"path":"/tmp/script.sh-rg6vkgvxtx"}'
+[http] status=200
+[body] {
+  "ok": true
+}
+ PASS  [scripts] upload/list/run/delete  13ms
+──────────────────────────────────────────────────────────────────────────────
+Suite: stream
+──────────────────────────────────────────────────────────────────────────────
+[http] curl -sS -X POST "http://127.0.0.1:10001/stream/start" -H "content-type: application/json" -d '{"rtmps_url":"rtmps://example.com/live","stream_key":"testkey","fps":1,"audio":{"capture_system":false}}'
+[http] status=200
+[body] {
+  "stream_id": "d7gzvoajxi",
+  "status": "starting",
+  "metrics_endpoint": "/stream/d7gzvoajxi/metrics/stream"
+}
+[sse] connect http://127.0.0.1:10001/stream/d7gzvoajxi/metrics/stream max=1 timeout=5000
+[sse] data event: data\ndata: {"ts":"2025-08-11T03:05:13.875Z"}\n\n
+[sse] event {"ts":"2025-08-11T03:05:13.875Z"}
+[http] curl -sS -X POST "http://127.0.0.1:10001/stream/stop" -H "content-type: application/json" -d '{"stream_id":"d7gzvoajxi"}'
+[http] status=200
+[body] {
+  "stream_id": "d7gzvoajxi",
+  "status": "stopped"
+}
+ PASS  [stream] start metrics stream then stop (best-effort)  2014ms
+──────────────────────────────────────────────────────────────────────────────
+Summary
+──────────────────────────────────────────────────────────────────────────────
+┌──────────────────┐
+│ Total: 27        │
+│ Pass:  25        │
+│ Fail:  2         │
+│ Skip:  0         │
+│ Elapsed: 38394ms │
+│ Coverage: 100%   │
+│ Reliability: 93% │
+└──────────────────┘
+──────────────────────────────────────────────────────────────────────────────
+Failures
+──────────────────────────────────────────────────────────────────────────────
+• [clipboard] stream detects change (best-effort)  30001ms  :: timeout after 30000ms
+• [fs] watch events  8ms  :: watch start failed

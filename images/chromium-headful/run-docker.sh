@@ -41,10 +41,12 @@ RUN_ARGS=(
   -e RUN_AS_ROOT="$RUN_AS_ROOT" \
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
-
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   RUN_ARGS+=( -p 444:10001 )
   RUN_ARGS+=( -e WITH_KERNEL_IMAGES_API=true )
+elif [[ "${WITH_KERNEL_OPERATOR_API:-}" == "true" ]]; then
+  RUN_ARGS+=( -p 444:10001 )
+  RUN_ARGS+=( -e WITH_KERNEL_OPERATOR_API=true )
 fi
 
 # noVNC vs WebRTC port mapping
@@ -64,5 +66,17 @@ else
   RUN_ARGS+=( -p 8080:6080 )
 fi
 
-docker rm -f "$NAME" 2>/dev/null || true
-docker run -it "${RUN_ARGS[@]}" "$IMAGE"
+if [[ "${DEBUG_BASH:-false}" == "true" ]]; then
+  # if DEBUG_BASH set to true, enters container bash
+  docker run -dit --name "$NAME" "${RUN_ARGS[@]}" "$IMAGE"
+  docker logs -f "$NAME" &
+  docker exec -it "$NAME" /bin/bash
+elif [[ "${DEBUG_OPERATOR_TEST:-false}" == "true" ]]; then
+  # if DEBUG_OPERATOR_TEST set to true, start in detached mode
+  docker rm -f "$NAME" 2>/dev/null || true
+  docker run -d "${RUN_ARGS[@]}" -e DEBUG_OPERATOR_TEST=true "$IMAGE"
+  echo "Container '$NAME' started in detached mode"
+else
+  docker rm -f "$NAME" 2>/dev/null || true
+  docker run -it "${RUN_ARGS[@]}" "$IMAGE"
+fi

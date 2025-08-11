@@ -1,0 +1,40 @@
+{
+  "name": "kernel-computer-operator-api",
+  "version": "0.1.0",
+  "description": "Node.js (ESM) Hono server implementing the Kernel Computer Operator API",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development nodemon --watch src --ext js,json index.js",
+    "test": "cross-env PORT=10001 vitest run --reporter=verbose",
+    "test:watch": "cross-env PORT=10001 vitest",
+    "build:api": "cp .kernel-operator.env .env && bun build --compile --minify --sourcemap --bytecode --target=bun-linux-x64 ./index.js --outfile dist/kernel-operator-api && cp .env dist/.env",
+    "build:test": "cp .kernel-operator.env .env && bun build --compile --minify --sourcemap --target=bun-linux-x64 ./test.js --outfile dist/kernel-operator-test && cp .env dist/.env",
+    "build": "bun build:api && bun build:test && cp .env dist/.kernel-operator.env"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "busboy": "^1.6.0",
+    "chalk": "^5.3.0",
+    "chokidar": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "extract-zip": "^2.0.1",
+    "formdata-node": "^6.0.3",
+    "hono": "^4.5.10",
+    "http-proxy": "^1.18.1",
+    "httpolyglot": "^0.1.2",
+    "mime-types": "^2.1.35",
+    "morgan": "^1.10.0",
+    "nanoid": "^5.0.7",
+    "pidusage": "^3.0.2",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "nodemon": "^3.1.7",
+    "undici": "^7.13.0",
+    "vitest": "^2.0.5"
+  }
+}
