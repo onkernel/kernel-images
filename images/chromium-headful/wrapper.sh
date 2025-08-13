@@ -95,7 +95,7 @@ start_dynamic_log_aggregator
 
 export DISPLAY=:1
 
-# Predefine ports and export so supervisord programs (e.g., ncat) can read them
+# Predefine ports and export for services
 export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
 export CHROME_PORT="${CHROME_PORT:-9222}"
 
@@ -109,7 +109,6 @@ cleanup () {
   enable_scale_to_zero
   supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
   # Stop log tailers
   if [[ -n "${tail_pids[*]:-}" ]]; then
@@ -171,22 +170,11 @@ done
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 
 # Start Chromium with display :1 and remote debugging, loading our recorder extension.
-# Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
 echo "[wrapper] Starting Chromium via supervisord on internal port $INTERNAL_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start chromium
 echo "[wrapper] Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
 for i in {1..100}; do
   if nc -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
-    break
-  fi
-  sleep 0.2
-done
-
-echo "[wrapper] Starting ncat proxy via supervisord on port $CHROME_PORT"
-supervisorctl -c /etc/supervisor/supervisord.conf start ncat
-echo "[wrapper] Waiting for ncat to listen on 127.0.0.1:$CHROME_PORT..."
-for i in {1..50}; do
-  if nc -z 127.0.0.1 "$CHROME_PORT" 2>/dev/null; then
     break
   fi
   sleep 0.2

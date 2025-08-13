@@ -19,6 +19,7 @@ import (
 	serverpkg "github.com/onkernel/kernel-images/server"
 	"github.com/onkernel/kernel-images/server/cmd/api/api"
 	"github.com/onkernel/kernel-images/server/cmd/config"
+	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
@@ -100,10 +101,49 @@ func main() {
 		Handler: r,
 	}
 
+	// DevTools WebSocket proxy setup: tail Chromium supervisord log and start WS server on :9222 only after upstream is found
+	const chromiumLogPath = "/var/log/supervisord/chromium"
+	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
+	upstreamMgr.Start(ctx)
+
+	// wait up to 10 seconds for initial upstream; exit nonzero if not found
+	if _, err := upstreamMgr.WaitForInitial(10 * time.Second); err != nil {
+		slogger.Error("devtools upstream not available", "err", err)
+		os.Exit(1)
+	}
+
+	rDevtools := chi.NewRouter()
+	rDevtools.Use(
+		chiMiddleware.Logger,
+		chiMiddleware.Recoverer,
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctxWithLogger := logger.AddToContext(r.Context(), slogger)
+				next.ServeHTTP(w, r.WithContext(ctxWithLogger))
+			})
+		},
+	)
+	rDevtools.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		devtoolsproxy.WebSocketProxyHandler(upstreamMgr, slogger).ServeHTTP(w, r)
+	})
+
+	srvDevtools := &http.Server{
+		Addr:    "0.0.0.0:9222",
+		Handler: rDevtools,
+	}
+
 	go func() {
 		slogger.Info("http server starting", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slogger.Error("http server failed", "err", err)
+			stop()
+		}
+	}()
+
+	go func() {
+		slogger.Info("devtools websocket proxy starting", "addr", srvDevtools.Addr)
+		if err := srvDevtools.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slogger.Error("devtools websocket proxy failed", "err", err)
 			stop()
 		}
 	}()
@@ -121,6 +161,10 @@ func main() {
 	})
 	g.Go(func() error {
 		return apiService.Shutdown(shutdownCtx)
+	})
+	g.Go(func() error {
+		upstreamMgr.Stop()
+		return srvDevtools.Shutdown(shutdownCtx)
 	})
 
 	if err := g.Wait(); err != nil {

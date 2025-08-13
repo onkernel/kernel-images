@@ -33,7 +33,7 @@ RUN set -xe; \
     supervisor;
 
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
+RUN apt update -y && apt install -y chromium
 
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \

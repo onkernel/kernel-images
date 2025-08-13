@@ -136,9 +136,9 @@ RUN set -eux; \
     apt-get clean -y; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/
 
-# install chromium & ncat for proxying the remote debugging port
+# install chromium
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
+RUN apt update -y && apt install -y chromium
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1

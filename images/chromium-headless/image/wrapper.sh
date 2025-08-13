@@ -126,7 +126,6 @@ export CHROME_PORT="${CHROME_PORT:-9222}"
 cleanup () {
   echo "[wrapper] Cleaning up..."
   supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop xvfb || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
@@ -171,16 +170,7 @@ done
 echo "[wrapper] Starting Chromium via supervisord on internal port $INTERNAL_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start chromium
 for i in {1..100}; do
-  if ncat -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
-    break
-  fi
-  sleep 0.2
-done
-
-echo "[wrapper] Starting ncat proxy via supervisord on port $CHROME_PORT"
-supervisorctl -c /etc/supervisor/supervisord.conf start ncat
-for i in {1..50}; do
-  if ncat -z 127.0.0.1 "$CHROME_PORT" 2>/dev/null; then
+  if (echo >/dev/tcp/127.0.0.1/"$INTERNAL_PORT") >/dev/null 2>&1; then
     break
   fi
   sleep 0.2
@@ -191,7 +181,7 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
   API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
   echo "[wrapper] Waiting for kernel-images API on 127.0.0.1:${API_PORT}..."
-  while ! ncat -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
+  while ! (echo >/dev/tcp/127.0.0.1/"${API_PORT}") >/dev/null 2>&1; do
     sleep 0.5
   done
 fi
