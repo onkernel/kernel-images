@@ -9,6 +9,27 @@ if [ -z "${WITH_DOCKER:-}" ]; then
   mount -t tmpfs tmpfs /dev/shm
 fi
 
+# We disable scale-to-zero for the lifetime of this script and restore
+# the original setting on exit.
+SCALE_TO_ZERO_FILE="/uk/libukp/scale_to_zero_disable"
+scale_to_zero_write() {
+  local char="$1"
+  # Skip when not running inside Unikraft Cloud (control file absent)
+  if [[ -e "$SCALE_TO_ZERO_FILE" ]]; then
+    # Write the character, but do not fail the whole script if this errors out
+    echo -n "$char" > "$SCALE_TO_ZERO_FILE" 2>/dev/null || \
+      echo "[wrapper] Failed to write to scale-to-zero control file" >&2
+  fi
+}
+disable_scale_to_zero() { scale_to_zero_write "+"; }
+enable_scale_to_zero()  { scale_to_zero_write "-"; }
+
+# Disable scale-to-zero for the duration of the script when not running under Docker
+if [[ -z "${WITHDOCKER:-}" ]]; then
+  echo "[wrapper] Disabling scale-to-zero"
+  disable_scale_to_zero
+fi
+
 # if CHROMIUM_FLAGS is not set, default to the flags used in playwright_stealth
 if [ -z "${CHROMIUM_FLAGS:-}" ]; then
   CHROMIUM_FLAGS="--accept-lang=en-US,en \
@@ -125,6 +146,8 @@ export CHROME_PORT="${CHROME_PORT:-9222}"
 # Cleanup handler
 cleanup () {
   echo "[wrapper] Cleaning up..."
+  # Re-enable scale-to-zero if the script terminates early
+  enable_scale_to_zero
   supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop xvfb || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
@@ -187,5 +210,9 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
 fi
 
 echo "[wrapper] startup complete!"
+# Re-enable scale-to-zero once startup has completed (when not under Docker)
+if [[ -z "${WITHDOCKER:-}" ]]; then
+  enable_scale_to_zero
+fi
 # Keep the container running while streaming logs
 wait
