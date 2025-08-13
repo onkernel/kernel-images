@@ -380,6 +380,34 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /fs/download_dir_zip:
+    get:
+      summary: Download a directory as a ZIP archive
+      description: Returns a ZIP file containing the contents of the specified directory.
+      operationId: downloadDirZip
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Absolute directory path to archive and download.
+      responses:
+        "200":
+          description: ZIP archive of the requested directory
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /fs/write_file:
     put:
       summary: Write or create a file

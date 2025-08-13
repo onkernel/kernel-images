@@ -463,3 +463,103 @@ func TestUploadZipValidationErrors(t *testing.T) {
 		t.Fatalf("expected 400 for missing zip_file, got %T", resp2)
 	}
 }
+
+func TestDownloadDirZipSuccess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	// Prepare a directory with nested content
+	root := t.TempDir()
+	nested := filepath.Join(root, "dir", "sub")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	f1 := filepath.Join(root, "top.txt")
+	f2 := filepath.Join(nested, "a.txt")
+	if err := os.WriteFile(f1, []byte("top"), 0o644); err != nil {
+		t.Fatalf("write top: %v", err)
+	}
+	if err := os.WriteFile(f2, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("write nested: %v", err)
+	}
+
+	resp, err := svc.DownloadDirZip(ctx, oapi.DownloadDirZipRequestObject{Params: oapi.DownloadDirZipParams{Path: root}})
+	if err != nil {
+		t.Fatalf("DownloadDirZip error: %v", err)
+	}
+	r200, ok := resp.(oapi.DownloadDirZip200ApplicationzipResponse)
+	if !ok {
+		t.Fatalf("unexpected response type: %T", resp)
+	}
+	data, err := io.ReadAll(r200.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+
+	// Expect both files present with paths relative to root
+	want := map[string]string{
+		"top.txt":       "top",
+		"dir/sub/a.txt": "hello",
+	}
+	found := map[string]bool{}
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if _, ok := want[f.Name]; ok {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatalf("open zip entry: %v", err)
+			}
+			b, _ := io.ReadAll(rc)
+			rc.Close()
+			if string(b) != want[f.Name] {
+				t.Fatalf("content mismatch for %s: %q", f.Name, string(b))
+			}
+			found[f.Name] = true
+		}
+	}
+	for k := range want {
+		if !found[k] {
+			t.Fatalf("missing zip entry: %s", k)
+		}
+	}
+}
+
+func TestDownloadDirZipErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	// Empty path
+	if resp, err := svc.DownloadDirZip(ctx, oapi.DownloadDirZipRequestObject{Params: oapi.DownloadDirZipParams{Path: ""}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if _, ok := resp.(oapi.DownloadDirZip400JSONResponse); !ok {
+		t.Fatalf("expected 400 for empty path, got %T", resp)
+	}
+
+	// Non-existent path
+	missing := filepath.Join(t.TempDir(), "nope")
+	if resp, err := svc.DownloadDirZip(ctx, oapi.DownloadDirZipRequestObject{Params: oapi.DownloadDirZipParams{Path: missing}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if _, ok := resp.(oapi.DownloadDirZip404JSONResponse); !ok {
+		t.Fatalf("expected 404 for missing dir, got %T", resp)
+	}
+
+	// Path is a file, not a directory
+	tmp := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(tmp, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if resp, err := svc.DownloadDirZip(ctx, oapi.DownloadDirZipRequestObject{Params: oapi.DownloadDirZipParams{Path: tmp}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if _, ok := resp.(oapi.DownloadDirZip400JSONResponse); !ok {
+		t.Fatalf("expected 400 for file path, got %T", resp)
+	}
+}

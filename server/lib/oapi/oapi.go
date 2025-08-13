@@ -423,6 +423,12 @@ type InternalError = Error
 // NotFoundError defines model for NotFoundError.
 type NotFoundError = Error
 
+// DownloadDirZipParams defines parameters for DownloadDirZip.
+type DownloadDirZipParams struct {
+	// Path Absolute directory path to archive and download.
+	Path string `form:"path" json:"path"`
+}
+
 // FileInfoParams defines parameters for FileInfo.
 type FileInfoParams struct {
 	// Path Absolute path of the file or directory.
@@ -636,6 +642,9 @@ type ClientInterface interface {
 
 	DeleteFile(ctx context.Context, body DeleteFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DownloadDirZip request
+	DownloadDirZip(ctx context.Context, params *DownloadDirZipParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// FileInfo request
 	FileInfo(ctx context.Context, params *FileInfoParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -836,6 +845,18 @@ func (c *Client) DeleteFileWithBody(ctx context.Context, contentType string, bod
 
 func (c *Client) DeleteFile(ctx context.Context, body DeleteFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteFileRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DownloadDirZip(ctx context.Context, params *DownloadDirZipParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDownloadDirZipRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1438,6 +1459,51 @@ func NewDeleteFileRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDownloadDirZipRequest generates requests for DownloadDirZip
+func NewDownloadDirZipRequest(server string, params *DownloadDirZipParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/download_dir_zip")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, params.Path); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2485,6 +2551,9 @@ type ClientWithResponsesInterface interface {
 
 	DeleteFileWithResponse(ctx context.Context, body DeleteFileJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteFileResponse, error)
 
+	// DownloadDirZipWithResponse request
+	DownloadDirZipWithResponse(ctx context.Context, params *DownloadDirZipParams, reqEditors ...RequestEditorFn) (*DownloadDirZipResponse, error)
+
 	// FileInfoWithResponse request
 	FileInfoWithResponse(ctx context.Context, params *FileInfoParams, reqEditors ...RequestEditorFn) (*FileInfoResponse, error)
 
@@ -2686,6 +2755,30 @@ func (r DeleteFileResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DeleteFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DownloadDirZipResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DownloadDirZipResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DownloadDirZipResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3333,6 +3426,15 @@ func (c *ClientWithResponses) DeleteFileWithResponse(ctx context.Context, body D
 	return ParseDeleteFileResponse(rsp)
 }
 
+// DownloadDirZipWithResponse request returning *DownloadDirZipResponse
+func (c *ClientWithResponses) DownloadDirZipWithResponse(ctx context.Context, params *DownloadDirZipParams, reqEditors ...RequestEditorFn) (*DownloadDirZipResponse, error) {
+	rsp, err := c.DownloadDirZip(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDownloadDirZipResponse(rsp)
+}
+
 // FileInfoWithResponse request returning *FileInfoResponse
 func (c *ClientWithResponses) FileInfoWithResponse(ctx context.Context, params *FileInfoParams, reqEditors ...RequestEditorFn) (*FileInfoResponse, error) {
 	rsp, err := c.FileInfo(ctx, params, reqEditors...)
@@ -3768,6 +3870,46 @@ func ParseDeleteFileResponse(rsp *http.Response) (*DeleteFileResponse, error) {
 	}
 
 	response := &DeleteFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDownloadDirZipResponse parses an HTTP response from a DownloadDirZipWithResponse call
+func ParseDownloadDirZipResponse(rsp *http.Response) (*DownloadDirZipResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DownloadDirZipResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -4743,6 +4885,9 @@ type ServerInterface interface {
 	// Delete a file
 	// (PUT /fs/delete_file)
 	DeleteFile(w http.ResponseWriter, r *http.Request)
+	// Download a directory as a ZIP archive
+	// (GET /fs/download_dir_zip)
+	DownloadDirZip(w http.ResponseWriter, r *http.Request, params DownloadDirZipParams)
 	// Get information about a file or directory
 	// (GET /fs/file_info)
 	FileInfo(w http.ResponseWriter, r *http.Request, params FileInfoParams)
@@ -4845,6 +4990,12 @@ func (_ Unimplemented) DeleteDirectory(w http.ResponseWriter, r *http.Request) {
 // Delete a file
 // (PUT /fs/delete_file)
 func (_ Unimplemented) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Download a directory as a ZIP archive
+// (GET /fs/download_dir_zip)
+func (_ Unimplemented) DownloadDirZip(w http.ResponseWriter, r *http.Request, params DownloadDirZipParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5056,6 +5207,40 @@ func (siw *ServerInterfaceWrapper) DeleteFile(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DeleteFile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadDirZip operation middleware
+func (siw *ServerInterfaceWrapper) DownloadDirZip(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadDirZipParams
+
+	// ------------- Required query parameter "path" -------------
+
+	if paramValue := r.URL.Query().Get("path"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "path", r.URL.Query(), &params.Path)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadDirZip(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5727,6 +5912,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/fs/delete_file", wrapper.DeleteFile)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/fs/download_dir_zip", wrapper.DownloadDirZip)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/fs/file_info", wrapper.FileInfo)
 	})
 	r.Group(func(r chi.Router) {
@@ -5989,6 +6177,60 @@ func (response DeleteFile404JSONResponse) VisitDeleteFileResponse(w http.Respons
 type DeleteFile500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response DeleteFile500JSONResponse) VisitDeleteFileResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadDirZipRequestObject struct {
+	Params DownloadDirZipParams
+}
+
+type DownloadDirZipResponseObject interface {
+	VisitDownloadDirZipResponse(w http.ResponseWriter) error
+}
+
+type DownloadDirZip200ApplicationzipResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadDirZip200ApplicationzipResponse) VisitDownloadDirZipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/zip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadDirZip400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response DownloadDirZip400JSONResponse) VisitDownloadDirZipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadDirZip404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response DownloadDirZip404JSONResponse) VisitDownloadDirZipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DownloadDirZip500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DownloadDirZip500JSONResponse) VisitDownloadDirZipResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -7104,6 +7346,9 @@ type StrictServerInterface interface {
 	// Delete a file
 	// (PUT /fs/delete_file)
 	DeleteFile(ctx context.Context, request DeleteFileRequestObject) (DeleteFileResponseObject, error)
+	// Download a directory as a ZIP archive
+	// (GET /fs/download_dir_zip)
+	DownloadDirZip(ctx context.Context, request DownloadDirZipRequestObject) (DownloadDirZipResponseObject, error)
 	// Get information about a file or directory
 	// (GET /fs/file_info)
 	FileInfo(ctx context.Context, request FileInfoRequestObject) (FileInfoResponseObject, error)
@@ -7352,6 +7597,32 @@ func (sh *strictHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DeleteFileResponseObject); ok {
 		if err := validResponse.VisitDeleteFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadDirZip operation middleware
+func (sh *strictHandler) DownloadDirZip(w http.ResponseWriter, r *http.Request, params DownloadDirZipParams) {
+	var request DownloadDirZipRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadDirZip(ctx, request.(DownloadDirZipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadDirZip")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadDirZipResponseObject); ok {
+		if err := validResponse.VisitDownloadDirZipResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8024,80 +8295,82 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/+w9624bN5evQnD7I9mVZKdxW9T/kljpGrnCSpBv22QFeuZI4pcZckpyLCuB331xSM6d",
+	"o5FlO4mLBQok0XDIc79z+pVGMs2kAGE0Pf5KFehMCg32H09ZfAZ/56DNVCmp8KdICgPC4F9ZliU8YoZL",
+	"cfBvLQX+pqMVpAz/9pOCBT2m/3FQ7X/gnuoDt9vV1dWIxqAjxTPchB7jgcSfSK9G9JkUi4RH3+r04jg8",
+	"+lQYUIIl3+jo4jgyA3UBiviFI/pamucyF/E3guO1NMSeR/GZX467PUt49PmVzDUU/EEA4pjjiyx5q2QG",
+	"ynCUmwVLNIxoVvvpKz3PjXEQNg+0WxL3lBhJOBKCRYasuVnREQWRp/T4L5rAwtARVXy5wj9THscJ0BE9",
+	"Z9FnOqILqdZMxfTTiJpNBvSYaqO4WCIJIwR97n5uH/9ukwGRC2LXEBbZn6tTY7nGf+YZ9dsED1jJJJ5/",
+	"ho0OoRfzBQdF8DHih2tJnOOrxKzAHUxHlBtI7fud3f0PTCm2wX+LPJ3bt/xxC5Ynhh4/6rAyT89BIXKG",
+	"p2APV5ABM41z/e5I9iVYibvsYvEvEkmpYi6YsdQqNyCZ1NzTrLvTprvT/+yz09WIKvg75wpiZMolxa0r",
+	"Rsjzf4NT2mcKmIETriAyUm32k9RUxgFBeZO510lc7E5wIXkgI8MS4tg1IjBZTshvv/zycEJOHGcs4X/7",
+	"5ZcJHdGMGVRzekz/96/D8W+fvj4eHV39RAMilTGz6gLx5FzLJDdQAwIX4gmRRb11yMHkP7ubt6hpTwoR",
+	"8wQSMPCWmdV+dBxAoQA8tsfcPuBnEFlBW+4HPY+7sJ/GIIxTZy+6qjikhgl5kmQrJvIUFI+IVGS1yVYg",
+	"2vxn4y9Pxn8ejn8ff/qvn4LIdhArfUBLYEFrtoSA8WhRrFgYItpznsCpWMju9lzPY6661PiwArMCZelg",
+	"mck1YZVkTiqczqVMgAk8JpXxHM1Rd7uXTBtUKb7wLs2arYmz7Skz9JjGzMDYvh3QmLDaIlpOUc+50eQB",
+	"6ueIfKSxWl+qMf73kSKPPtKxWo/VGP/7SB9OQicIFoL7KdNA8FEhEws8UqogJXZWcHwcfE/zLzA/3xgI",
+	"OJsZ/wKEC2IfT8ghWdTA4KAnw7bV4uihaxw2KuSgxkNP9D5xmm20gXR64aOVLmO0XUCiFRNLIIALrZZc",
+	"W/zYYgGRgXh3OdyXl+VR+zL1elISDlosSQk+m9RilWdn0yfvpnREP5yd2j9Ppi+n9i9n09dPXk0DoUuL",
+	"+fbpqN+wvuTaWL4FcMToBHHrUowLp8Co0iBMIYhlwLMtTi2tUiAOeimXPbL1hCRyac/akIWSqZORKlju",
+	"ClnNhLasklwS/5AYuDRhLmF8ZViaBeJLnoI9voJozTTJlIzzyEnRLuatx5DXjw4x7JW8gBvE7DeJa1N5",
+	"AdcKa4fCTiPtni5izJWWihi5V9i56047h51I5v3jpBi0mQ/Fe6ANAo86VLiGoXBpRLWKhjbWMlcR7Lxn",
+	"iyTlAaMaFiEKvfl85usKg8RpAvoHCBtGvXlBispEV3vl50YmZFQO3fw6RuUHTXQeRaB1yC20sJOfg7i8",
+	"VRI3mF5CtCvDm7D4t1AO4RIiZAMjkUxTJmKiNyJaKSlkrpNNF1Wmls20769P3SqG24mpZZ6iNZ1cSw+Z",
+	"nispTeOQMBq5cLGfo4dN2Am+SjLFL3gCS9Bh58v0PNcQ8OntLZkmZsU1wdW4lciThJ0nUPC4m+o73AMu",
+	"0xIa30XnpFeQJCXJMTHORdCyR+vAXh+k+oxmrnJxD1jdxT/0OzoD4w/hIoTAsA6DuOgXrwA7S5597dR2",
+	"puKCKylQJsgFUxwBsbZbg7GhYo30NWpUkq+NApYOS8bpglj0iHuByNxkuSEXnJHZbEq40AZYjNGCApMr",
+	"gcRE54/pEznPFwtQPZKD7k7mZq4hCvgkdsnTPPVKVWQQGBBriKSI9RYR6jP6hUANGgLtiH49O4AvIRlY",
+	"Xe1LkSnx6JqBOFfWGcxT3SfriH+xDGmQ8iThNUJ0/SZccjOPgmmUR5XgEoJLwjtoE4NS8/Nfj8Kx9a9H",
+	"YxD4ekzcUs/tcKZjYmT1jpvJ3PRvdtXPvRc8SfYz4zO+FCxx+uOsSEt/mizTdnlDeei76dkrun3feoTv",
+	"l784ffmSjujp63d0RP/7/dvhwN6fvUWIZxlbizodkuTNgh7/tT08D7jCq1G7flC3Gg087e+o+1yTFRNx",
+	"ArG1EUhGx9EDb0BAxJnkwlkpjaBirucOd05GAYvfiGTTUuu6a2+h/qmD/B4qfFrLbdg5yiBrw9eVhCxU",
+	"W3ozK73e6UlYu/zzeeh11zYYM42shpjwqlQVsOxlypHnPA7rHlMG4jkz4ZTGphxkvYKmv/avXSOr6ZVH",
+	"w0yur8mNZ7lS6Ny0fdkZ1l4uRFk+z6IAflNteMoMxOTZ2/ckt6lfBioCYdiybviELbAPWM5pYTEJXzRo",
+	"tWLOnDpyDbmlEU0h7av7VBAr0JbzJIUUAxMHfVkS6jHazGwx+fZx3QqpXKDHpg5tiMPmp5+xMRf7GdwT",
+	"ZhiaxbXiLotriZ6ImcJAK8sDZaSYGbaTL4nrp0wGU6By30+DON8oREBwfJ1Z43ZdDHGFAdEnJFU7yC4g",
+	"fnlPTbAfFTTIZd3lOu5yNiUZ2ySSoZhmCjRaKLEsOeijRKlIwhcQbaLE1wT1TblZ1oAqYUEsglEHhEtK",
+	"L5sgdYpvqArB3uBOpqE0pG5zrslH++JH2qeyPS7VZfNF2O0MjiVBtMrF5zrAzsHSImbbUYldUwVUuFOw",
+	"4ILr1W5uo+qcFG/1OY3BpM/5w+7PumwB1Z7XkolrOLkKWv/SnsC2jId1vnU4Q0ZkBrbo+hZUyrXmUuj9",
+	"6kxLJfNAhfI1rIl95AvfivzRCECu22EJ9EN/PTp6eL32p1yLUH0AYbWPbEWggPd9D7y7VOPXK6mtey9o",
+	"S5iyvuUcfF8i3rc1uaU7MkMheq4/MBPdanO17HxbB4a7BwmjIMqV5hcwnMqXXRa/HynfTTY7lNB6C4KW",
+	"Ajds0S4US0EFg5ezyroUizAKWmQooBegFI9BE+1mbTwFHiLHXAmBHv98OKIpF+4fj0I2OBjEF0MCgfC7",
+	"ZkLAitotNYot0Cc+0T8VM5fh91dHKjjq1QFfGBigzlaCpOzSdv34FzgVr572Q2BbRNr3Kl893ZEjjw4P",
+	"DxtMOdwtcJkZmd1U0KSKAPfZofSVphBzZiDZEG1kZquimBcuFYtgkSdEr3ITy7WYkHcrrknKNhi1Y5TH",
+	"ha0DK5VnxqbCMUhLrHAt7DoTCk6DEaA7G0/An7gPCww36ALpC1ACEnKasiVo8uTtKR3RC1DaAXs4eTQ5",
+	"tNY+A8EyTo/p48nh5LFvQVrS26pDbkAduCmuVOauh5BJx0bkkxP9GDPAckqNOkME2jyV8ebWBue6Y3BX",
+	"TZuHbt/+UBuj/PnwsG/wzU2coQPCcAJiJMeRWx4Co9z2oD2aeTWiv+zyXnOu0Q755WnK1MZWntI8YbYd",
+	"YencmIoj0oWoK6kNKbhiN6h4lMoLGGJR2ZO8Iw51ep43Y5BvECJm35c5r4qWZVqHy2fBOoMI1T6u9Tn1",
+	"Fo4t9IEbGJuXTQzLsTykU82hurtSrPDo3k7Me7QtEnJ4xkXfb5Enyea7MtJhShgRsK56SCVf3BTZDnxx",
+	"Y253zZfuFOC++lSxxKF4I3U6Ojwafq85O30bvHPUqI8XtfmG/nqAZRgl/fDcsmndP4BRlh8lj+RaJJLF",
+	"qF3zL9zGc0swofzB5AqTQfLn6VsXsCJ/GBfl3LZjly7irMoCNya6Wvz3559w9SfPbJyD6YkBpW2vZedp",
+	"X6aiFb8AwkRMCqRsmx/f+zsHaw7cjFuRjDZlYFQTqMHk9lNYYHok1tO12r8slJxzwSxk7QM6rWqkeoFj",
+	"GchawaoT+D7KpWdW3YQQVgiaR7mUVxS8eRFUe0FtSlQ5ILerLA3OIP4IInQ9o1cNCXYFyZqx2gTiPRSZ",
+	"P8A0ZiiLPmOHe6XYJFwb64h0r9xUo5z7GaH7KSkV1gFRqeITpJ+vrdwzWUEErWBoV03oyoady+yLT4pB",
+	"xjtMzW4jNrGpUBXP30M+WQykIgpsEXubMitgcRlVBnX5DFjsY8rdVNkeVoQSuP+Pos0yMmDGVXfrRjGE",
+	"Nf2I3a2lft9JWJC/VQxqL+oWwqHBGfp5rYPRq93dRtId6Xl/x2pfja9tRfIsZvczKZmBCdyPqLHuwDa3",
+	"9IpnJYfzDMPFejmtpdRJItdIFFxmuwtcLN0RaZ4YniXgHYIvFSlIpbcB7v5NN015bzcrwoN+CXEHMGUO",
+	"UD3HMTOsKSTt9rCPSMph5JsPwtfmQXxAu9tofGFQh+1Ks6G1cHZ2+7R7c6Q6sIMOvLZnoctyybMf7r2p",
+	"c5JHpHACLJUX1JY6FLl7WCX8Jox84ZnTNzdNa+y9cm50lbx3yqehixYh5XDp+62pxnVFP643egvM7C0n",
+	"nzQbuZsefOHZfF9dKN/drg97CvafPKvEusbAf4yQO/msV3IqES3l3Tbd+5sp9UGCu3LmgVmF3Xm6Mwit",
+	"WTY8LTjo+l7wv3MINdgrnVh7cuzUs2zNO9ghBz/kc98FzSFTrzQhrdxYi26K2MHXguRXjuYJuLmKtrzJ",
+	"rBK3VrZhMwifMvgEouTjtiRiOGcIzPkVjJJZdv8ZNbOTAogRRnChtL3NpAM3GdmbE7o5zed66pZ9Q161",
+	"8zsDl8ZBG0zshgp79UvkAX2dzaa1cccqqPWTo3REV8Bii/VX+q/xbDYdP3Owjd8F71a/gpgzO96JG+L2",
+	"dn7SbUcetI3YQ1qnTjFc2TF1genKq/soppbQHSpbs8K82S0lFqPy7e2wD7hkl8rFSS30YZ0qxt1VL0a9",
+	"A16Lcuqxd+Cx8QGYX4+O+sC0U4I9YG0dk3TKt4vHv2FdZc+0pBgxv/du1OaX6DmLzn3VVEzkUh9UhA3X",
+	"2uXSz8332OGWQLg72VsltzA0xXc68gzUBdcyPMcdPmYhk0SuG5LXukLdHe5ss1mKZEMKMAlfFPfJuSYe",
+	"tC2K2e9VrnNODffwadWCuZ//p9/No5XfrBh0ZShYP7T3anqG/BzBOLej0wh6cdnXaYmn+wFcunu74WSm",
+	"dpvwjnKZ0H3FnSuStw+BvRAUkITqAq/ya77juNJ0+ycKyANZ+ERdXOh82OS6vRA5yHZ7CfNu+d645Pp9",
+	"GF+/ahqyAe7u6A/GcNbgeJO5X6tbqVcHn3mSDDL6BS7aJSGp3Xfd5gsHLrPuHiXtxdD6/fFvLFK1j6oE",
+	"ROnNi3vZIUH7Ul6AL/x1v8Tp8p5wMPRq3ib+1kJ3x6bEIRWyIv7JvRx1qV3odej1sz7mO7gVu+ofY24a",
+	"16e/kwur3WYOfcK5frv43mZ7lfFx1623y2H1qYphS4SLt2aD38ke3SCrCdwNH8xvWre+McxoX/v+/+Ld",
+	"HRTvalLtpNZ+hufBbDb1UXt5P/CgagKELWzrO7t3OtLeucF35Y3f0ORIdRP0HzDMnim44C7t8vf66tcE",
+	"O/zzs8a9NqkYRq6zcGsdtix/lrcKqz7chHxYgSAyRcMfj1xf3V3nzDVo16Jz9aXy9b6SqDVh4YLo0L3E",
+	"YUNnCXaQZkc3njCr3TJ2ReyGuSqfjp/7LxyMn2z90oBcVB+C6H4eYUL+yJliwgDE/oL62fNnjx8//n2y",
+	"vZbWAGXmOpt7QVJ83WdPQBCUnw9/3qaiHO0STxLCBRqqpQKtRyRLgGkgRm0IWzIuSMIMqCa5z8CozfjJ",
+	"woQ+GzDLl0t3dWDNuGl/FY6cw0IqRNSojVOCColtV57voxco7x+4m4Ta6iIIs5tFSbjzA70j5cX3Qdzc",
+	"2A3i0J2+Dtz4Gkl37qqjr3Y62n51sIDy1mauWZLUt22SzSrOwBDHXbvR8AcXgl700TYVLb5/ciPR/334",
+	"veb/+uV2AiCm7PfZIgX1T7pMyBuRbOzMWWXrMlDk9IRETKB9U7Dk2oCCmDDcwn2ZvsNlmW1jcu0zBHfG",
+	"48CnDq4fKPmhiu97Fd3IrOl+LCL/FwAA//+HUEhKrmgAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

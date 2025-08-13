@@ -95,8 +95,8 @@ func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 
 	logger := silentLogger()
 	mgr := NewUpstreamManager("/dev/null", logger)
-	// seed current upstream to echo server (bypass tailing)
-	mgr.setCurrent((&url.URL{Scheme: u.Scheme, Host: u.Host}).String())
+	// seed current upstream to echo server including path/query (bypass tailing)
+	mgr.setCurrent((&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path, RawQuery: u.RawQuery}).String())
 
 	proxy := WebSocketProxyHandler(mgr, logger)
 	proxySrv := httptest.NewServer(proxy)
@@ -105,8 +105,9 @@ func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 	// Connect to proxy with the same path/query and verify echo
 	pu, _ := url.Parse(proxySrv.URL)
 	pu.Scheme = "ws"
-	pu.Path = u.Path
-	pu.RawQuery = u.RawQuery
+	// Provide a different client path/query; proxy should ignore these
+	pu.Path = "/client"
+	pu.RawQuery = "x=y"
 
 	conn, _, err := websocket.DefaultDialer.Dial(pu.String(), nil)
 	if err != nil {

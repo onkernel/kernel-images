@@ -809,3 +809,33 @@ func (s *ApiService) UploadFiles(ctx context.Context, request oapi.UploadFilesRe
 
 	return oapi.UploadFiles201Response{}, nil
 }
+
+func (s *ApiService) DownloadDirZip(ctx context.Context, request oapi.DownloadDirZipRequestObject) (oapi.DownloadDirZipResponseObject, error) {
+	log := logger.FromContext(ctx)
+	path := request.Params.Path
+	if path == "" {
+		return oapi.DownloadDirZip400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.DownloadDirZip404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "directory not found"}}, nil
+		}
+		log.Error("failed to stat path", "err", err, "path", path)
+		return oapi.DownloadDirZip500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to stat path"}}, nil
+	}
+	if !info.IsDir() {
+		return oapi.DownloadDirZip400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path is not a directory"}}, nil
+	}
+
+	// Build zip in-memory to provide a single streaming response
+	zipBytes, err := ziputil.ZipDir(path)
+	if err != nil {
+		log.Error("failed to create zip archive", "err", err, "path", path)
+		return oapi.DownloadDirZip500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create zip"}}, nil
+	}
+
+	body := io.NopCloser(bytes.NewReader(zipBytes))
+	return oapi.DownloadDirZip200ApplicationzipResponse{Body: body, ContentLength: int64(len(zipBytes))}, nil
+}
