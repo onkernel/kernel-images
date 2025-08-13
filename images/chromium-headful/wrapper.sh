@@ -21,7 +21,7 @@ scale_to_zero_write() {
   if [[ -e "$SCALE_TO_ZERO_FILE" ]]; then
     # Write the character, but do not fail the whole script if this errors out
     echo -n "$char" > "$SCALE_TO_ZERO_FILE" 2>/dev/null || \
-      echo "Failed to write to scale-to-zero control file" >&2
+      echo "[wrapper] Failed to write to scale-to-zero control file" >&2
   fi
 }
 disable_scale_to_zero() { scale_to_zero_write "+"; }
@@ -29,7 +29,7 @@ enable_scale_to_zero()  { scale_to_zero_write "-"; }
 
 # Disable scale-to-zero for the duration of the script when not running under Docker
 if [[ -z "${WITHDOCKER:-}" ]]; then
-  echo "Disabling scale-to-zero"
+  echo "[wrapper] Disabling scale-to-zero"
   disable_scale_to_zero
 fi
 
@@ -67,7 +67,7 @@ chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config 
 # Tails any existing and future files under /var/log/supervisord,
 # prefixing each line with the relative filepath, e.g. [chromium] ...
 start_dynamic_log_aggregator() {
-  echo "Starting dynamic log aggregator for /var/log/supervisord"
+  echo "[wrapper] Starting dynamic log aggregator for /var/log/supervisord"
   (
     declare -A tailed_files=()
     start_tail() {
@@ -104,7 +104,7 @@ tail_pids=()
 
 # Cleanup handler (set early so we catch early failures)
 cleanup () {
-  echo "Cleaning up..."
+  echo "[wrapper] Cleaning up..."
   # Re-enable scale-to-zero if the script terminates early
   enable_scale_to_zero
   supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
@@ -121,9 +121,9 @@ cleanup () {
 trap cleanup TERM INT
 
 # Start supervisord early so it can manage Xorg and Mutter
-echo "Starting supervisord"
+echo "[wrapper] Starting supervisord"
 supervisord -c /etc/supervisor/supervisord.conf
-echo "Waiting for supervisord socket..."
+echo "[wrapper] Waiting for supervisord socket..."
 for i in {1..30}; do
 if [ -S /var/run/supervisor.sock ]; then
     break
@@ -131,9 +131,9 @@ fi
 sleep 0.2
 done
 
-echo "Starting Xorg via supervisord"
+echo "[wrapper] Starting Xorg via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start xorg
-echo "Waiting for Xorg to open display $DISPLAY..."
+echo "[wrapper] Waiting for Xorg to open display $DISPLAY..."
 for i in {1..50}; do
   if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
     break
@@ -141,9 +141,9 @@ for i in {1..50}; do
   sleep 0.2
 done
 
-echo "Starting Mutter via supervisord"
+echo "[wrapper] Starting Mutter via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start mutter
-echo "Waiting for Mutter to be ready..."
+echo "[wrapper] Waiting for Mutter to be ready..."
 timeout=30
 while [ $timeout -gt 0 ]; do
   if xdotool search --class "mutter" >/dev/null 2>&1; then
@@ -156,9 +156,9 @@ done
 # -----------------------------------------------------------------------------
 # System-bus setup via supervisord --------------------------------------------
 # -----------------------------------------------------------------------------
-echo "Starting system D-Bus daemon via supervisord"
+echo "[wrapper] Starting system D-Bus daemon via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start dbus
-echo "Waiting for D-Bus system bus socket..."
+echo "[wrapper] Waiting for D-Bus system bus socket..."
 for i in {1..50}; do
   if [ -S /run/dbus/system_bus_socket ]; then
     break
@@ -172,9 +172,9 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 
 # Start Chromium with display :1 and remote debugging, loading our recorder extension.
 # Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
-echo "Starting Chromium via supervisord on internal port $INTERNAL_PORT"
+echo "[wrapper] Starting Chromium via supervisord on internal port $INTERNAL_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start chromium
-echo "Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
+echo "[wrapper] Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
 for i in {1..100}; do
   if nc -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
     break
@@ -182,9 +182,9 @@ for i in {1..100}; do
   sleep 0.2
 done
 
-echo "Starting ncat proxy via supervisord on port $CHROME_PORT"
+echo "[wrapper] Starting ncat proxy via supervisord on port $CHROME_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start ncat
-echo "Waiting for ncat to listen on 127.0.0.1:$CHROME_PORT..."
+echo "[wrapper] Waiting for ncat to listen on 127.0.0.1:$CHROME_PORT..."
 for i in {1..50}; do
   if nc -z 127.0.0.1 "$CHROME_PORT" 2>/dev/null; then
     break
@@ -194,19 +194,19 @@ done
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
-  echo "✨ Starting neko (webrtc server) via supervisord."
+  echo "[wrapper] ✨ Starting neko (webrtc server) via supervisord."
   supervisorctl -c /etc/supervisor/supervisord.conf start neko
 
   # Wait for neko to be ready.
-  echo "Waiting for neko port 0.0.0.0:8080..."
+  echo "[wrapper] Waiting for neko port 0.0.0.0:8080..."
   while ! nc -z 127.0.0.1 8080 2>/dev/null; do
     sleep 0.5
   done
-  echo "Port 8080 is open"
+  echo "[wrapper] Port 8080 is open"
 fi
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  echo "✨ Starting kernel-images API."
+  echo "[wrapper] ✨ Starting kernel-images API."
 
   API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
   API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
@@ -220,7 +220,7 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
   # and when running as root you must use the --no-sandbox flag, which generates a warning
   if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
-    echo "Running as root, attempting to dismiss the --no-sandbox unsupported flag warning"
+    echo "[wrapper] Running as root, attempting to dismiss the --no-sandbox unsupported flag warning"
     if read -r WIDTH HEIGHT <<< "$(xdotool getdisplaygeometry 2>/dev/null)"; then
       # Work out an x-coordinate slightly inside the right-hand edge of the
       OFFSET_X=$(( WIDTH - 30 ))
@@ -229,21 +229,21 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       fi
 
       # Wait for kernel-images API port to be ready.
-      echo "Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
+      echo "[wrapper] Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
       while ! nc -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
         sleep 0.5
       done
-      echo "Port ${API_PORT} is open"
+      echo "[wrapper] Port ${API_PORT} is open"
 
       # Wait for Chromium window to open before dismissing the --no-sandbox warning.
       target='New Tab - Chromium'
-      echo "Waiting for Chromium window \"${target}\" to appear and become active..."
+      echo "[wrapper] Waiting for Chromium window \"${target}\" to appear and become active..."
       while :; do
         win_id=$(xwininfo -root -tree 2>/dev/null | awk -v t="$target" '$0 ~ t {print $1; exit}')
         if [[ -n $win_id ]]; then
           win_id=${win_id%:}
           if xdotool windowactivate --sync "$win_id"; then
-            echo "Focused window $win_id ($target) on $DISPLAY"
+            echo "[wrapper] Focused window $win_id ($target) on $DISPLAY"
             break
           fi
         fi
@@ -255,17 +255,17 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       sleep 5
 
       # Attempt to click the warning's close button
-      echo "Clicking the warning's close button at x=$OFFSET_X y=115"
+      echo "[wrapper] Clicking the warning's close button at x=$OFFSET_X y=115"
       if curl -s -o /dev/null -X POST \
         http://localhost:${API_PORT}/computer/click_mouse \
         -H "Content-Type: application/json" \
         -d "{\"x\":${OFFSET_X},\"y\":115}"; then
-          echo "Successfully clicked the warning's close button"
+          echo "[wrapper] Successfully clicked the warning's close button"
       else
-        echo "Failed to click the warning's close button" >&2
+        echo "[wrapper] Failed to click the warning's close button" >&2
       fi
     else
-      echo "xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
+      echo "[wrapper] xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
     fi
   fi
 fi
