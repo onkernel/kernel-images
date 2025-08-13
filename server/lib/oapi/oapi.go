@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ClickMouseRequestButton.
@@ -252,6 +254,22 @@ type ReadFileParams struct {
 	Path string `form:"path" json:"path"`
 }
 
+// UploadFilesMultipartBody defines parameters for UploadFiles.
+type UploadFilesMultipartBody struct {
+	Files []struct {
+		// DestPath Absolute destination path to write the file.
+		DestPath string             `json:"dest_path"`
+		File     openapi_types.File `json:"file"`
+	} `json:"files"`
+}
+
+// UploadZipMultipartBody defines parameters for UploadZip.
+type UploadZipMultipartBody struct {
+	// DestPath Absolute destination directory to extract the archive to.
+	DestPath string             `json:"dest_path"`
+	ZipFile  openapi_types.File `json:"zip_file"`
+}
+
 // WriteFileParams defines parameters for WriteFile.
 type WriteFileParams struct {
 	// Path Destination absolute file path.
@@ -287,6 +305,12 @@ type MovePathJSONRequestBody = MovePathRequest
 
 // SetFilePermissionsJSONRequestBody defines body for SetFilePermissions for application/json ContentType.
 type SetFilePermissionsJSONRequestBody = SetFilePermissionsRequest
+
+// UploadFilesMultipartRequestBody defines body for UploadFiles for multipart/form-data ContentType.
+type UploadFilesMultipartRequestBody UploadFilesMultipartBody
+
+// UploadZipMultipartRequestBody defines body for UploadZip for multipart/form-data ContentType.
+type UploadZipMultipartRequestBody UploadZipMultipartBody
 
 // StartFsWatchJSONRequestBody defines body for StartFsWatch for application/json ContentType.
 type StartFsWatchJSONRequestBody = StartFsWatchRequest
@@ -416,6 +440,12 @@ type ClientInterface interface {
 	SetFilePermissionsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetFilePermissions(ctx context.Context, body SetFilePermissionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadFilesWithBody request with any body
+	UploadFilesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadZipWithBody request with any body
+	UploadZipWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// StartFsWatchWithBody request with any body
 	StartFsWatchWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -647,6 +677,30 @@ func (c *Client) SetFilePermissionsWithBody(ctx context.Context, contentType str
 
 func (c *Client) SetFilePermissions(ctx context.Context, body SetFilePermissionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetFilePermissionsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UploadFilesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadFilesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UploadZipWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadZipRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1228,6 +1282,64 @@ func NewSetFilePermissionsRequestWithBody(server string, contentType string, bod
 	return req, nil
 }
 
+// NewUploadFilesRequestWithBody generates requests for UploadFiles with any type of body
+func NewUploadFilesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/upload")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUploadZipRequestWithBody generates requests for UploadZip with any type of body
+func NewUploadZipRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fs/upload_zip")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewStartFsWatchRequest calls the generic StartFsWatch builder with application/json body
 func NewStartFsWatchRequest(server string, body StartFsWatchJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1682,6 +1794,12 @@ type ClientWithResponsesInterface interface {
 
 	SetFilePermissionsWithResponse(ctx context.Context, body SetFilePermissionsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetFilePermissionsResponse, error)
 
+	// UploadFilesWithBodyWithResponse request with any body
+	UploadFilesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFilesResponse, error)
+
+	// UploadZipWithBodyWithResponse request with any body
+	UploadZipWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadZipResponse, error)
+
 	// StartFsWatchWithBodyWithResponse request with any body
 	StartFsWatchWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartFsWatchResponse, error)
 
@@ -1951,6 +2069,54 @@ func (r SetFilePermissionsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r SetFilePermissionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UploadFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UploadZipResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadZipResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadZipResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2319,6 +2485,24 @@ func (c *ClientWithResponses) SetFilePermissionsWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseSetFilePermissionsResponse(rsp)
+}
+
+// UploadFilesWithBodyWithResponse request with arbitrary body returning *UploadFilesResponse
+func (c *ClientWithResponses) UploadFilesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadFilesResponse, error) {
+	rsp, err := c.UploadFilesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadFilesResponse(rsp)
+}
+
+// UploadZipWithBodyWithResponse request with arbitrary body returning *UploadZipResponse
+func (c *ClientWithResponses) UploadZipWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadZipResponse, error) {
+	rsp, err := c.UploadZipWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadZipResponse(rsp)
 }
 
 // StartFsWatchWithBodyWithResponse request with arbitrary body returning *StartFsWatchResponse
@@ -2827,6 +3011,86 @@ func ParseSetFilePermissionsResponse(rsp *http.Response) (*SetFilePermissionsRes
 	return response, nil
 }
 
+// ParseUploadFilesResponse parses an HTTP response from a UploadFilesWithResponse call
+func ParseUploadFilesResponse(rsp *http.Response) (*UploadFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadZipResponse parses an HTTP response from a UploadZipWithResponse call
+func ParseUploadZipResponse(rsp *http.Response) (*UploadZipResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadZipResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStartFsWatchResponse parses an HTTP response from a StartFsWatchWithResponse call
 func ParseStartFsWatchResponse(rsp *http.Response) (*StartFsWatchResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3215,6 +3479,12 @@ type ServerInterface interface {
 	// Set file or directory permissions/ownership
 	// (PUT /fs/set_file_permissions)
 	SetFilePermissions(w http.ResponseWriter, r *http.Request)
+	// Upload one or more files
+	// (POST /fs/upload)
+	UploadFiles(w http.ResponseWriter, r *http.Request)
+	// Upload a zip archive and extract it
+	// (POST /fs/upload_zip)
+	UploadZip(w http.ResponseWriter, r *http.Request)
 	// Watch a directory for changes
 	// (POST /fs/watch)
 	StartFsWatch(w http.ResponseWriter, r *http.Request)
@@ -3305,6 +3575,18 @@ func (_ Unimplemented) ReadFile(w http.ResponseWriter, r *http.Request, params R
 // Set file or directory permissions/ownership
 // (PUT /fs/set_file_permissions)
 func (_ Unimplemented) SetFilePermissions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Upload one or more files
+// (POST /fs/upload)
+func (_ Unimplemented) UploadFiles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Upload a zip archive and extract it
+// (POST /fs/upload_zip)
+func (_ Unimplemented) UploadZip(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3562,6 +3844,34 @@ func (siw *ServerInterfaceWrapper) SetFilePermissions(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetFilePermissions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadFiles operation middleware
+func (siw *ServerInterfaceWrapper) UploadFiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadFiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadZip operation middleware
+func (siw *ServerInterfaceWrapper) UploadZip(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadZip(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3902,6 +4212,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/set_file_permissions", wrapper.SetFilePermissions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fs/upload", wrapper.UploadFiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fs/upload_zip", wrapper.UploadZip)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/fs/watch", wrapper.StartFsWatch)
@@ -4352,6 +4668,92 @@ func (response SetFilePermissions404JSONResponse) VisitSetFilePermissionsRespons
 type SetFilePermissions500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response SetFilePermissions500JSONResponse) VisitSetFilePermissionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFilesRequestObject struct {
+	Body *multipart.Reader
+}
+
+type UploadFilesResponseObject interface {
+	VisitUploadFilesResponse(w http.ResponseWriter) error
+}
+
+type UploadFiles201Response struct {
+}
+
+func (response UploadFiles201Response) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type UploadFiles400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response UploadFiles400JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFiles404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response UploadFiles404JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadFiles500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response UploadFiles500JSONResponse) VisitUploadFilesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadZipRequestObject struct {
+	Body *multipart.Reader
+}
+
+type UploadZipResponseObject interface {
+	VisitUploadZipResponse(w http.ResponseWriter) error
+}
+
+type UploadZip201Response struct {
+}
+
+func (response UploadZip201Response) VisitUploadZipResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type UploadZip400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response UploadZip400JSONResponse) VisitUploadZipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadZip404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response UploadZip404JSONResponse) VisitUploadZipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadZip500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response UploadZip500JSONResponse) VisitUploadZipResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -4827,6 +5229,12 @@ type StrictServerInterface interface {
 	// Set file or directory permissions/ownership
 	// (PUT /fs/set_file_permissions)
 	SetFilePermissions(ctx context.Context, request SetFilePermissionsRequestObject) (SetFilePermissionsResponseObject, error)
+	// Upload one or more files
+	// (POST /fs/upload)
+	UploadFiles(ctx context.Context, request UploadFilesRequestObject) (UploadFilesResponseObject, error)
+	// Upload a zip archive and extract it
+	// (POST /fs/upload_zip)
+	UploadZip(ctx context.Context, request UploadZipRequestObject) (UploadZipResponseObject, error)
 	// Watch a directory for changes
 	// (POST /fs/watch)
 	StartFsWatch(ctx context.Context, request StartFsWatchRequestObject) (StartFsWatchResponseObject, error)
@@ -5180,6 +5588,68 @@ func (sh *strictHandler) SetFilePermissions(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// UploadFiles operation middleware
+func (sh *strictHandler) UploadFiles(w http.ResponseWriter, r *http.Request) {
+	var request UploadFilesRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadFiles(ctx, request.(UploadFilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadFiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadFilesResponseObject); ok {
+		if err := validResponse.VisitUploadFilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadZip operation middleware
+func (sh *strictHandler) UploadZip(w http.ResponseWriter, r *http.Request) {
+	var request UploadZipRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadZip(ctx, request.(UploadZipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadZip")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadZipResponseObject); ok {
+		if err := validResponse.VisitUploadZipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // StartFsWatch operation middleware
 func (sh *strictHandler) StartFsWatch(w http.ResponseWriter, r *http.Request) {
 	var request StartFsWatchRequestObject
@@ -5437,54 +5907,57 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"//+ThhMPQj4AAA==",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

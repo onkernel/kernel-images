@@ -218,6 +218,72 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /fs/upload:
+    post:
+      summary: Upload one or more files
+      description: Allows uploading single or multiple files to the remote filesystem.
+      operationId: uploadFiles
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      file:
+                        type: string
+                        format: binary
+                      dest_path:
+                        type: string
+                        description: Absolute destination path to write the file.
+                        pattern: "^/.*"
+                    required: [file, dest_path]
+              required: [files]
+      responses:
+        "201":
+          description: Files uploaded successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /fs/upload_zip:
+    post:
+      summary: Upload a zip archive and extract it
+      description: Upload a zip file and extract its contents to the specified destination path.
+      operationId: uploadZip
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                zip_file:
+                  type: string
+                  format: binary
+                dest_path:
+                  type: string
+                  description: Absolute destination directory to extract the archive to.
+                  pattern: "^/.*"
+              required: [zip_file, dest_path]
+      responses:
+        "201":
+          description: Zip uploaded and extracted successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /fs/list_files:
     get:
       summary: List files in a directory

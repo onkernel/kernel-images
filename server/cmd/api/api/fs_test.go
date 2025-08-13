@@ -1,15 +1,19 @@
 package api
 
 import (
+	"archive/zip"
 	"bufio"
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/ziputil"
 )
 
 // TestWriteReadFile verifies that files can be written and read back successfully.
@@ -230,5 +234,232 @@ func TestFileDirOperations(t *testing.T) {
 		t.Fatalf("DeleteDirectory error: %v", err)
 	} else if _, ok := resp.(oapi.DeleteDirectory200Response); !ok {
 		t.Fatalf("unexpected DeleteDirectory resp: %T", resp)
+	}
+}
+
+// helper to build multipart form for uploadFiles
+func buildUploadMultipart(t *testing.T, parts map[string]string, files map[string]string) *multipart.Reader {
+	t.Helper()
+	pr, pw := io.Pipe()
+	mpw := multipart.NewWriter(pw)
+
+	go func() {
+		// write fields
+		for name, val := range parts {
+			_ = mpw.WriteField(name, val)
+		}
+		// write files (string content)
+		for name, content := range files {
+			fw, _ := mpw.CreateFormField(name)
+			_, _ = io.Copy(fw, strings.NewReader(content))
+		}
+		mpw.Close()
+		pw.Close()
+	}()
+
+	return multipart.NewReader(pr, mpw.Boundary())
+}
+
+// helper to build multipart for UploadZip with binary zip bytes
+func buildUploadZipMultipart(t *testing.T, destPath string, zipBytes []byte) *multipart.Reader {
+	t.Helper()
+	pr, pw := io.Pipe()
+	mpw := multipart.NewWriter(pw)
+
+	go func() {
+		// dest_path field
+		if destPath != "" {
+			_ = mpw.WriteField("dest_path", destPath)
+		}
+		// binary zip part
+		if zipBytes != nil {
+			// Use form field named zip_file; file vs field does not matter for our handler
+			fw, _ := mpw.CreateFormFile("zip_file", "upload.zip")
+			_, _ = fw.Write(zipBytes)
+		}
+		mpw.Close()
+		pw.Close()
+	}()
+
+	return multipart.NewReader(pr, mpw.Boundary())
+}
+
+func TestUploadFilesSingle(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	tmp := t.TempDir()
+	dest := filepath.Join(tmp, "single.txt")
+
+	// single-file shorthand: file + dest_path
+	reader := buildUploadMultipart(t,
+		map[string]string{"dest_path": dest},
+		map[string]string{"file": "hello"},
+	)
+
+	resp, err := svc.UploadFiles(ctx, oapi.UploadFilesRequestObject{Body: reader})
+	if err != nil {
+		t.Fatalf("UploadFiles error: %v", err)
+	}
+	if _, ok := resp.(oapi.UploadFiles201Response); !ok {
+		t.Fatalf("unexpected response type: %T", resp)
+	}
+	data, err := os.ReadFile(dest)
+	if err != nil || string(data) != "hello" {
+		t.Fatalf("uploaded file mismatch: %v %q", err, string(data))
+	}
+}
+
+func TestUploadFilesMultipleAndOutOfOrder(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	tmp := t.TempDir()
+	d1 := filepath.Join(tmp, "a.txt")
+	d2 := filepath.Join(tmp, "b.txt")
+
+	// Use indexed fields with mixed ordering and bracket/dot styles
+	parts := map[string]string{
+		"files[1][dest_path]": d2,
+		"files.0.dest_path":   d1,
+	}
+	files := map[string]string{
+		"files[1][file]": "two",
+		"files.0.file":   "one",
+	}
+	reader := buildUploadMultipart(t, parts, files)
+
+	resp, err := svc.UploadFiles(ctx, oapi.UploadFilesRequestObject{Body: reader})
+	if err != nil {
+		t.Fatalf("UploadFiles error: %v", err)
+	}
+	if _, ok := resp.(oapi.UploadFiles201Response); !ok {
+		t.Fatalf("unexpected response type: %T", resp)
+	}
+
+	if b, _ := os.ReadFile(d1); string(b) != "one" {
+		t.Fatalf("d1 mismatch: %q", string(b))
+	}
+	if b, _ := os.ReadFile(d2); string(b) != "two" {
+		t.Fatalf("d2 mismatch: %q", string(b))
+	}
+}
+
+func TestUploadZipSuccess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	// Create a source directory with content
+	srcDir := t.TempDir()
+	nested := filepath.Join(srcDir, "dir", "sub")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	filePath := filepath.Join(nested, "a.txt")
+	if err := os.WriteFile(filePath, []byte("hello-zip"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Zip the directory
+	zipBytes, err := ziputil.ZipDir(srcDir)
+	if err != nil {
+		t.Fatalf("ZipDir error: %v", err)
+	}
+
+	// Destination directory for extraction
+	destDir := t.TempDir()
+
+	reader := buildUploadZipMultipart(t, destDir, zipBytes)
+	resp, err := svc.UploadZip(ctx, oapi.UploadZipRequestObject{Body: reader})
+	if err != nil {
+		t.Fatalf("UploadZip error: %v", err)
+	}
+	if _, ok := resp.(oapi.UploadZip201Response); !ok {
+		t.Fatalf("unexpected UploadZip resp type: %T", resp)
+	}
+
+	// Verify extracted content exists
+	extracted := filepath.Join(destDir, "dir", "sub", "a.txt")
+	data, err := os.ReadFile(extracted)
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(data) != "hello-zip" {
+		t.Fatalf("extracted content mismatch: %q", string(data))
+	}
+}
+
+func TestUploadZipTraversalBlocked(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	// Build a malicious zip with a path traversal entry
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	fh, _ := zw.Create("../evil.txt")
+	_, _ = fh.Write([]byte("pwned"))
+	_ = zw.Close()
+
+	destDir := t.TempDir()
+	reader := buildUploadZipMultipart(t, destDir, buf.Bytes())
+	resp, err := svc.UploadZip(ctx, oapi.UploadZipRequestObject{Body: reader})
+	if err != nil {
+		t.Fatalf("UploadZip error: %v", err)
+	}
+	if _, ok := resp.(oapi.UploadZip400JSONResponse); !ok {
+		t.Fatalf("expected 400 for traversal, got %T", resp)
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "evil.txt")); err == nil {
+		t.Fatalf("traversal file unexpectedly created")
+	}
+}
+
+func TestUploadZipValidationErrors(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
+
+	// Missing dest_path
+	reader1 := func() *multipart.Reader {
+		pr, pw := io.Pipe()
+		mpw := multipart.NewWriter(pw)
+		go func() {
+			fw, _ := mpw.CreateFormFile("zip_file", "z.zip")
+			_, _ = fw.Write([]byte("not-a-zip"))
+			mpw.Close()
+			pw.Close()
+		}()
+		return multipart.NewReader(pr, mpw.Boundary())
+	}()
+	resp1, err := svc.UploadZip(ctx, oapi.UploadZipRequestObject{Body: reader1})
+	if err != nil {
+		t.Fatalf("UploadZip error: %v", err)
+	}
+	if _, ok := resp1.(oapi.UploadZip400JSONResponse); !ok {
+		t.Fatalf("expected 400 for missing dest_path, got %T", resp1)
+	}
+
+	// Missing zip_file
+	destDir := t.TempDir()
+	reader2 := func() *multipart.Reader {
+		pr, pw := io.Pipe()
+		mpw := multipart.NewWriter(pw)
+		go func() {
+			_ = mpw.WriteField("dest_path", destDir)
+			mpw.Close()
+			pw.Close()
+		}()
+		return multipart.NewReader(pr, mpw.Boundary())
+	}()
+	resp2, err := svc.UploadZip(ctx, oapi.UploadZipRequestObject{Body: reader2})
+	if err != nil {
+		t.Fatalf("UploadZip error: %v", err)
+	}
+	if _, ok := resp2.(oapi.UploadZip400JSONResponse); !ok {
+		t.Fatalf("expected 400 for missing zip_file, got %T", resp2)
 	}
 }
