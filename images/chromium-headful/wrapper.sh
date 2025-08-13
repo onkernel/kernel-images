@@ -33,66 +33,6 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
   disable_scale_to_zero
 fi
 
-export DISPLAY=:1
-
-# Predefine ports and export so supervisord programs (e.g., ncat) can read them
-export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
-export CHROME_PORT="${CHROME_PORT:-9222}"
-
-# Track background tailing processes for cleanup
-tail_pids=()
-
-# Cleanup handler (set early so we catch early failures)
-cleanup () {
-  echo "Cleaning up..."
-  # Re-enable scale-to-zero if the script terminates early
-  enable_scale_to_zero
-  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
-  # Stop log tailers
-  if [[ -n "${tail_pids[*]:-}" ]]; then
-    for tp in "${tail_pids[@]}"; do
-      kill -TERM "$tp" 2>/dev/null || true
-    done
-  fi
-}
-trap cleanup TERM INT
-
-# Start supervisord early so it can manage Xorg and Mutter
-echo "Starting supervisord"
-supervisord -c /etc/supervisor/supervisord.conf
-echo "Waiting for supervisord socket..."
-for i in {1..30}; do
-if [ -S /var/run/supervisor.sock ]; then
-    break
-fi
-sleep 0.2
-done
-
-echo "Starting Xorg via supervisord"
-supervisorctl -c /etc/supervisor/supervisord.conf start xorg
-echo "Waiting for Xorg to open display $DISPLAY..."
-for i in {1..50}; do
-  if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.2
-done
-
-echo "Starting Mutter via supervisord"
-supervisorctl -c /etc/supervisor/supervisord.conf start mutter
-echo "Waiting for Mutter to be ready..."
-timeout=30
-while [ $timeout -gt 0 ]; do
-  if xdotool search --class "mutter" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-  ((timeout--))
-done
-
 # -----------------------------------------------------------------------------
 # House-keeping for the unprivileged "kernel" user --------------------------------
 # Some Chromium subsystems want to create files under $HOME (NSS cert DB, dconf
@@ -152,6 +92,66 @@ start_dynamic_log_aggregator() {
 
 # Start log aggregator early so we see supervisor and service logs as they appear
 start_dynamic_log_aggregator
+
+export DISPLAY=:1
+
+# Predefine ports and export so supervisord programs (e.g., ncat) can read them
+export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
+export CHROME_PORT="${CHROME_PORT:-9222}"
+
+# Track background tailing processes for cleanup
+tail_pids=()
+
+# Cleanup handler (set early so we catch early failures)
+cleanup () {
+  echo "Cleaning up..."
+  # Re-enable scale-to-zero if the script terminates early
+  enable_scale_to_zero
+  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
+  # Stop log tailers
+  if [[ -n "${tail_pids[*]:-}" ]]; then
+    for tp in "${tail_pids[@]}"; do
+      kill -TERM "$tp" 2>/dev/null || true
+    done
+  fi
+}
+trap cleanup TERM INT
+
+# Start supervisord early so it can manage Xorg and Mutter
+echo "Starting supervisord"
+supervisord -c /etc/supervisor/supervisord.conf
+echo "Waiting for supervisord socket..."
+for i in {1..30}; do
+if [ -S /var/run/supervisor.sock ]; then
+    break
+fi
+sleep 0.2
+done
+
+echo "Starting Xorg via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start xorg
+echo "Waiting for Xorg to open display $DISPLAY..."
+for i in {1..50}; do
+  if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+done
+
+echo "Starting Mutter via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start mutter
+echo "Waiting for Mutter to be ready..."
+timeout=30
+while [ $timeout -gt 0 ]; do
+  if xdotool search --class "mutter" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+  ((timeout--))
+done
 
 # -----------------------------------------------------------------------------
 # System-bus setup via supervisord --------------------------------------------
