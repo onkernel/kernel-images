@@ -154,6 +154,8 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
 COPY image-chromium/ /
+COPY start-chromium.sh /images/chromium-headful/start-chromium.sh
+RUN chmod +x /images/chromium-headful/start-chromium.sh
 COPY ./wrapper.sh /wrapper.sh
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 COPY supervisor/services/ /etc/supervisor/conf.d/services/

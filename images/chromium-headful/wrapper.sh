@@ -122,43 +122,28 @@ cleanup () {
   echo "Cleaning up..."
   # Re-enable scale-to-zero if the script terminates early
   enable_scale_to_zero
-  kill -TERM $pid
-  # Kill the API server if it was started
-  if [[ -n "${pid3:-}" ]]; then
-    kill -TERM $pid3 || true
-  fi
-  # Stop supervised services
+  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
+  # Stop log tailers
+  if [[ -n "${tail_pids[*]:-}" ]]; then
+    for tp in "${tail_pids[@]}"; do
+      kill -TERM "$tp" 2>/dev/null || true
+    done
+  fi
 }
 trap cleanup TERM INT
-pid=
-pid3=
-echo "Starting Chromium on internal port $INTERNAL_PORT"
-
-# Load additional Chromium flags from /chromium/flags if present
-CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-}"
-if [[ -f /chromium/flags ]]; then
-  CHROMIUM_FLAGS="$CHROMIUM_FLAGS $(cat /chromium/flags)"
-fi
-echo "CHROMIUM_FLAGS: $CHROMIUM_FLAGS"
-
-RUN_AS_ROOT=${RUN_AS_ROOT:-false}
-if [[ "$RUN_AS_ROOT" == "true" ]]; then
-  DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" chromium \
-    --remote-debugging-port=$INTERNAL_PORT \
-    ${CHROMIUM_FLAGS:-} >&2 & pid=$!
-else
-  runuser -u kernel -- env \
-    DISPLAY=:1 \
-    DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
-    XDG_CONFIG_HOME=/home/kernel/.config \
-    XDG_CACHE_HOME=/home/kernel/.cache \
-    HOME=/home/kernel \
-    chromium \
-    --remote-debugging-port=$INTERNAL_PORT \
-    ${CHROMIUM_FLAGS:-} >&2 & pid=$!
-fi
+tail_pids=()
+echo "Starting Chromium via supervisord on internal port $INTERNAL_PORT"
+supervisorctl -c /etc/supervisor/supervisord.conf start chromium
+echo "Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
+for i in {1..100}; do
+  if nc -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
 
 echo "Starting ncat proxy via supervisord on port $CHROME_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start ncat
@@ -192,14 +177,8 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
   API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
 
-  mkdir -p "$API_OUTPUT_DIR"
-
-  PORT="$API_PORT" \
-  FRAME_RATE="$API_FRAME_RATE" \
-  DISPLAY_NUM="$API_DISPLAY_NUM" \
-  MAX_SIZE_MB="$API_MAX_SIZE_MB" \
-  OUTPUT_DIR="$API_OUTPUT_DIR" \
-  /usr/local/bin/kernel-images-api & pid3=$!
+  # Start via supervisord (env overrides are read by the service's command)
+  supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
   # close the "--no-sandbox unsupported flag" warning when running as root
   # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
   # and when running as root you must use the --no-sandbox flag, which generates a warning
@@ -212,12 +191,12 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
         OFFSET_X=0
       fi
 
-      # Wait for kernel-images API port 10001 to be ready.
-      echo "Waiting for kernel-images API port 127.0.0.1:10001..."
-      while ! nc -z 127.0.0.1 10001 2>/dev/null; do
+      # Wait for kernel-images API port to be ready.
+      echo "Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
+      while ! nc -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
         sleep 0.5
       done
-      echo "Port 10001 is open"
+      echo "Port ${API_PORT} is open"
 
       # Wait for Chromium window to open before dismissing the --no-sandbox warning.
       target='New Tab - Chromium'
@@ -241,7 +220,7 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
       # Attempt to click the warning's close button
       echo "Clicking the warning's close button at x=$OFFSET_X y=115"
       if curl -s -o /dev/null -X POST \
-        http://localhost:10001/computer/click_mouse \
+        http://localhost:${API_PORT}/computer/click_mouse \
         -H "Content-Type: application/json" \
         -d "{\"x\":${OFFSET_X},\"y\":115}"; then
           echo "Successfully clicked the warning's close button"
@@ -258,5 +237,34 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
   enable_scale_to_zero
 fi
 
-# Keep the container running by tailing supervisord log
-tail -F /var/log/supervisord.log
+# Tail and prefix logs from supervisord and all supervised services
+echo "Tailing logs from supervisord and services..."
+log_files=(
+  "supervisord:/var/log/supervisord.log"
+  "xorg.out:/var/log/xorg.out.log"
+  "xorg.err:/var/log/xorg.err.log"
+  "mutter.out:/var/log/mutter.out.log"
+  "mutter.err:/var/log/mutter.err.log"
+  "dbus.out:/var/log/dbus.out.log"
+  "dbus.err:/var/log/dbus.err.log"
+  "ncat.out:/var/log/ncat.out.log"
+  "ncat.err:/var/log/ncat.err.log"
+  "chromium.out:/var/log/chromium.out.log"
+  "chromium.err:/var/log/chromium.err.log"
+  "kernel-images-api.out:/var/log/kernel-images-api.out.log"
+  "kernel-images-api.err:/var/log/kernel-images-api.err.log"
+  "neko.out:/var/log/neko.out.log"
+  "neko.err:/var/log/neko.err.log"
+)
+
+for entry in "${log_files[@]}"; do
+  label="${entry%%:*}"
+  file="${entry#*:}"
+  mkdir -p "$(dirname "$file")"
+  : > "$file" || true
+  tail -F "$file" | sed -u "s/^/[${label}] /" &
+  tail_pids+=("$!")
+done
+
+# Keep the container running while streaming logs
+wait
