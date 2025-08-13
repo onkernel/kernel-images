@@ -23,6 +23,162 @@ paths:
           $ref: "#/components/responses/ConflictError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /process/exec:
+    post:
+      summary: Execute a command synchronously (optional streaming)
+      operationId: processExec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessExecRequest"
+      responses:
+        "200":
+          description: Execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessExecResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /process/spawn:
+    post:
+      summary: Execute a command asynchronously
+      operationId: processSpawn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessSpawnRequest"
+      responses:
+        "200":
+          description: Spawned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessSpawnResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /process/{process_id}/status:
+    get:
+      summary: Get process status
+      operationId: processStatus
+      parameters:
+        - name: process_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessStatus"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /process/{process_id}/stdout/stream:
+    get:
+      summary: Stream process stdout/stderr (SSE)
+      operationId: processStdoutStream
+      parameters:
+        - name: process_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: SSE stream of process output and lifecycle events
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ProcessStreamEvent"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /process/{process_id}/stdin:
+    post:
+      summary: Write to process stdin
+      operationId: processStdin
+      parameters:
+        - name: process_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessStdinRequest"
+      responses:
+        "200":
+          description: Bytes written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessStdinResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /process/{process_id}/kill:
+    post:
+      summary: Send signal to process
+      operationId: processKill
+      parameters:
+        - name: process_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessKillRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /recording/stop:
     post:
       summary: Stop the recording
@@ -154,6 +310,48 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /logs/stream:
+    get:
+      summary: Subscribe to logs via SSE
+      operationId: logsStream
+      parameters:
+        - in: query
+          name: source
+          required: true
+          schema:
+            type: string
+            enum: [path, supervisor]
+        - in: query
+          name: follow
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - in: query
+          description: only required if source is path
+          name: path
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: supervisor_process
+          description: only required if source is supervisor
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream of logs
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/LogEvent"
   # File system operations
   /fs/read_file:
     get:
@@ -744,6 +942,178 @@ components:
           type: string
           description: Absolute destination path.
           pattern: "^/.*"
+      additionalProperties: false
+    ProcessExecRequest:
+      type: object
+      description: Request to execute a command synchronously.
+      required: [command]
+      properties:
+        command:
+          type: string
+          description: Executable or shell command to run.
+        args:
+          type: array
+          description: Command arguments.
+          items:
+            type: string
+          default: []
+        cwd:
+          type: string
+          description: Working directory (absolute path) to run the command in.
+          nullable: true
+          pattern: "^/.*"
+        env:
+          type: object
+          description: Environment variables to set for the process.
+          additionalProperties:
+            type: string
+          default: {}
+        as_user:
+          type: string
+          description: Run the process as this user.
+          nullable: true
+        as_root:
+          type: boolean
+          description: Run the process with root privileges.
+          default: false
+        timeout_sec:
+          type: integer
+          description: Maximum execution time in seconds.
+          nullable: true
+        stream:
+          type: boolean
+          description: If true, stream output via SSE instead of returning complete buffers.
+          default: false
+      additionalProperties: false
+    ProcessExecResult:
+      type: object
+      description: Result of a synchronous command execution.
+      properties:
+        exit_code:
+          type: integer
+          description: Process exit code.
+        stdout_b64:
+          type: string
+          description: Base64-encoded stdout buffer.
+        stderr_b64:
+          type: string
+          description: Base64-encoded stderr buffer.
+        duration_ms:
+          type: integer
+          description: Execution duration in milliseconds.
+      additionalProperties: false
+    ProcessSpawnRequest:
+      allOf:
+        - $ref: "#/components/schemas/ProcessExecRequest"
+        - type: object
+          properties:
+            stream:
+              type: boolean
+              readOnly: true
+              description: Streaming is handled via the stdout/stream endpoint for spawned processes.
+    ProcessSpawnResult:
+      type: object
+      description: Information about a spawned process.
+      properties:
+        process_id:
+          type: string
+          format: uuid
+          description: Server-assigned identifier for the process.
+        pid:
+          type: integer
+          description: OS process ID.
+        started_at:
+          type: string
+          format: date-time
+          description: Timestamp when the process started.
+      additionalProperties: false
+    ProcessStatus:
+      type: object
+      description: Current status of a process.
+      properties:
+        state:
+          type: string
+          enum: [running, exited]
+          description: Process state.
+        exit_code:
+          type: integer
+          nullable: true
+          description: Exit code if the process has exited.
+        cpu_pct:
+          type: number
+          description: Estimated CPU usage percentage.
+        mem_bytes:
+          type: integer
+          description: Estimated resident memory usage in bytes.
+      additionalProperties: false
+    ProcessStdinRequest:
+      type: object
+      description: Data to write to the process standard input.
+      required: [data_b64]
+      properties:
+        data_b64:
+          type: string
+          description: Base64-encoded data to write.
+      additionalProperties: false
+    ProcessStdinResult:
+      type: object
+      description: Result of writing to stdin.
+      properties:
+        written_bytes:
+          type: integer
+          description: Number of bytes written.
+      additionalProperties: false
+    ProcessKillRequest:
+      type: object
+      description: Signal to send to the process.
+      required: [signal]
+      properties:
+        signal:
+          type: string
+          enum: [TERM, KILL, INT, HUP]
+          default: TERM
+          description: Signal to send.
+      additionalProperties: false
+    ProcessStreamEvent:
+      type: object
+      description: SSE payload representing process output or lifecycle events.
+      properties:
+        stream:
+          type: string
+          description: Source stream of the data chunk.
+          enum: [stdout, stderr]
+        data_b64:
+          type: string
+          description: Base64-encoded data from the process stream.
+        event:
+          type: string
+          description: Lifecycle event type.
+          enum: [exit]
+        exit_code:
+          type: integer
+          description: Exit code when the event is "exit".
+      additionalProperties: false
+    LogEvent:
+      type: object
+      description: A log entry from the application.
+      required: [message, timestamp]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Time the log entry was produced.
+        message:
+          type: string
+          description: Log message text.
+    OkResponse:
+      type: object
+      description: Generic OK response.
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: Indicates success.
+          default: true
       additionalProperties: false
   responses:
     BadRequestError:

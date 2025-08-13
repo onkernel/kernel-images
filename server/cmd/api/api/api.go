@@ -22,6 +22,10 @@ type ApiService struct {
 	// Filesystem watch management
 	watchMu sync.RWMutex
 	watches map[string]*fsWatch
+
+	// Process management
+	procMu sync.RWMutex
+	procs  map[string]*processHandle
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -39,6 +43,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		factory:           factory,
 		defaultRecorderID: "default",
 		watches:           make(map[string]*fsWatch),
+		procs:             make(map[string]*processHandle),
 	}, nil
 }
 

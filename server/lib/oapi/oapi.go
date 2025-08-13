@@ -49,6 +49,37 @@ const (
 	WRITE  FileSystemEventType = "WRITE"
 )
 
+// Defines values for ProcessKillRequestSignal.
+const (
+	HUP  ProcessKillRequestSignal = "HUP"
+	INT  ProcessKillRequestSignal = "INT"
+	KILL ProcessKillRequestSignal = "KILL"
+	TERM ProcessKillRequestSignal = "TERM"
+)
+
+// Defines values for ProcessStatusState.
+const (
+	Exited  ProcessStatusState = "exited"
+	Running ProcessStatusState = "running"
+)
+
+// Defines values for ProcessStreamEventEvent.
+const (
+	Exit ProcessStreamEventEvent = "exit"
+)
+
+// Defines values for ProcessStreamEventStream.
+const (
+	Stderr ProcessStreamEventStream = "stderr"
+	Stdout ProcessStreamEventStream = "stdout"
+)
+
+// Defines values for LogsStreamParamsSource.
+const (
+	Path       LogsStreamParamsSource = "path"
+	Supervisor LogsStreamParamsSource = "supervisor"
+)
+
 // ClickMouseRequest defines model for ClickMouseRequest.
 type ClickMouseRequest struct {
 	// Button Mouse button to interact with
@@ -144,6 +175,15 @@ type FileSystemEventType string
 // ListFiles Array of file or directory information entries.
 type ListFiles = []FileInfo
 
+// LogEvent A log entry from the application.
+type LogEvent struct {
+	// Message Log message text.
+	Message string `json:"message"`
+
+	// Timestamp Time the log entry was produced.
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // MoveMouseRequest defines model for MoveMouseRequest.
 type MoveMouseRequest struct {
 	// HoldKeys Modifier keys to hold during the move
@@ -164,6 +204,153 @@ type MovePathRequest struct {
 	// SrcPath Absolute source path.
 	SrcPath string `json:"src_path"`
 }
+
+// OkResponse Generic OK response.
+type OkResponse struct {
+	// Ok Indicates success.
+	Ok bool `json:"ok"`
+}
+
+// ProcessExecRequest Request to execute a command synchronously.
+type ProcessExecRequest struct {
+	// Args Command arguments.
+	Args *[]string `json:"args,omitempty"`
+
+	// AsRoot Run the process with root privileges.
+	AsRoot *bool `json:"as_root,omitempty"`
+
+	// AsUser Run the process as this user.
+	AsUser *string `json:"as_user"`
+
+	// Command Executable or shell command to run.
+	Command string `json:"command"`
+
+	// Cwd Working directory (absolute path) to run the command in.
+	Cwd *string `json:"cwd"`
+
+	// Env Environment variables to set for the process.
+	Env *map[string]string `json:"env,omitempty"`
+
+	// Stream If true, stream output via SSE instead of returning complete buffers.
+	Stream *bool `json:"stream,omitempty"`
+
+	// TimeoutSec Maximum execution time in seconds.
+	TimeoutSec *int `json:"timeout_sec"`
+}
+
+// ProcessExecResult Result of a synchronous command execution.
+type ProcessExecResult struct {
+	// DurationMs Execution duration in milliseconds.
+	DurationMs *int `json:"duration_ms,omitempty"`
+
+	// ExitCode Process exit code.
+	ExitCode *int `json:"exit_code,omitempty"`
+
+	// StderrB64 Base64-encoded stderr buffer.
+	StderrB64 *string `json:"stderr_b64,omitempty"`
+
+	// StdoutB64 Base64-encoded stdout buffer.
+	StdoutB64 *string `json:"stdout_b64,omitempty"`
+}
+
+// ProcessKillRequest Signal to send to the process.
+type ProcessKillRequest struct {
+	// Signal Signal to send.
+	Signal ProcessKillRequestSignal `json:"signal"`
+}
+
+// ProcessKillRequestSignal Signal to send.
+type ProcessKillRequestSignal string
+
+// ProcessSpawnRequest defines model for ProcessSpawnRequest.
+type ProcessSpawnRequest struct {
+	// Args Command arguments.
+	Args *[]string `json:"args,omitempty"`
+
+	// AsRoot Run the process with root privileges.
+	AsRoot *bool `json:"as_root,omitempty"`
+
+	// AsUser Run the process as this user.
+	AsUser *string `json:"as_user"`
+
+	// Command Executable or shell command to run.
+	Command string `json:"command"`
+
+	// Cwd Working directory (absolute path) to run the command in.
+	Cwd *string `json:"cwd"`
+
+	// Env Environment variables to set for the process.
+	Env *map[string]string `json:"env,omitempty"`
+
+	// Stream Streaming is handled via the stdout/stream endpoint for spawned processes.
+	Stream *bool `json:"stream,omitempty"`
+
+	// TimeoutSec Maximum execution time in seconds.
+	TimeoutSec *int `json:"timeout_sec"`
+}
+
+// ProcessSpawnResult Information about a spawned process.
+type ProcessSpawnResult struct {
+	// Pid OS process ID.
+	Pid *int `json:"pid,omitempty"`
+
+	// ProcessId Server-assigned identifier for the process.
+	ProcessId *openapi_types.UUID `json:"process_id,omitempty"`
+
+	// StartedAt Timestamp when the process started.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+}
+
+// ProcessStatus Current status of a process.
+type ProcessStatus struct {
+	// CpuPct Estimated CPU usage percentage.
+	CpuPct *float32 `json:"cpu_pct,omitempty"`
+
+	// ExitCode Exit code if the process has exited.
+	ExitCode *int `json:"exit_code"`
+
+	// MemBytes Estimated resident memory usage in bytes.
+	MemBytes *int `json:"mem_bytes,omitempty"`
+
+	// State Process state.
+	State *ProcessStatusState `json:"state,omitempty"`
+}
+
+// ProcessStatusState Process state.
+type ProcessStatusState string
+
+// ProcessStdinRequest Data to write to the process standard input.
+type ProcessStdinRequest struct {
+	// DataB64 Base64-encoded data to write.
+	DataB64 string `json:"data_b64"`
+}
+
+// ProcessStdinResult Result of writing to stdin.
+type ProcessStdinResult struct {
+	// WrittenBytes Number of bytes written.
+	WrittenBytes *int `json:"written_bytes,omitempty"`
+}
+
+// ProcessStreamEvent SSE payload representing process output or lifecycle events.
+type ProcessStreamEvent struct {
+	// DataB64 Base64-encoded data from the process stream.
+	DataB64 *string `json:"data_b64,omitempty"`
+
+	// Event Lifecycle event type.
+	Event *ProcessStreamEventEvent `json:"event,omitempty"`
+
+	// ExitCode Exit code when the event is "exit".
+	ExitCode *int `json:"exit_code,omitempty"`
+
+	// Stream Source stream of the data chunk.
+	Stream *ProcessStreamEventStream `json:"stream,omitempty"`
+}
+
+// ProcessStreamEventEvent Lifecycle event type.
+type ProcessStreamEventEvent string
+
+// ProcessStreamEventStream Source stream of the data chunk.
+type ProcessStreamEventStream string
 
 // RecorderInfo defines model for RecorderInfo.
 type RecorderInfo struct {
@@ -279,6 +466,21 @@ type WriteFileParams struct {
 	Mode *string `form:"mode,omitempty" json:"mode,omitempty"`
 }
 
+// LogsStreamParams defines parameters for LogsStream.
+type LogsStreamParams struct {
+	Source LogsStreamParamsSource `form:"source" json:"source"`
+	Follow *bool                  `form:"follow,omitempty" json:"follow,omitempty"`
+
+	// Path only required if source is path
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+
+	// SupervisorProcess only required if source is supervisor
+	SupervisorProcess *string `form:"supervisor_process,omitempty" json:"supervisor_process,omitempty"`
+}
+
+// LogsStreamParamsSource defines parameters for LogsStream.
+type LogsStreamParamsSource string
+
 // DownloadRecordingParams defines parameters for DownloadRecording.
 type DownloadRecordingParams struct {
 	// Id Optional recorder identifier. When omitted, the server uses the default recorder.
@@ -314,6 +516,18 @@ type UploadZipMultipartRequestBody UploadZipMultipartBody
 
 // StartFsWatchJSONRequestBody defines body for StartFsWatch for application/json ContentType.
 type StartFsWatchJSONRequestBody = StartFsWatchRequest
+
+// ProcessExecJSONRequestBody defines body for ProcessExec for application/json ContentType.
+type ProcessExecJSONRequestBody = ProcessExecRequest
+
+// ProcessSpawnJSONRequestBody defines body for ProcessSpawn for application/json ContentType.
+type ProcessSpawnJSONRequestBody = ProcessSpawnRequest
+
+// ProcessKillJSONRequestBody defines body for ProcessKill for application/json ContentType.
+type ProcessKillJSONRequestBody = ProcessKillRequest
+
+// ProcessStdinJSONRequestBody defines body for ProcessStdin for application/json ContentType.
+type ProcessStdinJSONRequestBody = ProcessStdinRequest
 
 // DeleteRecordingJSONRequestBody defines body for DeleteRecording for application/json ContentType.
 type DeleteRecordingJSONRequestBody = DeleteRecordingRequest
@@ -460,6 +674,35 @@ type ClientInterface interface {
 
 	// WriteFileWithBody request with any body
 	WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LogsStream request
+	LogsStream(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessExecWithBody request with any body
+	ProcessExecWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ProcessExec(ctx context.Context, body ProcessExecJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessSpawnWithBody request with any body
+	ProcessSpawnWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ProcessSpawn(ctx context.Context, body ProcessSpawnJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessKillWithBody request with any body
+	ProcessKillWithBody(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ProcessKill(ctx context.Context, processId openapi_types.UUID, body ProcessKillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessStatus request
+	ProcessStatus(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessStdinWithBody request with any body
+	ProcessStdinWithBody(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ProcessStdin(ctx context.Context, processId openapi_types.UUID, body ProcessStdinJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ProcessStdoutStream request
+	ProcessStdoutStream(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteRecordingWithBody request with any body
 	DeleteRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -761,6 +1004,138 @@ func (c *Client) StreamFsEvents(ctx context.Context, watchId string, reqEditors 
 
 func (c *Client) WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewWriteFileRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LogsStream(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLogsStreamRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessExecWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessExecRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessExec(ctx context.Context, body ProcessExecJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessExecRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessSpawnWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessSpawnRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessSpawn(ctx context.Context, body ProcessSpawnJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessSpawnRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessKillWithBody(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessKillRequestWithBody(c.Server, processId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessKill(ctx context.Context, processId openapi_types.UUID, body ProcessKillJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessKillRequest(c.Server, processId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessStatus(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessStatusRequest(c.Server, processId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessStdinWithBody(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessStdinRequestWithBody(c.Server, processId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessStdin(ctx context.Context, processId openapi_types.UUID, body ProcessStdinJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessStdinRequest(c.Server, processId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ProcessStdoutStream(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewProcessStdoutStreamRequest(c.Server, processId)
 	if err != nil {
 		return nil, err
 	}
@@ -1511,6 +1886,341 @@ func NewWriteFileRequestWithBody(server string, params *WriteFileParams, content
 	return req, nil
 }
 
+// NewLogsStreamRequest generates requests for LogsStream
+func NewLogsStreamRequest(server string, params *LogsStreamParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/logs/stream")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "source", runtime.ParamLocationQuery, params.Source); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if params.Follow != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "follow", runtime.ParamLocationQuery, *params.Follow); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Path != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, *params.Path); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SupervisorProcess != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "supervisor_process", runtime.ParamLocationQuery, *params.SupervisorProcess); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewProcessExecRequest calls the generic ProcessExec builder with application/json body
+func NewProcessExecRequest(server string, body ProcessExecJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewProcessExecRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewProcessExecRequestWithBody generates requests for ProcessExec with any type of body
+func NewProcessExecRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/exec")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewProcessSpawnRequest calls the generic ProcessSpawn builder with application/json body
+func NewProcessSpawnRequest(server string, body ProcessSpawnJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewProcessSpawnRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewProcessSpawnRequestWithBody generates requests for ProcessSpawn with any type of body
+func NewProcessSpawnRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/spawn")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewProcessKillRequest calls the generic ProcessKill builder with application/json body
+func NewProcessKillRequest(server string, processId openapi_types.UUID, body ProcessKillJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewProcessKillRequestWithBody(server, processId, "application/json", bodyReader)
+}
+
+// NewProcessKillRequestWithBody generates requests for ProcessKill with any type of body
+func NewProcessKillRequestWithBody(server string, processId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "process_id", runtime.ParamLocationPath, processId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/%s/kill", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewProcessStatusRequest generates requests for ProcessStatus
+func NewProcessStatusRequest(server string, processId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "process_id", runtime.ParamLocationPath, processId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/%s/status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewProcessStdinRequest calls the generic ProcessStdin builder with application/json body
+func NewProcessStdinRequest(server string, processId openapi_types.UUID, body ProcessStdinJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewProcessStdinRequestWithBody(server, processId, "application/json", bodyReader)
+}
+
+// NewProcessStdinRequestWithBody generates requests for ProcessStdin with any type of body
+func NewProcessStdinRequestWithBody(server string, processId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "process_id", runtime.ParamLocationPath, processId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/%s/stdin", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewProcessStdoutStreamRequest generates requests for ProcessStdoutStream
+func NewProcessStdoutStreamRequest(server string, processId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "process_id", runtime.ParamLocationPath, processId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/process/%s/stdout/stream", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteRecordingRequest calls the generic DeleteRecording builder with application/json body
 func NewDeleteRecordingRequest(server string, body DeleteRecordingJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1813,6 +2523,35 @@ type ClientWithResponsesInterface interface {
 
 	// WriteFileWithBodyWithResponse request with any body
 	WriteFileWithBodyWithResponse(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteFileResponse, error)
+
+	// LogsStreamWithResponse request
+	LogsStreamWithResponse(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*LogsStreamResponse, error)
+
+	// ProcessExecWithBodyWithResponse request with any body
+	ProcessExecWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessExecResponse, error)
+
+	ProcessExecWithResponse(ctx context.Context, body ProcessExecJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessExecResponse, error)
+
+	// ProcessSpawnWithBodyWithResponse request with any body
+	ProcessSpawnWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessSpawnResponse, error)
+
+	ProcessSpawnWithResponse(ctx context.Context, body ProcessSpawnJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessSpawnResponse, error)
+
+	// ProcessKillWithBodyWithResponse request with any body
+	ProcessKillWithBodyWithResponse(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessKillResponse, error)
+
+	ProcessKillWithResponse(ctx context.Context, processId openapi_types.UUID, body ProcessKillJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessKillResponse, error)
+
+	// ProcessStatusWithResponse request
+	ProcessStatusWithResponse(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ProcessStatusResponse, error)
+
+	// ProcessStdinWithBodyWithResponse request with any body
+	ProcessStdinWithBodyWithResponse(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessStdinResponse, error)
+
+	ProcessStdinWithResponse(ctx context.Context, processId openapi_types.UUID, body ProcessStdinJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessStdinResponse, error)
+
+	// ProcessStdoutStreamWithResponse request
+	ProcessStdoutStreamWithResponse(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ProcessStdoutStreamResponse, error)
 
 	// DeleteRecordingWithBodyWithResponse request with any body
 	DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error)
@@ -2223,6 +2962,174 @@ func (r WriteFileResponse) StatusCode() int {
 	return 0
 }
 
+type LogsStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r LogsStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LogsStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessExecResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessExecResult
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessExecResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessExecResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessSpawnResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessSpawnResult
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessSpawnResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessSpawnResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessKillResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OkResponse
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessKillResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessKillResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessStatus
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessStdinResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProcessStdinResult
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessStdinResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessStdinResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ProcessStdoutStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON404      *NotFoundError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ProcessStdoutStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ProcessStdoutStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteRecordingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2547,6 +3454,101 @@ func (c *ClientWithResponses) WriteFileWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseWriteFileResponse(rsp)
+}
+
+// LogsStreamWithResponse request returning *LogsStreamResponse
+func (c *ClientWithResponses) LogsStreamWithResponse(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*LogsStreamResponse, error) {
+	rsp, err := c.LogsStream(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLogsStreamResponse(rsp)
+}
+
+// ProcessExecWithBodyWithResponse request with arbitrary body returning *ProcessExecResponse
+func (c *ClientWithResponses) ProcessExecWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessExecResponse, error) {
+	rsp, err := c.ProcessExecWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessExecResponse(rsp)
+}
+
+func (c *ClientWithResponses) ProcessExecWithResponse(ctx context.Context, body ProcessExecJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessExecResponse, error) {
+	rsp, err := c.ProcessExec(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessExecResponse(rsp)
+}
+
+// ProcessSpawnWithBodyWithResponse request with arbitrary body returning *ProcessSpawnResponse
+func (c *ClientWithResponses) ProcessSpawnWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessSpawnResponse, error) {
+	rsp, err := c.ProcessSpawnWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessSpawnResponse(rsp)
+}
+
+func (c *ClientWithResponses) ProcessSpawnWithResponse(ctx context.Context, body ProcessSpawnJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessSpawnResponse, error) {
+	rsp, err := c.ProcessSpawn(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessSpawnResponse(rsp)
+}
+
+// ProcessKillWithBodyWithResponse request with arbitrary body returning *ProcessKillResponse
+func (c *ClientWithResponses) ProcessKillWithBodyWithResponse(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessKillResponse, error) {
+	rsp, err := c.ProcessKillWithBody(ctx, processId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessKillResponse(rsp)
+}
+
+func (c *ClientWithResponses) ProcessKillWithResponse(ctx context.Context, processId openapi_types.UUID, body ProcessKillJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessKillResponse, error) {
+	rsp, err := c.ProcessKill(ctx, processId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessKillResponse(rsp)
+}
+
+// ProcessStatusWithResponse request returning *ProcessStatusResponse
+func (c *ClientWithResponses) ProcessStatusWithResponse(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ProcessStatusResponse, error) {
+	rsp, err := c.ProcessStatus(ctx, processId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessStatusResponse(rsp)
+}
+
+// ProcessStdinWithBodyWithResponse request with arbitrary body returning *ProcessStdinResponse
+func (c *ClientWithResponses) ProcessStdinWithBodyWithResponse(ctx context.Context, processId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ProcessStdinResponse, error) {
+	rsp, err := c.ProcessStdinWithBody(ctx, processId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessStdinResponse(rsp)
+}
+
+func (c *ClientWithResponses) ProcessStdinWithResponse(ctx context.Context, processId openapi_types.UUID, body ProcessStdinJSONRequestBody, reqEditors ...RequestEditorFn) (*ProcessStdinResponse, error) {
+	rsp, err := c.ProcessStdin(ctx, processId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessStdinResponse(rsp)
+}
+
+// ProcessStdoutStreamWithResponse request returning *ProcessStdoutStreamResponse
+func (c *ClientWithResponses) ProcessStdoutStreamWithResponse(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ProcessStdoutStreamResponse, error) {
+	rsp, err := c.ProcessStdoutStream(ctx, processId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseProcessStdoutStreamResponse(rsp)
 }
 
 // DeleteRecordingWithBodyWithResponse request with arbitrary body returning *DeleteRecordingResponse
@@ -3261,6 +4263,283 @@ func ParseWriteFileResponse(rsp *http.Response) (*WriteFileResponse, error) {
 	return response, nil
 }
 
+// ParseLogsStreamResponse parses an HTTP response from a LogsStreamWithResponse call
+func ParseLogsStreamResponse(rsp *http.Response) (*LogsStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LogsStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseProcessExecResponse parses an HTTP response from a ProcessExecWithResponse call
+func ParseProcessExecResponse(rsp *http.Response) (*ProcessExecResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessExecResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessExecResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProcessSpawnResponse parses an HTTP response from a ProcessSpawnWithResponse call
+func ParseProcessSpawnResponse(rsp *http.Response) (*ProcessSpawnResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessSpawnResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessSpawnResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProcessKillResponse parses an HTTP response from a ProcessKillWithResponse call
+func ParseProcessKillResponse(rsp *http.Response) (*ProcessKillResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessKillResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OkResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProcessStatusResponse parses an HTTP response from a ProcessStatusWithResponse call
+func ParseProcessStatusResponse(rsp *http.Response) (*ProcessStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProcessStdinResponse parses an HTTP response from a ProcessStdinWithResponse call
+func ParseProcessStdinResponse(rsp *http.Response) (*ProcessStdinResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessStdinResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProcessStdinResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseProcessStdoutStreamResponse parses an HTTP response from a ProcessStdoutStreamWithResponse call
+func ParseProcessStdoutStreamResponse(rsp *http.Response) (*ProcessStdoutStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ProcessStdoutStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFoundError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteRecordingResponse parses an HTTP response from a DeleteRecordingWithResponse call
 func ParseDeleteRecordingResponse(rsp *http.Response) (*DeleteRecordingResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3497,6 +4776,27 @@ type ServerInterface interface {
 	// Write or create a file
 	// (PUT /fs/write_file)
 	WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams)
+	// Subscribe to logs via SSE
+	// (GET /logs/stream)
+	LogsStream(w http.ResponseWriter, r *http.Request, params LogsStreamParams)
+	// Execute a command synchronously (optional streaming)
+	// (POST /process/exec)
+	ProcessExec(w http.ResponseWriter, r *http.Request)
+	// Execute a command asynchronously
+	// (POST /process/spawn)
+	ProcessSpawn(w http.ResponseWriter, r *http.Request)
+	// Send signal to process
+	// (POST /process/{process_id}/kill)
+	ProcessKill(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID)
+	// Get process status
+	// (GET /process/{process_id}/status)
+	ProcessStatus(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID)
+	// Write to process stdin
+	// (POST /process/{process_id}/stdin)
+	ProcessStdin(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID)
+	// Stream process stdout/stderr (SSE)
+	// (GET /process/{process_id}/stdout/stream)
+	ProcessStdoutStream(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(w http.ResponseWriter, r *http.Request)
@@ -3611,6 +4911,48 @@ func (_ Unimplemented) StreamFsEvents(w http.ResponseWriter, r *http.Request, wa
 // Write or create a file
 // (PUT /fs/write_file)
 func (_ Unimplemented) WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Subscribe to logs via SSE
+// (GET /logs/stream)
+func (_ Unimplemented) LogsStream(w http.ResponseWriter, r *http.Request, params LogsStreamParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Execute a command synchronously (optional streaming)
+// (POST /process/exec)
+func (_ Unimplemented) ProcessExec(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Execute a command asynchronously
+// (POST /process/spawn)
+func (_ Unimplemented) ProcessSpawn(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Send signal to process
+// (POST /process/{process_id}/kill)
+func (_ Unimplemented) ProcessKill(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get process status
+// (GET /process/{process_id}/status)
+func (_ Unimplemented) ProcessStatus(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Write to process stdin
+// (POST /process/{process_id}/stdin)
+func (_ Unimplemented) ProcessStdin(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Stream process stdout/stderr (SSE)
+// (GET /process/{process_id}/stdout/stream)
+func (_ Unimplemented) ProcessStdoutStream(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3987,6 +5329,192 @@ func (siw *ServerInterfaceWrapper) WriteFile(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// LogsStream operation middleware
+func (siw *ServerInterfaceWrapper) LogsStream(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LogsStreamParams
+
+	// ------------- Required query parameter "source" -------------
+
+	if paramValue := r.URL.Query().Get("source"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "source", r.URL.Query(), &params.Source)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "follow" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "follow", r.URL.Query(), &params.Follow)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "follow", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "path", r.URL.Query(), &params.Path)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "supervisor_process" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "supervisor_process", r.URL.Query(), &params.SupervisorProcess)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supervisor_process", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogsStream(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessExec operation middleware
+func (siw *ServerInterfaceWrapper) ProcessExec(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessExec(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessSpawn operation middleware
+func (siw *ServerInterfaceWrapper) ProcessSpawn(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessSpawn(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessKill operation middleware
+func (siw *ServerInterfaceWrapper) ProcessKill(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "process_id" -------------
+	var processId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "process_id", chi.URLParam(r, "process_id"), &processId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "process_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessKill(w, r, processId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessStatus operation middleware
+func (siw *ServerInterfaceWrapper) ProcessStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "process_id" -------------
+	var processId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "process_id", chi.URLParam(r, "process_id"), &processId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "process_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessStatus(w, r, processId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessStdin operation middleware
+func (siw *ServerInterfaceWrapper) ProcessStdin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "process_id" -------------
+	var processId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "process_id", chi.URLParam(r, "process_id"), &processId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "process_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessStdin(w, r, processId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ProcessStdoutStream operation middleware
+func (siw *ServerInterfaceWrapper) ProcessStdoutStream(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "process_id" -------------
+	var processId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "process_id", chi.URLParam(r, "process_id"), &processId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "process_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProcessStdoutStream(w, r, processId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteRecording operation middleware
 func (siw *ServerInterfaceWrapper) DeleteRecording(w http.ResponseWriter, r *http.Request) {
 
@@ -4230,6 +5758,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/write_file", wrapper.WriteFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/logs/stream", wrapper.LogsStream)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/process/exec", wrapper.ProcessExec)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/process/spawn", wrapper.ProcessSpawn)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/process/{process_id}/kill", wrapper.ProcessKill)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process/{process_id}/status", wrapper.ProcessStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/process/{process_id}/stdin", wrapper.ProcessStdin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/process/{process_id}/stdout/stream", wrapper.ProcessStdoutStream)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/recording/delete", wrapper.DeleteRecording)
@@ -4976,6 +6525,347 @@ func (response WriteFile500JSONResponse) VisitWriteFileResponse(w http.ResponseW
 	return json.NewEncoder(w).Encode(response)
 }
 
+type LogsStreamRequestObject struct {
+	Params LogsStreamParams
+}
+
+type LogsStreamResponseObject interface {
+	VisitLogsStreamResponse(w http.ResponseWriter) error
+}
+
+type LogsStream200ResponseHeaders struct {
+	XSSEContentType string
+}
+
+type LogsStream200TexteventStreamResponse struct {
+	Body          io.Reader
+	Headers       LogsStream200ResponseHeaders
+	ContentLength int64
+}
+
+func (response LogsStream200TexteventStreamResponse) VisitLogsStreamResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("X-SSE-Content-Type", fmt.Sprint(response.Headers.XSSEContentType))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, might as well use io.Copy
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+
+	// Use a buffer for efficient copying and flushing
+	buf := make([]byte, 4096) // text/event-stream are usually very small messages
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			flusher.Flush() // Flush after each write
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil // End of file, no error
+			}
+			return err
+		}
+	}
+}
+
+type ProcessExecRequestObject struct {
+	Body *ProcessExecJSONRequestBody
+}
+
+type ProcessExecResponseObject interface {
+	VisitProcessExecResponse(w http.ResponseWriter) error
+}
+
+type ProcessExec200JSONResponse ProcessExecResult
+
+func (response ProcessExec200JSONResponse) VisitProcessExecResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessExec400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessExec400JSONResponse) VisitProcessExecResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessExec500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessExec500JSONResponse) VisitProcessExecResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessSpawnRequestObject struct {
+	Body *ProcessSpawnJSONRequestBody
+}
+
+type ProcessSpawnResponseObject interface {
+	VisitProcessSpawnResponse(w http.ResponseWriter) error
+}
+
+type ProcessSpawn200JSONResponse ProcessSpawnResult
+
+func (response ProcessSpawn200JSONResponse) VisitProcessSpawnResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessSpawn400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessSpawn400JSONResponse) VisitProcessSpawnResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessSpawn500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessSpawn500JSONResponse) VisitProcessSpawnResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessKillRequestObject struct {
+	ProcessId openapi_types.UUID `json:"process_id"`
+	Body      *ProcessKillJSONRequestBody
+}
+
+type ProcessKillResponseObject interface {
+	VisitProcessKillResponse(w http.ResponseWriter) error
+}
+
+type ProcessKill200JSONResponse OkResponse
+
+func (response ProcessKill200JSONResponse) VisitProcessKillResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessKill400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessKill400JSONResponse) VisitProcessKillResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessKill404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response ProcessKill404JSONResponse) VisitProcessKillResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessKill500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessKill500JSONResponse) VisitProcessKillResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStatusRequestObject struct {
+	ProcessId openapi_types.UUID `json:"process_id"`
+}
+
+type ProcessStatusResponseObject interface {
+	VisitProcessStatusResponse(w http.ResponseWriter) error
+}
+
+type ProcessStatus200JSONResponse ProcessStatus
+
+func (response ProcessStatus200JSONResponse) VisitProcessStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStatus400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessStatus400JSONResponse) VisitProcessStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStatus404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response ProcessStatus404JSONResponse) VisitProcessStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStatus500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessStatus500JSONResponse) VisitProcessStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdinRequestObject struct {
+	ProcessId openapi_types.UUID `json:"process_id"`
+	Body      *ProcessStdinJSONRequestBody
+}
+
+type ProcessStdinResponseObject interface {
+	VisitProcessStdinResponse(w http.ResponseWriter) error
+}
+
+type ProcessStdin200JSONResponse ProcessStdinResult
+
+func (response ProcessStdin200JSONResponse) VisitProcessStdinResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdin400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessStdin400JSONResponse) VisitProcessStdinResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdin404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response ProcessStdin404JSONResponse) VisitProcessStdinResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdin500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessStdin500JSONResponse) VisitProcessStdinResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdoutStreamRequestObject struct {
+	ProcessId openapi_types.UUID `json:"process_id"`
+}
+
+type ProcessStdoutStreamResponseObject interface {
+	VisitProcessStdoutStreamResponse(w http.ResponseWriter) error
+}
+
+type ProcessStdoutStream200ResponseHeaders struct {
+	XSSEContentType string
+}
+
+type ProcessStdoutStream200TexteventStreamResponse struct {
+	Body          io.Reader
+	Headers       ProcessStdoutStream200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ProcessStdoutStream200TexteventStreamResponse) VisitProcessStdoutStreamResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.Header().Set("X-SSE-Content-Type", fmt.Sprint(response.Headers.XSSEContentType))
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, might as well use io.Copy
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+
+	// Use a buffer for efficient copying and flushing
+	buf := make([]byte, 4096) // text/event-stream are usually very small messages
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			flusher.Flush() // Flush after each write
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil // End of file, no error
+			}
+			return err
+		}
+	}
+}
+
+type ProcessStdoutStream400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response ProcessStdoutStream400JSONResponse) VisitProcessStdoutStreamResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdoutStream404JSONResponse struct{ NotFoundErrorJSONResponse }
+
+func (response ProcessStdoutStream404JSONResponse) VisitProcessStdoutStreamResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ProcessStdoutStream500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ProcessStdoutStream500JSONResponse) VisitProcessStdoutStreamResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteRecordingRequestObject struct {
 	Body *DeleteRecordingJSONRequestBody
 }
@@ -5247,6 +7137,27 @@ type StrictServerInterface interface {
 	// Write or create a file
 	// (PUT /fs/write_file)
 	WriteFile(ctx context.Context, request WriteFileRequestObject) (WriteFileResponseObject, error)
+	// Subscribe to logs via SSE
+	// (GET /logs/stream)
+	LogsStream(ctx context.Context, request LogsStreamRequestObject) (LogsStreamResponseObject, error)
+	// Execute a command synchronously (optional streaming)
+	// (POST /process/exec)
+	ProcessExec(ctx context.Context, request ProcessExecRequestObject) (ProcessExecResponseObject, error)
+	// Execute a command asynchronously
+	// (POST /process/spawn)
+	ProcessSpawn(ctx context.Context, request ProcessSpawnRequestObject) (ProcessSpawnResponseObject, error)
+	// Send signal to process
+	// (POST /process/{process_id}/kill)
+	ProcessKill(ctx context.Context, request ProcessKillRequestObject) (ProcessKillResponseObject, error)
+	// Get process status
+	// (GET /process/{process_id}/status)
+	ProcessStatus(ctx context.Context, request ProcessStatusRequestObject) (ProcessStatusResponseObject, error)
+	// Write to process stdin
+	// (POST /process/{process_id}/stdin)
+	ProcessStdin(ctx context.Context, request ProcessStdinRequestObject) (ProcessStdinResponseObject, error)
+	// Stream process stdout/stderr (SSE)
+	// (GET /process/{process_id}/stdout/stream)
+	ProcessStdoutStream(ctx context.Context, request ProcessStdoutStreamRequestObject) (ProcessStdoutStreamResponseObject, error)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(ctx context.Context, request DeleteRecordingRequestObject) (DeleteRecordingResponseObject, error)
@@ -5761,6 +7672,212 @@ func (sh *strictHandler) WriteFile(w http.ResponseWriter, r *http.Request, param
 	}
 }
 
+// LogsStream operation middleware
+func (sh *strictHandler) LogsStream(w http.ResponseWriter, r *http.Request, params LogsStreamParams) {
+	var request LogsStreamRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogsStream(ctx, request.(LogsStreamRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogsStream")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogsStreamResponseObject); ok {
+		if err := validResponse.VisitLogsStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessExec operation middleware
+func (sh *strictHandler) ProcessExec(w http.ResponseWriter, r *http.Request) {
+	var request ProcessExecRequestObject
+
+	var body ProcessExecJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessExec(ctx, request.(ProcessExecRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessExec")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessExecResponseObject); ok {
+		if err := validResponse.VisitProcessExecResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessSpawn operation middleware
+func (sh *strictHandler) ProcessSpawn(w http.ResponseWriter, r *http.Request) {
+	var request ProcessSpawnRequestObject
+
+	var body ProcessSpawnJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessSpawn(ctx, request.(ProcessSpawnRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessSpawn")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessSpawnResponseObject); ok {
+		if err := validResponse.VisitProcessSpawnResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessKill operation middleware
+func (sh *strictHandler) ProcessKill(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	var request ProcessKillRequestObject
+
+	request.ProcessId = processId
+
+	var body ProcessKillJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessKill(ctx, request.(ProcessKillRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessKill")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessKillResponseObject); ok {
+		if err := validResponse.VisitProcessKillResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessStatus operation middleware
+func (sh *strictHandler) ProcessStatus(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	var request ProcessStatusRequestObject
+
+	request.ProcessId = processId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessStatus(ctx, request.(ProcessStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessStatusResponseObject); ok {
+		if err := validResponse.VisitProcessStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessStdin operation middleware
+func (sh *strictHandler) ProcessStdin(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	var request ProcessStdinRequestObject
+
+	request.ProcessId = processId
+
+	var body ProcessStdinJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessStdin(ctx, request.(ProcessStdinRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessStdin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessStdinResponseObject); ok {
+		if err := validResponse.VisitProcessStdinResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ProcessStdoutStream operation middleware
+func (sh *strictHandler) ProcessStdoutStream(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	var request ProcessStdoutStreamRequestObject
+
+	request.ProcessId = processId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProcessStdoutStream(ctx, request.(ProcessStdoutStreamRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProcessStdoutStream")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProcessStdoutStreamResponseObject); ok {
+		if err := validResponse.VisitProcessStdoutStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteRecording operation middleware
 func (sh *strictHandler) DeleteRecording(w http.ResponseWriter, r *http.Request) {
 	var request DeleteRecordingRequestObject
@@ -5907,57 +8024,80 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
