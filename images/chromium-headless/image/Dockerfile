@@ -29,7 +29,8 @@ RUN set -xe; \
     dbus-x11 \
     xvfb \
     x11-utils \
-    software-properties-common;
+    software-properties-common \
+    supervisor;
 
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium ncat
@@ -50,10 +51,18 @@ RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 # Create a non-root user with a home directory
 RUN useradd -m -s /bin/bash kernel
 
+# Xvfb helper and supervisor-managed start scripts
 COPY ./xvfb_startup.sh /usr/bin/xvfb_startup.sh
+COPY ./start-chromium.sh /images/chromium-headless/image/start-chromium.sh
+COPY ./start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
+RUN chmod +x /images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-xvfb.sh
 
 # Wrapper script set environment
 COPY ./wrapper.sh /usr/bin/wrapper.sh
+
+# Supervisord configuration
+COPY ./supervisord.conf /etc/supervisor/supervisord.conf
+COPY ./supervisor/services/ /etc/supervisor/conf.d/services/
 
 # Copy the kernel-images API binary built during the build process
 COPY bin/kernel-images-api /usr/local/bin/kernel-images-api

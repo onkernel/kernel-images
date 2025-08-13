@@ -61,17 +61,18 @@ if [ -z "${CHROMIUM_FLAGS:-}" ]; then
     --use-gl=disabled \
     --use-mock-keychain"
 fi
+export CHROMIUM_FLAGS
 
 # -----------------------------------------------------------------------------
-# House-keeping for the unprivileged "kernel" user --------------------------------
-# Some Chromium subsystems want to create files under $HOME (NSS cert DB, dconf
-# cache).  If those directories are missing or owned by root Chromium emits
-# noisy error messages such as:
-#   [ERROR:crypto/nss_util.cc:48] Failed to create /home/kernel/.pki/nssdb ...
-#   dconf-CRITICAL **: unable to create directory '/home/kernel/.cache/dconf'
-# Pre-create them and hand ownership to the user so the messages disappear.
-
-for dir in /home/kernel/.pki/nssdb /home/kernel/.cache/dconf; do
+# House-keeping for the unprivileged "kernel" user ----------------------------
+# -----------------------------------------------------------------------------
+dirs=(
+  /home/kernel/.pki/nssdb
+  /home/kernel/.cache/dconf
+  /var/log
+  /var/log/supervisord
+)
+for dir in "${dirs[@]}"; do
   if [ ! -d "$dir" ]; then
     mkdir -p "$dir"
   fi
@@ -79,97 +80,81 @@ done
 # Ensure correct ownership (ignore errors if already correct)
 chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 
-# -----------------------------------------------------------------------------
-# System-bus setup --------------------------------------------------------------
-# -----------------------------------------------------------------------------
-# Start a lightweight system D-Bus daemon if one is not already running.  We
-# will later use this very same bus as the *session* bus as well, avoiding the
-# autolaunch fallback that produced many "Connection refused" errors.
-# Start a lightweight system D-Bus daemon if one is not already running (Chromium complains otherwise)
-if [ ! -S /run/dbus/system_bus_socket ]; then
-  echo "Starting system D-Bus daemon"
-  mkdir -p /run/dbus
-  # Ensure a machine-id exists (required by dbus-daemon)
-  dbus-uuidgen --ensure
-  # Launch dbus-daemon in the background and remember its PID for cleanup
-  dbus-daemon --system \
-    --address=unix:path=/run/dbus/system_bus_socket \
-    --nopidfile --nosyslog --nofork >/dev/null 2>&1 &
-  dbus_pid=$!
-fi
+# Export common env used by services
+export DISPLAY=:1
+export HEIGHT=${HEIGHT:-768}
+export WIDTH=${WIDTH:-1024}
+export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
+export CHROME_PORT="${CHROME_PORT:-9222}"
 
-# We will point DBUS_SESSION_BUS_ADDRESS at the system bus socket to suppress
-# autolaunch attempts that failed and spammed logs.
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
-
-# Start Chromium in headless mode with remote debugging
-# Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
+# Cleanup handler
 cleanup () {
-  echo "Cleaning up..."
-  kill -TERM $pid 2>/dev/null || true
-  kill -TERM $pid2 2>/dev/null || true
-  if [[ -n "${pid3:-}" ]]; then
-    kill -TERM $pid3 2>/dev/null || true
-  fi
-  if [ -n "${dbus_pid:-}" ]; then
-    kill -TERM $dbus_pid 2>/dev/null || true
-  fi
+  echo "[wrapper] Cleaning up..."
+  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop xvfb || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
 }
 trap cleanup TERM INT
-pid=
-pid2=
-pid3=
-INTERNAL_PORT=9223
-CHROME_PORT=9222  # External port mapped to host
-echo "Starting Chromium on internal port $INTERNAL_PORT"
-export CHROMIUM_FLAGS
-# Launch Chromium as the non-root user "kernel"
-export HEIGHT=768
-export WIDTH=1024
-export DISPLAY=:1
-echo "Starting Xvfb"
-/usr/bin/xvfb_startup.sh
-runuser -u kernel -- env DISPLAY=:1 DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" chromium \
-  --headless \
-  --remote-debugging-port=$INTERNAL_PORT \
-  --remote-allow-origins=* \
-  ${CHROMIUM_FLAGS:-} 2>&1 \
-    | grep -vE "org\.freedesktop\.UPower|Failed to connect to the bus|google_apis" >&2 &
-pid=$!
-echo "Setting up ncat proxy on port $CHROME_PORT"
-ncat \
-  --sh-exec "ncat 0.0.0.0 $INTERNAL_PORT" \
-  -l "$CHROME_PORT" \
-  --keep-open & pid2=$!
 
-# Optionally start the kernel-images API server file i/o
+echo "[wrapper] Starting supervisord"
+supervisord -c /etc/supervisor/supervisord.conf
+echo "[wrapper] Waiting for supervisord socket..."
+for i in {1..30}; do
+  if [ -S /var/run/supervisor.sock ]; then
+    break
+  fi
+  sleep 0.2
+done
+
+echo "[wrapper] Starting system D-Bus daemon via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start dbus
+for i in {1..50}; do
+  if [ -S /run/dbus/system_bus_socket ]; then
+    break
+  fi
+  sleep 0.2
+done
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
+
+echo "[wrapper] Starting Xvfb via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start xvfb
+for i in {1..50}; do
+  if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+done
+
+echo "[wrapper] Starting Chromium via supervisord on internal port $INTERNAL_PORT"
+supervisorctl -c /etc/supervisor/supervisord.conf start chromium
+for i in {1..100}; do
+  if ncat -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
+
+echo "[wrapper] Starting ncat proxy via supervisord on port $CHROME_PORT"
+supervisorctl -c /etc/supervisor/supervisord.conf start ncat
+for i in {1..50}; do
+  if ncat -z 127.0.0.1 "$CHROME_PORT" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
+
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  echo "✨ Starting kernel-images API."
+  echo "[wrapper] ✨ Starting kernel-images API via supervisord."
+  supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
   API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
-  API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
-  API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-${DISPLAY_NUM:-1}}"
-  API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
-  API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
-
-  mkdir -p "$API_OUTPUT_DIR"
-
-  PORT="$API_PORT" \
-  FRAME_RATE="$API_FRAME_RATE" \
-  DISPLAY_NUM="$API_DISPLAY_NUM" \
-  MAX_SIZE_MB="$API_MAX_SIZE_MB" \
-  OUTPUT_DIR="$API_OUTPUT_DIR" \
-  /usr/local/bin/kernel-images-api & pid3=$!
+  echo "[wrapper] Waiting for kernel-images API on 127.0.0.1:${API_PORT}..."
+  while ! ncat -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
+    sleep 0.5
+  done
 fi
 
-# Wait for Chromium to exit; propagate its exit code
-wait "$pid"
-exit_code=$?
-echo "Chromium exited with code $exit_code"
-# Ensure ncat proxy is terminated
-kill -TERM "$pid2" 2>/dev/null || true
-# Ensure kernel-images API server is terminated
-if [[ -n "${pid3:-}" ]]; then
-  kill -TERM "$pid3" 2>/dev/null || true
-fi
-
-exit "$exit_code"
+# Keep running while services are supervised; stream supervisor logs
+tail -n +1 -F /var/log/supervisord/* 2>/dev/null &
+wait
