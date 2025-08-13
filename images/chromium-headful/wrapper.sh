@@ -35,13 +35,42 @@ fi
 
 export DISPLAY=:1
 
-/usr/bin/Xorg :1 -config /etc/neko/xorg.conf -noreset -nolisten tcp &
+# Predefine ports and export so supervisord programs (e.g., ncat) can read them
+export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
+export CHROME_PORT="${CHROME_PORT:-9222}"
 
-./mutter_startup.sh
-
-if [[ "${ENABLE_WEBRTC:-}" != "true" ]]; then
-  ./x11vnc_startup.sh
+# Start supervisord early so it can manage Xorg and Mutter
+echo "Starting supervisord"
+supervisord -c /etc/supervisor/supervisord.conf
+echo "Waiting for supervisord socket..."
+for i in {1..30}; do
+if [ -S /var/run/supervisor.sock ]; then
+    break
 fi
+sleep 0.2
+done
+
+echo "Starting Xorg via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start xorg
+echo "Waiting for Xorg to open display $DISPLAY..."
+for i in {1..50}; do
+  if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.2
+done
+
+echo "Starting Mutter via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start mutter
+echo "Waiting for Mutter to be ready..."
+timeout=30
+while [ $timeout -gt 0 ]; do
+  if xdotool search --class "mutter" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+  ((timeout--))
+done
 
 # -----------------------------------------------------------------------------
 # House-keeping for the unprivileged "kernel" user --------------------------------
@@ -68,26 +97,20 @@ for dir in "${dirs[@]}"; do
 done
 
 # Ensure correct ownership (ignore errors if already correct)
-chown -R kernel:kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
-# System-bus setup --------------------------------------------------------------
+# System-bus setup via supervisord --------------------------------------------
 # -----------------------------------------------------------------------------
-# Start a lightweight system D-Bus daemon if one is not already running.  We
-# will later use this very same bus as the *session* bus as well, avoiding the
-# autolaunch fallback that produced many "Connection refused" errors.
-# Start a lightweight system D-Bus daemon if one is not already running (Chromium complains otherwise)
-if [ ! -S /run/dbus/system_bus_socket ]; then
-  echo "Starting system D-Bus daemon"
-  mkdir -p /run/dbus
-  # Ensure a machine-id exists (required by dbus-daemon)
-  dbus-uuidgen --ensure
-  # Launch dbus-daemon in the background and remember its PID for cleanup
-  dbus-daemon --system \
-    --address=unix:path=/run/dbus/system_bus_socket \
-    --nopidfile --nosyslog --nofork >/dev/null 2>&1 &
-  dbus_pid=$!
-fi
+echo "Starting system D-Bus daemon via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start dbus
+echo "Waiting for D-Bus system bus socket..."
+for i in {1..50}; do
+  if [ -S /run/dbus/system_bus_socket ]; then
+    break
+  fi
+  sleep 0.2
+done
 
 # We will point DBUS_SESSION_BUS_ADDRESS at the system bus socket to suppress
 # autolaunch attempts that failed and spammed logs.
@@ -100,21 +123,17 @@ cleanup () {
   # Re-enable scale-to-zero if the script terminates early
   enable_scale_to_zero
   kill -TERM $pid
-  kill -TERM $pid2
   # Kill the API server if it was started
   if [[ -n "${pid3:-}" ]]; then
     kill -TERM $pid3 || true
   fi
-  if [ -n "${dbus_pid:-}" ]; then
-    kill -TERM $dbus_pid 2>/dev/null || true
-  fi
+  # Stop supervised services
+  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
 }
 trap cleanup TERM INT
 pid=
-pid2=
 pid3=
-INTERNAL_PORT=9223
-CHROME_PORT=9222  # External port mapped to host
 echo "Starting Chromium on internal port $INTERNAL_PORT"
 
 # Load additional Chromium flags from /chromium/flags if present
@@ -141,16 +160,20 @@ else
     ${CHROMIUM_FLAGS:-} >&2 & pid=$!
 fi
 
-echo "Setting up ncat proxy on port $CHROME_PORT"
-ncat \
-  --sh-exec "ncat 0.0.0.0 $INTERNAL_PORT" \
-  -l "$CHROME_PORT" \
-  --keep-open & pid2=$!
+echo "Starting ncat proxy via supervisord on port $CHROME_PORT"
+supervisorctl -c /etc/supervisor/supervisord.conf start ncat
+echo "Waiting for ncat to listen on 127.0.0.1:$CHROME_PORT..."
+for i in {1..50}; do
+  if nc -z 127.0.0.1 "$CHROME_PORT" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
-  echo "✨ Starting neko (webrtc server)."
-  /usr/bin/neko serve --server.static /var/www --server.bind 0.0.0.0:8080 >&2 &
+  echo "✨ Starting neko (webrtc server) via supervisord."
+  supervisorctl -c /etc/supervisor/supervisord.conf start neko
 
   # Wait for neko to be ready.
   echo "Waiting for neko port 0.0.0.0:8080..."
@@ -158,10 +181,6 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
     sleep 0.5
   done
   echo "Port 8080 is open"
-else
-  # use novnc
-  ./novnc_startup.sh
-  echo "✨ noVNC demo is ready to use!"
 fi
 
 if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
@@ -239,5 +258,5 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
   enable_scale_to_zero
 fi
 
-# Keep the container running
-tail -f /dev/null
+# Keep the container running by tailing supervisord log
+tail -F /var/log/supervisord.log
