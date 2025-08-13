@@ -12,7 +12,7 @@ WORKDIR /xorg
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y \
+    apt-get install -y --no-install-recommends \
     git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
     && rm -rf /var/lib/apt/lists/*;
 COPY xorg-deps/ /xorg/
@@ -38,10 +38,14 @@ FROM docker.io/ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_PRIORITY=high
+ENV container=docker
+
+# Ensure Docker sends the correct stop signal understood by systemd
+STOPSIGNAL SIGRTMIN+3
 
 RUN apt-get update && \
     apt-get -y upgrade && \
-    apt-get -y install \
+    apt-get -y install --no-install-recommends \
     # UI Requirements
     xvfb \
     xterm \
@@ -71,9 +75,10 @@ RUN apt-get update && \
     net-tools \
     netcat \
     # PPA req
-    software-properties-common && \
+    software-properties-common \
+    gpg-agent \
+    dirmngr && \
     # Userland apps
-    sudo add-apt-repository ppa:mozillateam/ppa && \
     sudo apt-get install -y --no-install-recommends \
     chromium-browser \
     libreoffice \
@@ -91,6 +96,29 @@ RUN apt-get update && \
     unzip && \
     apt-get clean
 
+# Install systemd and D-Bus for service management
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends systemd systemd-sysv dbus; \
+    mkdir -p /var/log/journal; \
+    # Trim services that don't make sense in a container
+    rm -f /lib/systemd/system/multi-user.target.wants/* \
+    /etc/systemd/system/*.wants/* \
+    /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
+    /lib/systemd/system/sockets.target.wants/*udev*; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/
+
+# Forward journald to the container console so /sbin/init shows all systemd-managed logs
+RUN set -eux; \
+    mkdir -p /etc/systemd/journald.conf.d; \
+    printf '%s\n' \
+    '[Journal]' \
+    'ForwardToConsole=yes' \
+    'TTYPath=/dev/console' \
+    'MaxLevelConsole=debug' \
+    > /etc/systemd/journald.conf.d/forward-to-console.conf
+
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
 # as of writing these static builds will be the latest 7.0.x release.
 RUN set -eux; \
@@ -107,7 +135,7 @@ ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-    wget ca-certificates python2 supervisor xclip xdotool \
+    wget ca-certificates python2 xclip xdotool \
     pulseaudio dbus-x11 xserver-xorg-video-dummy \
     libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
@@ -139,12 +167,7 @@ RUN set -eux; \
 
 # install chromium & ncat for proxying the remote debugging port
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
-
-# Install noVNC
-RUN git clone --branch v1.5.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
-    git clone --branch v0.12.0 https://github.com/novnc/websockify /opt/noVNC/utils/websockify && \
-    ln -s /opt/noVNC/vnc.html /opt/noVNC/index.html
+RUN apt update -y && apt install -y --no-install-recommends chromium ncat
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
@@ -162,6 +185,31 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xor
 COPY image-chromium/ /
 COPY ./wrapper.sh /wrapper.sh
 
+# Make wrapper executable and register a systemd service to run it as root
+RUN set -eux; \
+    chmod +x /wrapper.sh; \
+    printf '%s\n' \
+    '[Unit]' \
+    'Description=Kernel wrapper supervisor' \
+    'After=network.target' \
+    '' \
+    '[Service]' \
+    'Type=simple' \
+    'User=root' \
+    'Group=root' \
+    'PassEnvironment=DISPLAY_NUM HEIGHT WIDTH RUN_AS_ROOT WITH_KERNEL_IMAGES_API ENABLE_WEBRTC CHROMIUM_FLAGS' \
+    'PassEnvironment=KERNEL_IMAGES_API_PORT KERNEL_IMAGES_API_FRAME_RATE KERNEL_IMAGES_API_DISPLAY_NUM KERNEL_IMAGES_API_MAX_SIZE_MB KERNEL_IMAGES_API_OUTPUT_DIR' \
+    'ExecStart=/wrapper.sh' \
+    'Restart=always' \
+    'RestartSec=1s' \
+    'WorkingDirectory=/' \
+    '' \
+    '[Install]' \
+    'WantedBy=multi-user.target' \
+    > /etc/systemd/system/wrapper.service; \
+    mkdir -p /etc/systemd/system/multi-user.target.wants; \
+    ln -sf /etc/systemd/system/wrapper.service /etc/systemd/system/multi-user.target.wants/wrapper.service
+
 # copy the kernel-images API binary built externally
 COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
@@ -169,5 +217,5 @@ ENV WITH_KERNEL_IMAGES_API=false
 RUN useradd -m -s /bin/bash kernel
 RUN cp -r ./user-data /home/kernel/user-data
 
-ENTRYPOINT [ "/wrapper.sh" ]
+ENTRYPOINT [ "/sbin/init" ]
 
