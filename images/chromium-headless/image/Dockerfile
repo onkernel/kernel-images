@@ -52,7 +52,6 @@ RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -s /bin/bash kernel
 
 # Xvfb helper and supervisor-managed start scripts
-COPY ./xvfb_startup.sh /usr/bin/xvfb_startup.sh
 COPY ./start-chromium.sh /images/chromium-headless/image/start-chromium.sh
 COPY ./start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
 RUN chmod +x /images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-xvfb.sh

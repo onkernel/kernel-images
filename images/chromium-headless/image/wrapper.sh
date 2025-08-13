@@ -80,6 +80,41 @@ done
 # Ensure correct ownership (ignore errors if already correct)
 chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 
+# -----------------------------------------------------------------------------
+# Dynamic log aggregation for /var/log/supervisord -----------------------------
+# -----------------------------------------------------------------------------
+# Tails any existing and future files under /var/log/supervisord,
+# prefixing each line with the relative filepath, e.g. [chromium] ...
+start_dynamic_log_aggregator() {
+  echo "[wrapper] Starting dynamic log aggregator for /var/log/supervisord"
+  (
+    declare -A tailed_files=()
+    start_tail() {
+      local f="$1"
+      [[ -f "$f" ]] || return 0
+      [[ -n "${tailed_files[$f]:-}" ]] && return 0
+      local label="${f#/var/log/supervisord/}"
+      # Tie tails to this subshell lifetime so they exit when we stop it
+      tail --pid="$$" -n +1 -F "$f" 2>/dev/null | sed -u "s/^/[${label}] /" &
+      tailed_files[$f]=1
+    }
+    # Periodically scan for new *.log files without extra dependencies
+    while true; do
+      while IFS= read -r -d '' f; do
+        start_tail "$f"
+      done < <(find /var/log/supervisord -type f -print0 2>/dev/null || true)
+      sleep 1
+    done
+  ) &
+  tail_pids+=("$!")
+}
+
+# Track background tailing processes for cleanup
+tail_pids=()
+
+# Start log aggregator early so we see supervisor and service logs as they appear
+start_dynamic_log_aggregator
+
 # Export common env used by services
 export DISPLAY=:1
 export HEIGHT=${HEIGHT:-768}
@@ -95,6 +130,12 @@ cleanup () {
   supervisorctl -c /etc/supervisor/supervisord.conf stop xvfb || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
+  # Stop log tailers
+  if [[ -n "${tail_pids[*]:-}" ]]; then
+    for tp in "${tail_pids[@]}"; do
+      kill -TERM "$tp" 2>/dev/null || true
+    done
+  fi
 }
 trap cleanup TERM INT
 
@@ -155,6 +196,6 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   done
 fi
 
-# Keep running while services are supervised; stream supervisor logs
-tail -n +1 -F /var/log/supervisord/* 2>/dev/null &
+echo "[wrapper] startup complete!"
+# Keep the container running while streaming logs
 wait
