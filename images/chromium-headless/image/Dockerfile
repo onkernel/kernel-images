@@ -1,5 +1,11 @@
 FROM docker.io/ubuntu:22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+ENV container=docker
+
+# Ensure Docker sends the correct stop signal understood by systemd
+STOPSIGNAL SIGRTMIN+3
+
 RUN set -xe; \
     apt-get -yqq update; \
     apt-get -yqq install \
@@ -29,10 +35,35 @@ RUN set -xe; \
     dbus-x11 \
     xvfb \
     x11-utils \
-    software-properties-common;
+    software-properties-common \
+    gpg-agent \
+    dirmngr;
 
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium ncat
+RUN apt update -y && apt install -y --no-install-recommends chromium ncat
+
+# Install systemd and D-Bus for service management
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends systemd systemd-sysv dbus; \
+    mkdir -p /var/log/journal; \
+    # Trim services that don't make sense in a container
+    rm -f /lib/systemd/system/multi-user.target.wants/* \
+    /etc/systemd/system/*.wants/* \
+    /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
+    /lib/systemd/system/sockets.target.wants/*udev*; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/
+
+# Forward journald to the container console so /sbin/init shows all systemd-managed logs
+RUN set -eux; \
+    mkdir -p /etc/systemd/journald.conf.d; \
+    printf '%s\n' \
+    '[Journal]' \
+    'ForwardToConsole=yes' \
+    'TTYPath=/dev/console' \
+    'MaxLevelConsole=debug' \
+    > /etc/systemd/journald.conf.d/forward-to-console.conf
 
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \
@@ -55,6 +86,33 @@ COPY ./xvfb_startup.sh /usr/bin/xvfb_startup.sh
 # Wrapper script set environment
 COPY ./wrapper.sh /usr/bin/wrapper.sh
 
+# Make wrapper executable and register a systemd service to run it as root
+RUN set -eux; \
+    chmod +x /usr/bin/wrapper.sh; \
+    printf '%s\n' \
+    '[Unit]' \
+    'Description=Kernel wrapper supervisor' \
+    'After=network.target' \
+    '' \
+    '[Service]' \
+    'Type=simple' \
+    'User=root' \
+    'Group=root' \
+    'PassEnvironment=DISPLAY_NUM HEIGHT WIDTH RUN_AS_ROOT WITH_KERNEL_IMAGES_API ENABLE_WEBRTC CHROMIUM_FLAGS' \
+    'PassEnvironment=KERNEL_IMAGES_API_PORT KERNEL_IMAGES_API_FRAME_RATE KERNEL_IMAGES_API_DISPLAY_NUM KERNEL_IMAGES_API_MAX_SIZE_MB KERNEL_IMAGES_API_OUTPUT_DIR' \
+    'ExecStart=/usr/bin/wrapper.sh' \
+    'Restart=always' \
+    'RestartSec=1s' \
+    'WorkingDirectory=/' \
+    '' \
+    '[Install]' \
+    'WantedBy=multi-user.target' \
+    > /etc/systemd/system/wrapper.service; \
+    mkdir -p /etc/systemd/system/multi-user.target.wants; \
+    ln -sf /etc/systemd/system/wrapper.service /etc/systemd/system/multi-user.target.wants/wrapper.service
+
 # Copy the kernel-images API binary built during the build process
 COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
+
+ENTRYPOINT [ "/sbin/init" ]
