@@ -109,6 +109,7 @@ dirs=(
   /home/kernel/.cache/dconf
   /tmp
   /var/log
+  /var/log/supervisord
 )
 
 for dir in "${dirs[@]}"; do
@@ -121,19 +122,19 @@ done
 chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
-# Dynamic log aggregation for /var/log ----------------------------------------
+# Dynamic log aggregation for /var/log/supervisord -----------------------------
 # -----------------------------------------------------------------------------
-# Tails any existing and future *.log files under /var/log (recursively),
-# prefixing each line with the relative filepath, e.g. [supervisord.log] ...
+# Tails any existing and future files under /var/log/supervisord,
+# prefixing each line with the relative filepath, e.g. [chromium] ...
 start_dynamic_log_aggregator() {
-  echo "Starting dynamic log aggregator for /var/log"
+  echo "Starting dynamic log aggregator for /var/log/supervisord"
   (
     declare -A tailed_files=()
     start_tail() {
       local f="$1"
       [[ -f "$f" ]] || return 0
       [[ -n "${tailed_files[$f]:-}" ]] && return 0
-      local label="${f#/var/log/}"
+      local label="${f#/var/log/supervisord/}"
       # Tie tails to this subshell lifetime so they exit when we stop it
       tail --pid="$$" -n +1 -F "$f" 2>/dev/null | sed -u "s/^/[${label}] /" &
       tailed_files[$f]=1
@@ -142,7 +143,7 @@ start_dynamic_log_aggregator() {
     while true; do
       while IFS= read -r -d '' f; do
         start_tail "$f"
-      done < <(find /var/log -type f -name "*.log" -print0 2>/dev/null || true)
+      done < <(find /var/log/supervisord -type f -print0 2>/dev/null || true)
       sleep 1
     done
   ) &
