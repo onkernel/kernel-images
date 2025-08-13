@@ -39,6 +39,27 @@ export DISPLAY=:1
 export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
 export CHROME_PORT="${CHROME_PORT:-9222}"
 
+# Track background tailing processes for cleanup
+tail_pids=()
+
+# Cleanup handler (set early so we catch early failures)
+cleanup () {
+  echo "Cleaning up..."
+  # Re-enable scale-to-zero if the script terminates early
+  enable_scale_to_zero
+  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
+  # Stop log tailers
+  if [[ -n "${tail_pids[*]:-}" ]]; then
+    for tp in "${tail_pids[@]}"; do
+      kill -TERM "$tp" 2>/dev/null || true
+    done
+  fi
+}
+trap cleanup TERM INT
+
 # Start supervisord early so it can manage Xorg and Mutter
 echo "Starting supervisord"
 supervisord -c /etc/supervisor/supervisord.conf
@@ -100,6 +121,38 @@ done
 chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
+# Dynamic log aggregation for /var/log ----------------------------------------
+# -----------------------------------------------------------------------------
+# Tails any existing and future *.log files under /var/log (recursively),
+# prefixing each line with the relative filepath, e.g. [supervisord.log] ...
+start_dynamic_log_aggregator() {
+  echo "Starting dynamic log aggregator for /var/log"
+  (
+    declare -A tailed_files=()
+    start_tail() {
+      local f="$1"
+      [[ -f "$f" ]] || return 0
+      [[ -n "${tailed_files[$f]:-}" ]] && return 0
+      local label="${f#/var/log/}"
+      # Tie tails to this subshell lifetime so they exit when we stop it
+      tail --pid="$$" -n +1 -F "$f" 2>/dev/null | sed -u "s/^/[${label}] /" &
+      tailed_files[$f]=1
+    }
+    # Periodically scan for new *.log files without extra dependencies
+    while true; do
+      while IFS= read -r -d '' f; do
+        start_tail "$f"
+      done < <(find /var/log -type f -name "*.log" -print0 2>/dev/null || true)
+      sleep 1
+    done
+  ) &
+  tail_pids+=("$!")
+}
+
+# Start log aggregator early so we see supervisor and service logs as they appear
+start_dynamic_log_aggregator
+
+# -----------------------------------------------------------------------------
 # System-bus setup via supervisord --------------------------------------------
 # -----------------------------------------------------------------------------
 echo "Starting system D-Bus daemon via supervisord"
@@ -118,23 +171,6 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 
 # Start Chromium with display :1 and remote debugging, loading our recorder extension.
 # Use ncat to listen on 0.0.0.0:9222 since chromium does not let you listen on 0.0.0.0 anymore: https://github.com/pyppeteer/pyppeteer/pull/379#issuecomment-217029626
-cleanup () {
-  echo "Cleaning up..."
-  # Re-enable scale-to-zero if the script terminates early
-  enable_scale_to_zero
-  supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop ncat || true
-  supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
-  # Stop log tailers
-  if [[ -n "${tail_pids[*]:-}" ]]; then
-    for tp in "${tail_pids[@]}"; do
-      kill -TERM "$tp" 2>/dev/null || true
-    done
-  fi
-}
-trap cleanup TERM INT
-tail_pids=()
 echo "Starting Chromium via supervisord on internal port $INTERNAL_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start chromium
 echo "Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
@@ -236,35 +272,6 @@ fi
 if [[ -z "${WITHDOCKER:-}" ]]; then
   enable_scale_to_zero
 fi
-
-# Tail and prefix logs from supervisord and all supervised services
-echo "Tailing logs from supervisord and services..."
-log_files=(
-  "supervisord:/var/log/supervisord.log"
-  "xorg.out:/var/log/xorg.out.log"
-  "xorg.err:/var/log/xorg.err.log"
-  "mutter.out:/var/log/mutter.out.log"
-  "mutter.err:/var/log/mutter.err.log"
-  "dbus.out:/var/log/dbus.out.log"
-  "dbus.err:/var/log/dbus.err.log"
-  "ncat.out:/var/log/ncat.out.log"
-  "ncat.err:/var/log/ncat.err.log"
-  "chromium.out:/var/log/chromium.out.log"
-  "chromium.err:/var/log/chromium.err.log"
-  "kernel-images-api.out:/var/log/kernel-images-api.out.log"
-  "kernel-images-api.err:/var/log/kernel-images-api.err.log"
-  "neko.out:/var/log/neko.out.log"
-  "neko.err:/var/log/neko.err.log"
-)
-
-for entry in "${log_files[@]}"; do
-  label="${entry%%:*}"
-  file="${entry#*:}"
-  mkdir -p "$(dirname "$file")"
-  : > "$file" || true
-  tail -F "$file" | sed -u "s/^/[${label}] /" &
-  tail_pids+=("$!")
-done
 
 # Keep the container running while streaming logs
 wait
