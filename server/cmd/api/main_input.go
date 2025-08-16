@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -22,7 +21,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
-func main() {
+func mainInput() {
 	slogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	// Load configuration from environment variables
@@ -36,9 +35,6 @@ func main() {
 	// context cancellation on SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	// ensure xdotool is available
-	mustXdotool()
 
 	r := chi.NewRouter()
 	r.Use(
@@ -106,12 +102,5 @@ func main() {
 
 	if err := g.Wait(); err != nil {
 		slogger.Error("server failed to shutdown", "err", err)
-	}
-}
-
-func mustXdotool() {
-	cmd := exec.Command("xdotool", "--version")
-	if err := cmd.Run(); err != nil {
-		panic(fmt.Errorf("xdotool not found or not executable: %w", err))
 	}
 }

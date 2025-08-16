@@ -3,6 +3,20 @@ info:
   title: Kernel Images API
   version: 0.1.0
 paths:
+  /health:
+    get:
+      summary: Check API health status
+      operationId: getHealth
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /recording/start:
     post:
       summary: Start a screen recording. Only one recording per ID can be registered at a time.
@@ -55,10 +69,6 @@ paths:
         "200":
           description: Recording file
           headers:
-            # Note: using a `format: date-time` here doesn't work as intended as the generated code
-            # calls a `fmt.Sprint` on the value when setting the header. time.String is a
-            # non-standard format that most parses will barf on, making everyone's life harder, so
-            # we're skipping the `format` in favor of an explicit description.
             X-Recording-Started-At:
               description: Timestamp of when the recording started. Guaranteed to be RFC3339.
               schema:
@@ -120,9 +130,11 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+          
+  # Compatibility alias endpoints
   /computer/click_mouse:
     post:
-      summary: Simulate a mouse click action on the host computer
+      summary: Simulate a mouse click action on the host computer (compatibility alias)
       operationId: clickMouse
       requestBody:
         required: true
@@ -133,13 +145,17 @@ paths:
       responses:
         "200":
           description: Mouse action performed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
   /computer/move_mouse:
     post:
-      summary: Move the mouse cursor to the specified coordinates on the host computer
+      summary: Move the mouse cursor to the specified coordinates on the host computer (compatibility alias)
       operationId: moveMouse
       requestBody:
         required: true
@@ -150,10 +166,850 @@ paths:
       responses:
         "200":
           description: Mouse cursor moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+          
+  # Input API endpoints
+  /input/mouse/move:
+    post:
+      summary: Move mouse cursor to absolute coordinates
+      operationId: inputMouseMove
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseMoveRequest"
+      responses:
+        "200":
+          description: Mouse moved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/move_relative:
+    post:
+      summary: Move mouse cursor relative to current position
+      operationId: inputMouseMoveRelative
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseMoveRelativeRequest"
+      responses:
+        "200":
+          description: Mouse moved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/click:
+    post:
+      summary: Click mouse button
+      operationId: inputMouseClick
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseClickRequest"
+      responses:
+        "200":
+          description: Mouse clicked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/down:
+    post:
+      summary: Press mouse button down
+      operationId: inputMouseDown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseButtonRequest"
+      responses:
+        "200":
+          description: Mouse button pressed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/up:
+    post:
+      summary: Release mouse button
+      operationId: inputMouseUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseButtonRequest"
+      responses:
+        "200":
+          description: Mouse button released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/scroll:
+    post:
+      summary: Scroll mouse wheel
+      operationId: inputMouseScroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MouseScrollRequest"
+      responses:
+        "200":
+          description: Mouse scrolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/mouse/location:
+    get:
+      summary: Get current mouse cursor location
+      operationId: inputMouseLocation
+      responses:
+        "200":
+          description: Mouse location
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MouseLocationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/keyboard/type:
+    post:
+      summary: Type text
+      operationId: inputKeyboardType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyboardTypeRequest"
+      responses:
+        "200":
+          description: Text typed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/keyboard/key:
+    post:
+      summary: Send key presses
+      operationId: inputKeyboardKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyboardKeysRequest"
+      responses:
+        "200":
+          description: Keys pressed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/keyboard/key_down:
+    post:
+      summary: Press and hold a key
+      operationId: inputKeyboardKeyDown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyRequest"
+      responses:
+        "200":
+          description: Key pressed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/keyboard/key_up:
+    post:
+      summary: Release a key
+      operationId: inputKeyboardKeyUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyRequest"
+      responses:
+        "200":
+          description: Key released successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/activate:
+    post:
+      summary: Activate a window
+      operationId: inputWindowActivate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window activation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowActivateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/focus:
+    post:
+      summary: Focus a window
+      operationId: inputWindowFocus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window focus result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowFocusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/move_resize:
+    post:
+      summary: Move and resize a window
+      operationId: inputWindowMoveResize
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMoveResizeRequest"
+      responses:
+        "200":
+          description: Window moved/resized successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/raise:
+    post:
+      summary: Raise window to top
+      operationId: inputWindowRaise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window raised successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/minimize:
+    post:
+      summary: Minimize window
+      operationId: inputWindowMinimize
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window minimized successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/map:
+    post:
+      summary: Map (show) window
+      operationId: inputWindowMap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window mapped successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/unmap:
+    post:
+      summary: Unmap (hide) window
+      operationId: inputWindowUnmap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window unmapped successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/close:
+    post:
+      summary: Close window
+      operationId: inputWindowClose
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window close result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowCloseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/kill:
+    post:
+      summary: Kill window
+      operationId: inputWindowKill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowMatchRequest"
+      responses:
+        "200":
+          description: Window killed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/active:
+    get:
+      summary: Get active window
+      operationId: inputWindowActive
+      responses:
+        "200":
+          description: Active window information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveWindowResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/focused:
+    get:
+      summary: Get focused window
+      operationId: inputWindowFocused
+      responses:
+        "200":
+          description: Focused window information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveWindowResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/name:
+    post:
+      summary: Get window name
+      operationId: inputWindowName
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowIdRequest"
+      responses:
+        "200":
+          description: Window name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowNameResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/pid:
+    post:
+      summary: Get window PID
+      operationId: inputWindowPid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowIdRequest"
+      responses:
+        "200":
+          description: Window PID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowPidResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/window/geometry:
+    post:
+      summary: Get window geometry
+      operationId: inputWindowGeometry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowIdRequest"
+      responses:
+        "200":
+          description: Window geometry information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowGeometryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/display/geometry:
+    get:
+      summary: Get display geometry
+      operationId: inputDisplayGeometry
+      responses:
+        "200":
+          description: Display geometry information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayGeometryResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/desktop/count:
+    get:
+      summary: Get number of desktops
+      operationId: inputDesktopCountGet
+      responses:
+        "200":
+          description: Desktop count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesktopCountResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Set number of desktops
+      operationId: inputDesktopCountSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopCountRequest"
+      responses:
+        "200":
+          description: Desktop count set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/desktop/current:
+    get:
+      summary: Get current desktop
+      operationId: inputDesktopCurrentGet
+      responses:
+        "200":
+          description: Current desktop index
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesktopIndexResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Set current desktop
+      operationId: inputDesktopCurrentSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopIndexRequest"
+      responses:
+        "200":
+          description: Current desktop set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/desktop/window_desktop:
+    post:
+      summary: Move window to a different desktop
+      operationId: inputDesktopWindowDesktop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowDesktopRequest"
+      responses:
+        "200":
+          description: Window moved to desktop successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/desktop/viewport:
+    get:
+      summary: Get desktop viewport
+      operationId: inputDesktopViewportGet
+      responses:
+        "200":
+          description: Desktop viewport information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesktopViewportResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Set desktop viewport
+      operationId: inputDesktopViewportSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopViewportRequest"
+      responses:
+        "200":
+          description: Desktop viewport set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/combo/activate_and_type:
+    post:
+      summary: Activate window and type text
+      operationId: inputComboActivateAndType
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateAndTypeRequest"
+      responses:
+        "200":
+          description: Window activated and text typed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComboWindowResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/combo/activate_and_keys:
+    post:
+      summary: Activate window and send key sequence
+      operationId: inputComboActivateAndKeys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateAndKeysRequest"
+      responses:
+        "200":
+          description: Window activated and keys sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComboWindowResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/combo/window/center:
+    post:
+      summary: Center window on screen
+      operationId: inputComboWindowCenter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowCenterRequest"
+      responses:
+        "200":
+          description: Window centered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowCenterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/combo/window/snap:
+    post:
+      summary: Snap window to position
+      operationId: inputComboWindowSnap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WindowSnapRequest"
+      responses:
+        "200":
+          description: Window snapped successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WindowSnapResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/system/exec:
+    post:
+      summary: Execute a system command
+      operationId: inputSystemExec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemExecRequest"
+      responses:
+        "200":
+          description: Command executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemExecResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
+  /input/system/sleep:
+    post:
+      summary: Sleep for a specified duration
+      operationId: inputSystemSleep
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SleepRequest"
+      responses:
+        "200":
+          description: Sleep completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+          
   # File system operations
   /fs/read_file:
     get:
@@ -445,8 +1301,31 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+          
 components:
   schemas:
+    HealthResponse:
+      type: object
+      required: [status, uptime_sec]
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum: [ok]
+        uptime_sec:
+          type: integer
+          description: Uptime in seconds
+          minimum: 0
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: Success indicator
+          enum: [true]
+
     StartRecordingRequest:
       type: object
       properties:
@@ -553,6 +1432,530 @@ components:
           items:
             type: string
       additionalProperties: false
+      
+    # New input API schema definitions
+    MouseMoveRelativeRequest:
+      type: object
+      properties:
+        dx:
+          type: integer
+          description: Relative X movement distance
+          default: 0
+        dy:
+          type: integer
+          description: Relative Y movement distance
+          default: 0
+      additionalProperties: false
+      
+    MouseClickRequest:
+      type: object
+      required:
+        - button
+      properties:
+        button:
+          oneOf:
+            - type: string
+              enum: [left, middle, right, back, forward]
+            - type: integer
+              description: Numeric button identifier
+        count:
+          type: integer
+          description: Number of clicks
+          default: 1
+      additionalProperties: false
+      
+    MouseButtonRequest:
+      type: object
+      required:
+        - button
+      properties:
+        button:
+          oneOf:
+            - type: string
+              enum: [left, middle, right, back, forward]
+            - type: integer
+              description: Numeric button identifier
+      additionalProperties: false
+      
+    MouseScrollRequest:
+      type: object
+      properties:
+        dx:
+          type: integer
+          description: Horizontal scroll amount
+          default: 0
+        dy:
+          type: integer
+          description: Vertical scroll amount
+          default: -120
+      additionalProperties: false
+      
+    MouseLocationResponse:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          description: X coordinate
+        y:
+          type: integer
+          description: Y coordinate
+        screen:
+          type: integer
+          description: Screen number
+        window:
+          type: string
+          description: Window ID under cursor
+      
+    KeyboardTypeRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: Text to type
+        wpm:
+          type: integer
+          description: Words per minute typing speed
+          default: 300
+        enter:
+          type: boolean
+          description: Whether to press Enter after typing
+          default: false
+      additionalProperties: false
+      
+    KeyboardKeysRequest:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: Key sequence to send
+          items:
+            type: string
+      additionalProperties: false
+      
+    KeyRequest:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+          description: Key to press/release
+      additionalProperties: false
+      
+    WindowMatch:
+      type: object
+      properties:
+        title_contains:
+          type: string
+          description: Window title substring to match
+          nullable: true
+        name:
+          type: string
+          description: Alias for title_contains
+          nullable: true
+        class:
+          type: string
+          description: Window class to match
+          nullable: true
+        pid:
+          type: integer
+          description: Process ID to match
+          nullable: true
+        only_visible:
+          type: boolean
+          description: Only match visible windows
+          default: false
+      additionalProperties: false
+      
+    WindowMatchRequest:
+      type: object
+      required:
+        - match
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+      additionalProperties: false
+      
+    WindowIdRequest:
+      type: object
+      required:
+        - wid
+      properties:
+        wid:
+          type: string
+          description: Window ID
+      additionalProperties: false
+      
+    WindowActivateResponse:
+      type: object
+      required: [activated]
+      properties:
+        activated:
+          type: boolean
+          description: Whether window was activated
+        wid:
+          type: string
+          description: Window ID if found
+      
+    WindowFocusResponse:
+      type: object
+      required: [focused]
+      properties:
+        focused:
+          type: boolean
+          description: Whether window was focused
+        wid:
+          type: string
+          description: Window ID if found
+      
+    WindowCloseResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: Success indicator
+        wid:
+          type: string
+          description: Window ID if found
+        windowIds:
+          type: array
+          description: Multiple window IDs when multiple windows are closed
+          items:
+            type: string
+      
+    WindowMoveResizeRequest:
+      type: object
+      required:
+        - match
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        x:
+          type: integer
+          description: New X position
+        y:
+          type: integer
+          description: New Y position
+        width:
+          type: integer
+          description: New width
+        height:
+          type: integer
+          description: New height
+      additionalProperties: false
+      
+    ActiveWindowResponse:
+      type: object
+      properties:
+        wid:
+          type: string
+          description: Window ID
+      
+    WindowNameResponse:
+      type: object
+      required: [wid, name]
+      properties:
+        wid:
+          type: string
+          description: Window ID
+        name:
+          type: string
+          description: Window name/title
+      
+    WindowPidResponse:
+      type: object
+      required: [wid, pid]
+      properties:
+        wid:
+          type: string
+          description: Window ID
+        pid:
+          type: integer
+          description: Process ID
+      
+    WindowGeometryResponse:
+      type: object
+      required: [wid, x, y, width, height]
+      properties:
+        wid:
+          type: string
+          description: Window ID
+        x:
+          type: integer
+          description: X position
+        y:
+          type: integer
+          description: Y position
+        width:
+          type: integer
+          description: Width
+        height:
+          type: integer
+          description: Height
+        screen:
+          type: integer
+          description: Screen number
+      
+    DisplayGeometryResponse:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+          description: Display width
+        height:
+          type: integer
+          description: Display height
+      
+    DesktopCountRequest:
+      type: object
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          description: Number of desktops to set
+          minimum: 1
+      additionalProperties: false
+      
+    DesktopCountResponse:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          description: Number of desktops
+      
+    DesktopIndexRequest:
+      type: object
+      required:
+        - index
+      properties:
+        index:
+          type: integer
+          description: Desktop index to switch to
+          minimum: 0
+      additionalProperties: false
+      
+    DesktopIndexResponse:
+      type: object
+      required: [index]
+      properties:
+        index:
+          type: integer
+          description: Current desktop index
+      
+    WindowDesktopRequest:
+      type: object
+      required:
+        - match
+        - index
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        index:
+          type: integer
+          description: Desktop index to move window to
+          minimum: 0
+      additionalProperties: false
+      
+    DesktopViewportRequest:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          description: X coordinate of viewport
+        y:
+          type: integer
+          description: Y coordinate of viewport
+      additionalProperties: false
+      
+    DesktopViewportResponse:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: integer
+          description: X coordinate of viewport
+        y:
+          type: integer
+          description: Y coordinate of viewport
+      
+    ActivateAndTypeRequest:
+      type: object
+      required:
+        - match
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        text:
+          type: string
+          description: Text to type
+          default: ""
+        enter:
+          type: boolean
+          description: Whether to press Enter after typing
+          default: false
+        wpm:
+          type: integer
+          description: Words per minute typing speed
+          default: 300
+      additionalProperties: false
+      
+    ActivateAndKeysRequest:
+      type: object
+      required:
+        - match
+        - keys
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        keys:
+          type: array
+          description: Key sequence to send
+          items:
+            type: string
+      additionalProperties: false
+      
+    ComboWindowResponse:
+      type: object
+      required: [ok, wid]
+      properties:
+        ok:
+          type: boolean
+          description: Success indicator
+        wid:
+          type: string
+          description: Window ID
+      
+    WindowCenterRequest:
+      type: object
+      required:
+        - match
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        width:
+          type: integer
+          description: Optional width to set
+          nullable: true
+        height:
+          type: integer
+          description: Optional height to set
+          nullable: true
+      additionalProperties: false
+      
+    WindowCenterResponse:
+      type: object
+      required: [ok, wid, x, y, width, height]
+      properties:
+        ok:
+          type: boolean
+          description: Success indicator
+        wid:
+          type: string
+          description: Window ID
+        x:
+          type: integer
+          description: New X position
+        y:
+          type: integer
+          description: New Y position
+        width:
+          type: integer
+          description: Width
+        height:
+          type: integer
+          description: Height
+      
+    WindowSnapRequest:
+      type: object
+      required:
+        - match
+        - position
+      properties:
+        match:
+          $ref: "#/components/schemas/WindowMatch"
+        position:
+          type: string
+          description: Position to snap window to
+          enum: [left, right, top, bottom, topleft, topright, bottomleft, bottomright, maximize]
+      additionalProperties: false
+      
+    WindowSnapResponse:
+      type: object
+      required: [ok, wid, x, y, width, height]
+      properties:
+        ok:
+          type: boolean
+          description: Success indicator
+        wid:
+          type: string
+          description: Window ID
+        x:
+          type: integer
+          description: New X position
+        y:
+          type: integer
+          description: New Y position
+        width:
+          type: integer
+          description: Width
+        height:
+          type: integer
+          description: Height
+      
+    SystemExecRequest:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: Command to execute
+        args:
+          type: array
+          description: Command arguments
+          items:
+            type: string
+          default: []
+      additionalProperties: false
+      
+    SystemExecResponse:
+      type: object
+      required: [code, stdout, stderr]
+      properties:
+        code:
+          type: integer
+          description: Exit code
+        stdout:
+          type: string
+          description: Standard output
+        stderr:
+          type: string
+          description: Standard error
+      
+    SleepRequest:
+      type: object
+      required:
+        - seconds
+      properties:
+        seconds:
+          type: number
+          description: Seconds to sleep
+          minimum: 0
+      additionalProperties: false
+      
+    # Existing schema definitions
     StartFsWatchRequest:
       type: object
       required:
