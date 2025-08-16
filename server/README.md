@@ -44,6 +44,18 @@ curl http://localhost:10001/recording/stop -d {}
 curl http://localhost:10001/recording/download --output recording.mp4
 ```
 
+#### Additional routes
+
+```bash
+# Screenshot
+
+# | GET /screenshot
+curl http://localhost:10001/screenshot -o screenshot.png
+
+# | POST /screenshot
+curl -X POST -H "Content-Type: application/json" --data '{"x":0,"y":0,"width":200,"height":200}' -o screenshot_region.png http://localhost:10001/screenshot
+```
+
 ### ⚙️ Configuration
 
 Configure the server using environment variables:
