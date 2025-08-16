@@ -3,6 +3,74 @@ info:
   title: Kernel Images API
   version: 0.1.0
 paths:
+  /health:
+    get:
+      summary: Check API health status
+      operationId: getHealth
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /clipboard:
+    get:
+      summary: Get clipboard content
+      operationId: getClipboard
+      responses:
+        "200":
+          description: Current clipboard content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClipboardContent"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Set clipboard content
+      operationId: setClipboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClipboardContent"
+      responses:
+        "200":
+          description: Clipboard content set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClipboardSetResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /clipboard/stream:
+    get:
+      summary: Stream clipboard events
+      operationId: streamClipboard
+      responses:
+        "200":
+          description: SSE stream of clipboard change events
+          headers:
+            X-SSE-Content-Type:
+              description: Media type of SSE data events (application/json)
+              schema:
+                type: string
+                const: application/json
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/ClipboardEvent"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /recording/start:
     post:
       summary: Start a screen recording. Only one recording per ID can be registered at a time.
@@ -447,6 +515,67 @@ paths:
           $ref: "#/components/responses/InternalError"
 components:
   schemas:
+    HealthResponse:
+      type: object
+      required: [status, uptime_sec]
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum: [ok]
+        uptime_sec:
+          type: integer
+          description: Uptime in seconds
+          minimum: 0
+          
+    ClipboardContent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: Type of clipboard content
+          enum: [text, image]
+        text:
+          type: string
+          description: Text content when type is 'text'
+        image_b64:
+          type: string
+          description: Base64-encoded image content when type is 'image'
+        image_mime:
+          type: string
+          description: MIME type of the image when type is 'image'
+          default: image/png
+      additionalProperties: false
+      
+    ClipboardSetResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          description: Whether the clipboard was set successfully
+        message:
+          type: string
+          description: Error message if clipboard couldn't be set
+      additionalProperties: false
+      
+    ClipboardEvent:
+      type: object
+      required: [ts, type]
+      properties:
+        ts:
+          type: string
+          format: date-time
+          description: Timestamp of the clipboard change
+        type:
+          type: string
+          description: Type of clipboard content
+          enum: [text, image]
+        preview:
+          type: string
+          description: Preview of the clipboard content (truncated if text, or 'image...' if an image)
+
     StartRecordingRequest:
       type: object
       properties:

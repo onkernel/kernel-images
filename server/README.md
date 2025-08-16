@@ -44,6 +44,28 @@ curl http://localhost:10001/recording/stop -d {}
 curl http://localhost:10001/recording/download --output recording.mp4
 ```
 
+#### Additional routes
+
+```bash
+# Clipboard operations
+# | GET /clipboard - Get clipboard content
+curl http://localhost:10001/clipboard
+
+# | POST /clipboard - Set clipboard content
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"type":"text","text":"Hello from clipboard!"}' \
+  http://localhost:10001/clipboard
+
+# | GET /clipboard/stream - Stream clipboard changes as SSE
+# Keep this running in one terminal
+curl -N http://localhost:10001/clipboard/stream
+
+# In another terminal, set clipboard content to see events
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"type":"text","text":"Clipboard update"}' \
+  http://localhost:10001/clipboard
+```
+
 ### ⚙️ Configuration
 
 Configure the server using environment variables:

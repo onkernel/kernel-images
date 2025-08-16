@@ -22,6 +22,10 @@ type ApiService struct {
 	// Filesystem watch management
 	watchMu sync.RWMutex
 	watches map[string]*fsWatch
+	// Server start time for health endpoint
+	startTime time.Time
+	// Clipboard management
+	clipboardManager *clipboardManager
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -39,6 +43,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		factory:           factory,
 		defaultRecorderID: "default",
 		watches:           make(map[string]*fsWatch),
+		startTime:         time.Now(),
 	}, nil
 }
 
@@ -234,4 +239,13 @@ func (s *ApiService) ListRecorders(ctx context.Context, _ oapi.ListRecordersRequ
 
 func (s *ApiService) Shutdown(ctx context.Context) error {
 	return s.recordManager.StopAll(ctx)
+}
+
+// GetHealth implements the health check endpoint
+func (s *ApiService) GetHealth(ctx context.Context, _ oapi.GetHealthRequestObject) (oapi.GetHealthResponseObject, error) {
+	uptimeSec := int(time.Since(s.startTime).Seconds())
+	return oapi.GetHealth200JSONResponse{
+		Status:    oapi.Ok,
+		UptimeSec: uptimeSec,
+	}, nil
 }
