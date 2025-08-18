@@ -24,5 +24,11 @@ if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
   RUN_ARGS+=( -v "$HOST_RECORDINGS_DIR:/recordings" )
 fi
 
+# If a positional argument is given, use it as the entrypoint
+ENTRYPOINT_ARG=()
+if [[ $# -ge 1 && -n "$1" ]]; then
+  ENTRYPOINT_ARG+=(--entrypoint "$1")
+fi
+
 docker rm -f "$NAME" 2>/dev/null || true
-docker run -it --rm "${RUN_ARGS[@]}" "$IMAGE" /usr/bin/wrapper.sh
+docker run -it --rm "${ENTRYPOINT_ARG[@]}" "${RUN_ARGS[@]}" "$IMAGE"

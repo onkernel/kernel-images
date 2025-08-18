@@ -41,25 +41,43 @@ fi
 #   [ERROR:crypto/nss_util.cc:48] Failed to create /home/kernel/.pki/nssdb ...
 #   dconf-CRITICAL **: unable to create directory '/home/kernel/.cache/dconf'
 # Pre-create them and hand ownership to the user so the messages disappear.
+# When RUN_AS_ROOT is true, we skip ownership changes since we're running as root.
 
-dirs=(
-  /home/kernel/user-data
-  /home/kernel/.config/chromium
-  /home/kernel/.pki/nssdb
-  /home/kernel/.cache/dconf
-  /tmp
-  /var/log
-  /var/log/supervisord
-)
+if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
+  dirs=(
+    /home/kernel/user-data
+    /home/kernel/.config/chromium
+    /home/kernel/.pki/nssdb
+    /home/kernel/.cache/dconf
+    /tmp
+    /var/log
+    /var/log/supervisord
+  )
 
-for dir in "${dirs[@]}"; do
-  if [ ! -d "$dir" ]; then
-    mkdir -p "$dir"
-  fi
-done
+  for dir in "${dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+      mkdir -p "$dir"
+    fi
+  done
 
-# Ensure correct ownership (ignore errors if already correct)
-chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+  # Ensure correct ownership (ignore errors if already correct)
+  chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+else
+  # When running as root, just create the necessary directories without ownership changes
+  dirs=(
+    /tmp
+    /var/log
+    /var/log/supervisord
+    /home/kernel
+    /home/kernel/user-data
+  )
+
+  for dir in "${dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+      mkdir -p "$dir"
+    fi
+  done
+fi
 
 # -----------------------------------------------------------------------------
 # Dynamic log aggregation for /var/log/supervisord -----------------------------

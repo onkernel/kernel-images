@@ -136,9 +136,9 @@ RUN set -eux; \
     apt-get clean -y; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/
 
-# install chromium
+# install chromium and sqlite3 for debugging the cookies file
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium
+RUN apt update -y && apt install -y chromium sqlite3
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
@@ -165,7 +165,6 @@ COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
 
 RUN useradd -m -s /bin/bash kernel
-RUN cp -r ./user-data /home/kernel/user-data
 
 ENTRYPOINT [ "/wrapper.sh" ]
 

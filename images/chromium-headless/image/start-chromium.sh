@@ -22,9 +22,12 @@ RUN_AS_ROOT="${RUN_AS_ROOT:-false}"
 
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
   exec chromium \
-    --headless \
+    --headless=new \
     --remote-debugging-port="$INTERNAL_PORT" \
     --remote-allow-origins=* \
+    --user-data-dir=/home/kernel/user-data \
+    --password-store=basic \
+    --no-first-run \
     ${CHROMIUM_FLAGS:-}
 else
   exec runuser -u kernel -- env \
@@ -34,9 +37,12 @@ else
     XDG_CACHE_HOME=/home/kernel/.cache \
     HOME=/home/kernel \
     chromium \
-    --headless \
+    --headless=new \
     --remote-debugging-port="$INTERNAL_PORT" \
     --remote-allow-origins=* \
+    --user-data-dir=/home/kernel/user-data \
+    --password-store=basic \
+    --no-first-run \
     ${CHROMIUM_FLAGS:-}
 fi
 

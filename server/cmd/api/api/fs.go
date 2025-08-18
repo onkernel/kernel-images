@@ -832,7 +832,18 @@ func (s *ApiService) DownloadDirZip(ctx context.Context, request oapi.DownloadDi
 	// Build zip in-memory to provide a single streaming response
 	zipBytes, err := ziputil.ZipDir(path)
 	if err != nil {
-		log.Error("failed to create zip archive", "err", err, "path", path)
+		// Add extra diagnostics for common failure causes
+		// Check if directory is readable and walkable
+		// We avoid heavy recursion here; just attempt to open directory and read one entry
+		var readErr error
+		f, oerr := os.Open(path)
+		if oerr != nil {
+			readErr = oerr
+		} else {
+			_, readErr = f.Readdir(1)
+			_ = f.Close()
+		}
+		log.Error("failed to create zip archive", "err", err, "path", path, "read_probe_err", readErr)
 		return oapi.DownloadDirZip500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create zip"}}, nil
 	}
 

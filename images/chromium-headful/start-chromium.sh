@@ -26,6 +26,9 @@ RUN_AS_ROOT="${RUN_AS_ROOT:-false}"
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
   exec chromium \
     --remote-debugging-port="$INTERNAL_PORT" \
+    --user-data-dir=/home/kernel/user-data \
+    --password-store=basic \
+    --no-first-run \
     ${CHROMIUM_FLAGS:-}
 else
   exec runuser -u kernel -- env \
@@ -36,6 +39,9 @@ else
     HOME=/home/kernel \
     chromium \
     --remote-debugging-port="$INTERNAL_PORT" \
+    --user-data-dir=/home/kernel/user-data \
+    --password-store=basic \
+    --no-first-run \
     ${CHROMIUM_FLAGS:-}
 fi
 

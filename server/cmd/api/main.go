@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -123,6 +125,21 @@ func main() {
 			})
 		},
 	)
+	// Expose a minimal /json/version endpoint so clients that attempt to
+	// resolve a browser websocket URL via HTTP can succeed. We map the
+	// upstream path onto this proxy's host:port so clients connect back to us.
+	rDevtools.Get("/json/version", func(w http.ResponseWriter, r *http.Request) {
+		current := upstreamMgr.Current()
+		if current == "" {
+			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
+			return
+		}
+		proxyWSURL := (&url.URL{Scheme: "ws", Host: r.Host}).String()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"webSocketDebuggerUrl": proxyWSURL,
+		})
+	})
 	rDevtools.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		devtoolsproxy.WebSocketProxyHandler(upstreamMgr, slogger).ServeHTTP(w, r)
 	})

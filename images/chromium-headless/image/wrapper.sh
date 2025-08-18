@@ -86,20 +86,36 @@ export CHROMIUM_FLAGS
 
 # -----------------------------------------------------------------------------
 # House-keeping for the unprivileged "kernel" user ----------------------------
+# When RUN_AS_ROOT is true, we skip ownership changes since we're running as root.
 # -----------------------------------------------------------------------------
-dirs=(
-  /home/kernel/.pki/nssdb
-  /home/kernel/.cache/dconf
-  /var/log
-  /var/log/supervisord
-)
-for dir in "${dirs[@]}"; do
-  if [ ! -d "$dir" ]; then
-    mkdir -p "$dir"
-  fi
-done
-# Ensure correct ownership (ignore errors if already correct)
-chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
+  dirs=(
+    /home/kernel/.pki/nssdb
+    /home/kernel/.cache/dconf
+    /var/log
+    /var/log/supervisord
+  )
+  for dir in "${dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+      mkdir -p "$dir"
+    fi
+  done
+  # Ensure correct ownership (ignore errors if already correct)
+  chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+else
+  # When running as root, just create the necessary directories without ownership changes
+  dirs=(
+    /var/log
+    /var/log/supervisord
+    /home/kernel
+    /home/kernel/user-data
+  )
+  for dir in "${dirs[@]}"; do
+    if [ ! -d "$dir" ]; then
+      mkdir -p "$dir"
+    fi
+  done
+fi
 
 # -----------------------------------------------------------------------------
 # Dynamic log aggregation for /var/log/supervisord -----------------------------

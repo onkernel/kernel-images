@@ -32,8 +32,9 @@ RUN set -xe; \
     software-properties-common \
     supervisor;
 
+# install chromium and sqlite3 for debugging the cookies file
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium
+RUN apt update -y && apt install -y chromium sqlite3
 
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \
@@ -66,3 +67,5 @@ COPY ./supervisor/services/ /etc/supervisor/conf.d/services/
 # Copy the kernel-images API binary built during the build process
 COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
+
+ENTRYPOINT [ "/usr/bin/wrapper.sh" ]

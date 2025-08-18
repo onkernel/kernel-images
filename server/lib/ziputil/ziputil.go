@@ -18,12 +18,12 @@ func ZipDir(sourceDir string) ([]byte, error) {
 
 	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("walk error at %s: %w", path, err)
 		}
 		// Create a relative path
 		relPath, err := filepath.Rel(sourceDir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("rel path for %s: %w", path, err)
 		}
 
 		// Skip the directory itself
@@ -34,7 +34,7 @@ func ZipDir(sourceDir string) ([]byte, error) {
 		// Create zip header
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
-			return err
+			return fmt.Errorf("header for %s: %w", path, err)
 		}
 		header.Name = relPath
 
@@ -46,28 +46,36 @@ func ZipDir(sourceDir string) ([]byte, error) {
 
 		writer, err := zipWriter.CreateHeader(header)
 		if err != nil {
-			return err
+			return fmt.Errorf("create header for %s: %w", path, err)
 		}
 
 		if info.IsDir() {
 			return nil
 		}
 
+		// Only include regular files. Skip sockets, devices, FIFOs, etc.
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
 		// Add file content
 		file, err := os.Open(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("open file %s: %w", path, err)
 		}
 		defer file.Close()
 
 		_, err = io.Copy(writer, file)
-		return err
+		if err != nil {
+			return fmt.Errorf("copy file %s: %w", path, err)
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 	if err := zipWriter.Close(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("close zip writer: %w", err)
 	}
 	return buf.Bytes(), nil
 }
