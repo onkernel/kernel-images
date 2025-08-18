@@ -266,10 +266,17 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		evt := oapi.ProcessStreamEventEvent("exit")
 		h.outCh <- oapi.ProcessStreamEvent{Event: &evt, ExitCode: &code}
 		close(h.doneCh)
-		// Cleanup: remove handle from procs map
-		s.procMu.Lock()
-		delete(s.procs, id.String())
-		s.procMu.Unlock()
+		// Retain the handle for a short period so clients can observe the
+		// final "exited" status via ProcessStatus before it disappears.
+		// This avoids races where the process exits immediately after spawn
+		// and status polling returns 404.
+		retention := 10 * time.Second
+		go func(procID string) {
+			time.Sleep(retention)
+			s.procMu.Lock()
+			delete(s.procs, procID)
+			s.procMu.Unlock()
+		}(id.String())
 	}()
 
 	startedAt := h.started
