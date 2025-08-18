@@ -31,12 +31,40 @@ import (
 )
 
 const (
-	headfulImage  = "onkernel/chromium-headful-test:latest"
-	headlessImage = "onkernel/chromium-headless-test:latest"
-	containerName = "server-e2e-test"
+	defaultHeadfulImage  = "onkernel/chromium-headful-test:latest"
+	defaultHeadlessImage = "onkernel/chromium-headless-test:latest"
+	containerName        = "server-e2e-test"
 	// With host networking, the API listens on 10001 directly on the host
 	apiBaseURL = "http://127.0.0.1:10001"
 )
+
+var (
+	headfulImage  = defaultHeadfulImage
+	headlessImage = defaultHeadlessImage
+)
+
+func init() {
+	// Prefer fully-specified images if provided
+	if v := os.Getenv("E2E_CHROMIUM_HEADFUL_IMAGE"); v != "" {
+		headfulImage = v
+	}
+	if v := os.Getenv("E2E_CHROMIUM_HEADLESS_IMAGE"); v != "" {
+		headlessImage = v
+	}
+	// Otherwise, if a tag/sha is provided, use the CI-built images
+	tag := os.Getenv("E2E_IMAGE_TAG")
+	if tag == "" {
+		tag = os.Getenv("E2E_IMAGE_SHA")
+	}
+	if tag != "" {
+		if os.Getenv("E2E_CHROMIUM_HEADFUL_IMAGE") == "" {
+			headfulImage = "onkernel/chromium-headful:" + tag
+		}
+		if os.Getenv("E2E_CHROMIUM_HEADLESS_IMAGE") == "" {
+			headlessImage = "onkernel/chromium-headless:" + tag
+		}
+	}
+}
 
 // getPlaywrightPath returns the path to the playwright script
 func getPlaywrightPath() string {
