@@ -159,6 +159,8 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 			"--disable-gpu",
 			"--disable-software-rasterizer",
 			"--disable-dev-shm-usage",
+			"--no-sandbox",
+			"--disable-setuid-sandbox",
 			fmt.Sprintf("--user-data-dir=%s", userDir),
 			"about:blank",
 		}

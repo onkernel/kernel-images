@@ -33,7 +33,7 @@ jobs:
           file: images/chromium-headful/Dockerfile
           push: true
           tags: onkernel/chromium-headful:${{ steps.vars.outputs.short_sha }}
-          cache-from: type=registry,ref=onkernel/chromium-headful:${{ steps.vars.outputs.short_sha }}
-          cache-to: type=inline
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
 

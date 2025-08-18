@@ -33,7 +33,7 @@ jobs:
           file: images/chromium-headless/image/Dockerfile
           push: true
           tags: onkernel/chromium-headless:${{ steps.vars.outputs.short_sha }}
-          cache-from: type=registry,ref=onkernel/chromium-headless:${{ steps.vars.outputs.short_sha }}
-          cache-to: type=inline
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
 
