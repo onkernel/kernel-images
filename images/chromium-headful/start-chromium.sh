@@ -44,5 +44,3 @@ else
     --no-first-run \
     ${CHROMIUM_FLAGS:-}
 fi
-
-
