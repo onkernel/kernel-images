@@ -259,9 +259,6 @@ class CDPClient {
 
       console.log('X.com navigation and return completed successfully');
 
-      // Use Playwright to read all cookies and log them
-      //await this.context.close();
-
     } catch (error) {
       const screenshotPath = `x-navigation-${label}.png`;
       await this.captureScreenshot({ filename: screenshotPath }).catch(console.error);

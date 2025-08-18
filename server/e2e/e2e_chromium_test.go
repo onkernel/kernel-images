@@ -33,7 +33,7 @@ import (
 const (
 	headfulImage  = "onkernel/chromium-headful-test:latest"
 	headlessImage = "onkernel/chromium-headless-test:latest"
-	containerName   = "server-e2e-test"
+	containerName = "server-e2e-test"
 	// With host networking, the API listens on 10001 directly on the host
 	apiBaseURL = "http://127.0.0.1:10001"
 )
@@ -136,7 +136,7 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, ru
 
 	// Diagnostic Phase - Check file ownership and permissions before any navigations
 	logger.Info("[diagnostic]", "action", "checking file ownership and permissions")
-	if err := runCookieDebugScript(ctx); err != nil {
+	if err := runCookieDebugScript(ctx, t); err != nil {
 		logger.Warn("[diagnostic]", "action", "cookie debug script failed", "error", err)
 	} else {
 		logger.Info("[diagnostic]", "action", "cookie debug script completed successfully")
@@ -183,7 +183,7 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, ru
 
 	// Check file state after stopping
 	logger.Info("[restart]", "action", "checking file state after stop")
-	if err := runCookieDebugScript(ctx); err != nil {
+	if err := runCookieDebugScript(ctx, t); err != nil {
 		logger.Warn("[restart]", "action", "post-stop debug script failed", "error", err)
 	} else {
 		logger.Info("[restart]", "action", "post-stop debug script completed")
@@ -1088,7 +1088,7 @@ func waitForProgramStates(ctx context.Context, programName string, desiredStates
 }
 
 // runCookieDebugScript executes the cookie debug script in the container to check file ownership and permissions
-func runCookieDebugScript(ctx context.Context) error {
+func runCookieDebugScript(ctx context.Context, t *testing.T) error {
 	logger := logctx.FromContext(ctx)
 
 	// Read the debug script content
@@ -1105,7 +1105,7 @@ func runCookieDebugScript(ctx context.Context) error {
 	}
 
 	logger.Info("[diagnostic]", "action", "debug script output")
-	fmt.Println(stdout)
+	fmt.Fprint(t.Output(), stdout)
 	return nil
 }
 

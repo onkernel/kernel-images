@@ -8,8 +8,6 @@ source ../../shared/ensure-common-build-run-vars.sh chromium-headless
 
 source ../../shared/start-buildkit.sh
 
-# Build the kernel-images API binary and place it into the Docker build context
-source ../../shared/build-server.sh "$SCRIPT_DIR/image/bin"
-
-# Build (and optionally push) the Docker image
-(cd image && docker build -t "$IMAGE" .)
+# Build the Docker image using the repo root as build context
+# so the Dockerfile's first stage can access the server sources
+(cd "$SCRIPT_DIR/../.." && docker build -f images/chromium-headless/image/Dockerfile -t "$IMAGE" .)

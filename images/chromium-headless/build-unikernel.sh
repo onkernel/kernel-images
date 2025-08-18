@@ -19,10 +19,8 @@ cd image/
 # Build the root file system
 source ../../../shared/start-buildkit.sh
 rm -rf ./.rootfs || true
-# Build the API binary
-source ../../../shared/build-server.sh "$(pwd)/bin"
 app_name=chromium-headless-build
-docker build --platform linux/amd64 -t "$IMAGE" .
+(cd "$SCRIPT_DIR/../.." && docker build --platform linux/amd64 -f images/chromium-headless/image/Dockerfile -t "$IMAGE" .)
 docker rm cnt-"$app_name" || true
 docker create --platform linux/amd64 --name cnt-"$app_name" "$IMAGE" /bin/sh
 docker cp cnt-"$app_name":/ ./.rootfs

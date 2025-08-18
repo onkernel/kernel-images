@@ -28,7 +28,7 @@ if [ -d "$USER_DATA_DIR" ]; then
         ls -la "$COOKIES_DIR" || echo "Failed to list contents"
         
         COOKIES_FILE="$COOKIES_DIR/Cookies"
-        		if [ -f "$COOKIES_FILE" ]; then
+        if [ -f "$COOKIES_FILE" ]; then
 			echo ""
 			echo "Cookies file exists: $COOKIES_FILE"
 			echo "Owner: $(ls -ld "$COOKIES_FILE")"

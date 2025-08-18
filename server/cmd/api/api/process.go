@@ -225,9 +225,6 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 				h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
 			}
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					// ignore
-				}
 				break
 			}
 		}
@@ -244,8 +241,6 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 				h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
 			}
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-				}
 				break
 			}
 		}
@@ -271,6 +266,10 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		evt := oapi.ProcessStreamEventEvent("exit")
 		h.outCh <- oapi.ProcessStreamEvent{Event: &evt, ExitCode: &code}
 		close(h.doneCh)
+		// Cleanup: remove handle from procs map
+		s.procMu.Lock()
+		delete(s.procs, id.String())
+		s.procMu.Unlock()
 	}()
 
 	startedAt := h.started

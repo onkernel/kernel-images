@@ -1,6 +1,6 @@
 module github.com/onkernel/kernel-images/server
 
-go 1.24.3
+go 1.25.0
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0

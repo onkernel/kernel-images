@@ -1,3 +1,21 @@
+FROM docker.io/golang:1.25.0 AS server-builder
+WORKDIR /workspace/server
+
+# Allow cross-compilation when building with BuildKit platforms
+ARG TARGETOS
+ARG TARGETARCH
+ENV CGO_ENABLED=0
+
+# Go module dependencies first for better layer caching
+COPY server/go.mod ./
+COPY server/go.sum ./
+RUN go mod download
+
+# Copy the rest of the server source and build the binary
+COPY server/ .
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
+
 FROM docker.io/ubuntu:22.04
 
 RUN set -xe; \
@@ -53,19 +71,19 @@ RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 RUN useradd -m -s /bin/bash kernel
 
 # Xvfb helper and supervisor-managed start scripts
-COPY ./start-chromium.sh /images/chromium-headless/image/start-chromium.sh
-COPY ./start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
+COPY images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-chromium.sh
+COPY images/chromium-headless/image/start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
 RUN chmod +x /images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-xvfb.sh
 
 # Wrapper script set environment
-COPY ./wrapper.sh /usr/bin/wrapper.sh
+COPY images/chromium-headless/image/wrapper.sh /usr/bin/wrapper.sh
 
 # Supervisord configuration
-COPY ./supervisord.conf /etc/supervisor/supervisord.conf
-COPY ./supervisor/services/ /etc/supervisor/conf.d/services/
+COPY images/chromium-headless/image/supervisord.conf /etc/supervisor/supervisord.conf
+COPY images/chromium-headless/image/supervisor/services/ /etc/supervisor/conf.d/services/
 
-# Copy the kernel-images API binary built during the build process
-COPY bin/kernel-images-api /usr/local/bin/kernel-images-api
+# Copy the kernel-images API binary built in the builder stage
+COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
 ENV WITH_KERNEL_IMAGES_API=false
 
 ENTRYPOINT [ "/usr/bin/wrapper.sh" ]

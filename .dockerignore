@@ -11,3 +11,7 @@ coverage
 .vscode
 Dockerfile
 .archive
+.rootfs
+.unikraft
+initrd
+.tmp
