@@ -3,4 +3,4 @@ dist/
 *.log
 .pnpm-debug.log*
 cookie-verify-*.png
-screenshot*.png
+*.png
