@@ -180,7 +180,7 @@ func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger) http.Handl
 				_ = clientConn.Close()
 			})
 		}
-		proxyWebSocket(r.Context(), clientConn, upstreamConn, cleanup)
+		proxyWebSocket(r.Context(), clientConn, upstreamConn, cleanup, logger)
 	})
 }
 
@@ -190,8 +190,19 @@ type wsConn interface {
 	Close() error
 }
 
-func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClose func()) {
+func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClose func(), logger *slog.Logger) {
 	errChan := make(chan error, 2)
+
+	// Single-writer guarantee for client connection
+	var clientWriteMu sync.Mutex
+
+	// Heartbeat tracking
+	var hbMu sync.Mutex
+	lastClientActivity := time.Now()
+	var lastPingSent time.Time
+	var lastPongReceived time.Time
+	var outstandingPing bool
+
 	go func() {
 		for {
 			mt, msg, err := clientConn.ReadMessage()
@@ -199,6 +210,26 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 				errChan <- err
 				break
 			}
+			// Record any client activity
+			hbMu.Lock()
+			lastClientActivity = time.Now()
+			hbMu.Unlock()
+
+			// Handle control frames from client
+			if mt == websocket.PongMessage {
+				hbMu.Lock()
+				lastPongReceived = time.Now()
+				outstandingPing = false
+				hbMu.Unlock()
+				continue
+			}
+			if mt == websocket.PingMessage {
+				clientWriteMu.Lock()
+				_ = clientConn.WriteMessage(websocket.PongMessage, nil)
+				clientWriteMu.Unlock()
+				continue
+			}
+
 			if err := upstreamConn.WriteMessage(mt, msg); err != nil {
 				errChan <- err
 				break
@@ -212,12 +243,65 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 				errChan <- err
 				break
 			}
+			clientWriteMu.Lock()
 			if err := clientConn.WriteMessage(mt, msg); err != nil {
+				clientWriteMu.Unlock()
 				errChan <- err
 				break
 			}
+			clientWriteMu.Unlock()
 		}
 	}()
+
+	// Heartbeat goroutine
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				hbMu.Lock()
+				inactivity := now.Sub(lastClientActivity)
+				pingOutstanding := outstandingPing
+				lastPing := lastPingSent
+				lastPong := lastPongReceived
+				hbMu.Unlock()
+
+				if pingOutstanding {
+					if now.Sub(lastPing) > 10*time.Second && lastPong.Before(lastPing) {
+						logger.Warn("client ping timeout; closing devtools websocket")
+						select {
+						case errChan <- fmt.Errorf("ping timeout"):
+						default:
+						}
+						return
+					}
+					continue
+				}
+
+				if inactivity >= 30*time.Second {
+					clientWriteMu.Lock()
+					pingErr := clientConn.WriteMessage(websocket.PingMessage, nil)
+					clientWriteMu.Unlock()
+					if pingErr != nil {
+						select {
+						case errChan <- pingErr:
+						default:
+						}
+						return
+					}
+					hbMu.Lock()
+					lastPingSent = now
+					outstandingPing = true
+					hbMu.Unlock()
+				}
+			}
+		}
+	}()
+
 	select {
 	case <-ctx.Done():
 	case <-errChan:
