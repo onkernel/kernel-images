@@ -35,5 +35,3 @@ jobs:
           tags: onkernel/chromium-headful:${{ steps.vars.outputs.short_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-

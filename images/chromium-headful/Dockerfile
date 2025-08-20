@@ -182,4 +182,3 @@ ENV WITH_KERNEL_IMAGES_API=false
 RUN useradd -m -s /bin/bash kernel
 
 ENTRYPOINT [ "/wrapper.sh" ]
-
