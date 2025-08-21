@@ -177,7 +177,6 @@ COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/service
 
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
-ENV WITH_KERNEL_IMAGES_API=false
 
 RUN useradd -m -s /bin/bash kernel
 

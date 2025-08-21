@@ -34,18 +34,14 @@ RUN_ARGS=(
   --tmpfs /dev/shm:size=2g
   -v "$HOST_RECORDINGS_DIR:/recordings"
   --memory 8192m
-  -p 9222:9222 \
-  -e DISPLAY_NUM=1 \
-  -e HEIGHT=768 \
-  -e WIDTH=1024 \
-  -e RUN_AS_ROOT="$RUN_AS_ROOT" \
+  -p 9222:9222
+  -p 444:10001
+  -e DISPLAY_NUM=1
+  -e HEIGHT=768
+  -e WIDTH=1024
+  -e RUN_AS_ROOT="$RUN_AS_ROOT"
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
-
-if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  RUN_ARGS+=( -p 444:10001 )
-  RUN_ARGS+=( -e WITH_KERNEL_IMAGES_API=true )
-fi
 
 # noVNC vs WebRTC port mapping
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then

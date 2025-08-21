@@ -15,14 +15,9 @@ RUN_ARGS=(
   --privileged
   --tmpfs /dev/shm:size=2g
   -p 9222:9222
-  -e WITH_DOCKER=true
+  -p 444:10001
+  -v "$HOST_RECORDINGS_DIR:/recordings"
 )
-
-if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  RUN_ARGS+=( -p 444:10001 )
-  RUN_ARGS+=( -e WITH_KERNEL_IMAGES_API=true )
-  RUN_ARGS+=( -v "$HOST_RECORDINGS_DIR:/recordings" )
-fi
 
 # If a positional argument is given, use it as the entrypoint
 ENTRYPOINT_ARG=()

@@ -211,68 +211,66 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "[wrapper] Port 8080 is open"
 fi
 
-if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  echo "[wrapper] ✨ Starting kernel-images API."
+echo "[wrapper] ✨ Starting kernel-images API."
 
-  API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
-  API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
-  API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-${DISPLAY_NUM:-1}}"
-  API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
-  API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
+API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
+API_FRAME_RATE="${KERNEL_IMAGES_API_FRAME_RATE:-10}"
+API_DISPLAY_NUM="${KERNEL_IMAGES_API_DISPLAY_NUM:-${DISPLAY_NUM:-1}}"
+API_MAX_SIZE_MB="${KERNEL_IMAGES_API_MAX_SIZE_MB:-500}"
+API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
 
-  # Start via supervisord (env overrides are read by the service's command)
-  supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
-  # close the "--no-sandbox unsupported flag" warning when running as root
-  # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
-  # and when running as root you must use the --no-sandbox flag, which generates a warning
-  if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
-    echo "[wrapper] Running as root, attempting to dismiss the --no-sandbox unsupported flag warning"
-    if read -r WIDTH HEIGHT <<< "$(xdotool getdisplaygeometry 2>/dev/null)"; then
-      # Work out an x-coordinate slightly inside the right-hand edge of the
-      OFFSET_X=$(( WIDTH - 30 ))
-      if (( OFFSET_X < 0 )); then
-        OFFSET_X=0
-      fi
-
-      # Wait for kernel-images API port to be ready.
-      echo "[wrapper] Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
-      while ! nc -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
-        sleep 0.5
-      done
-      echo "[wrapper] Port ${API_PORT} is open"
-
-      # Wait for Chromium window to open before dismissing the --no-sandbox warning.
-      target='New Tab - Chromium'
-      echo "[wrapper] Waiting for Chromium window \"${target}\" to appear and become active..."
-      while :; do
-        win_id=$(xwininfo -root -tree 2>/dev/null | awk -v t="$target" '$0 ~ t {print $1; exit}')
-        if [[ -n $win_id ]]; then
-          win_id=${win_id%:}
-          if xdotool windowactivate --sync "$win_id"; then
-            echo "[wrapper] Focused window $win_id ($target) on $DISPLAY"
-            break
-          fi
-        fi
-        sleep 0.5
-      done
-
-      # wait... not sure but this just increases the likelihood of success
-      # without the sleep you often open the live view and see the mouse hovering over the "X" to dismiss the warning, suggesting that it clicked before the warning or chromium appeared
-      sleep 5
-
-      # Attempt to click the warning's close button
-      echo "[wrapper] Clicking the warning's close button at x=$OFFSET_X y=115"
-      if curl -s -o /dev/null -X POST \
-        http://localhost:${API_PORT}/computer/click_mouse \
-        -H "Content-Type: application/json" \
-        -d "{\"x\":${OFFSET_X},\"y\":115}"; then
-          echo "[wrapper] Successfully clicked the warning's close button"
-      else
-        echo "[wrapper] Failed to click the warning's close button" >&2
-      fi
-    else
-      echo "[wrapper] xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
+# Start via supervisord (env overrides are read by the service's command)
+supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
+# close the "--no-sandbox unsupported flag" warning when running as root
+# in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
+# and when running as root you must use the --no-sandbox flag, which generates a warning
+if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
+  echo "[wrapper] Running as root, attempting to dismiss the --no-sandbox unsupported flag warning"
+  if read -r WIDTH HEIGHT <<< "$(xdotool getdisplaygeometry 2>/dev/null)"; then
+    # Work out an x-coordinate slightly inside the right-hand edge of the
+    OFFSET_X=$(( WIDTH - 30 ))
+    if (( OFFSET_X < 0 )); then
+      OFFSET_X=0
     fi
+
+    # Wait for kernel-images API port to be ready.
+    echo "[wrapper] Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
+    while ! nc -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
+      sleep 0.5
+    done
+    echo "[wrapper] Port ${API_PORT} is open"
+
+    # Wait for Chromium window to open before dismissing the --no-sandbox warning.
+    target='New Tab - Chromium'
+    echo "[wrapper] Waiting for Chromium window \"${target}\" to appear and become active..."
+    while :; do
+      win_id=$(xwininfo -root -tree 2>/dev/null | awk -v t="$target" '$0 ~ t {print $1; exit}')
+      if [[ -n $win_id ]]; then
+        win_id=${win_id%:}
+        if xdotool windowactivate --sync "$win_id"; then
+          echo "[wrapper] Focused window $win_id ($target) on $DISPLAY"
+          break
+        fi
+      fi
+      sleep 0.5
+    done
+
+    # wait... not sure but this just increases the likelihood of success
+    # without the sleep you often open the live view and see the mouse hovering over the "X" to dismiss the warning, suggesting that it clicked before the warning or chromium appeared
+    sleep 5
+
+    # Attempt to click the warning's close button
+    echo "[wrapper] Clicking the warning's close button at x=$OFFSET_X y=115"
+    if curl -s -o /dev/null -X POST \
+      http://localhost:${API_PORT}/computer/click_mouse \
+      -H "Content-Type: application/json" \
+      -d "{\"x\":${OFFSET_X},\"y\":115}"; then
+        echo "[wrapper] Successfully clicked the warning's close button"
+    else
+      echo "[wrapper] Failed to click the warning's close button" >&2
+    fi
+  else
+    echo "[wrapper] xdotool failed to obtain display geometry; skipping sandbox warning dismissal." >&2
   fi
 fi
 

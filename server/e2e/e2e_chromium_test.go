@@ -89,15 +89,15 @@ func ensurePlaywrightDeps(t *testing.T) {
 
 func TestChromiumHeadfulUserDataSaving(t *testing.T) {
 	ensurePlaywrightDeps(t)
-	runChromiumUserDataSavingFlow(t, headfulImage, containerName, true)
+	runChromiumUserDataSavingFlow(t, headfulImage, containerName)
 }
 
 func TestChromiumHeadlessPersistence(t *testing.T) {
 	ensurePlaywrightDeps(t)
-	runChromiumUserDataSavingFlow(t, headlessImage, containerName, true)
+	runChromiumUserDataSavingFlow(t, headlessImage, containerName)
 }
 
-func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, runAsRoot bool) {
+func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{
 		Level:     slog.LevelInfo,
@@ -111,7 +111,7 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, ru
 		},
 	}))
 	baseCtx := logctx.AddToContext(context.Background(), logger)
-	logger.Info("[e2e]", "action", "starting chromium cookie saving flow", "image", image, "name", containerName, "runAsRoot", runAsRoot)
+	logger.Info("[e2e]", "action", "starting chromium cookie saving flow", "image", image, "name", containerName)
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Fatalf("[precheck] docker not available: %v", err)
 	}
@@ -124,15 +124,6 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, ru
 		t.Fatalf("[setup] failed to stop container %s: %v", containerName, err)
 	}
 	env := map[string]string{
-		"WITH_KERNEL_IMAGES_API": "true",
-		"WITH_DOCKER":            "true",
-		"RUN_AS_ROOT":            fmt.Sprintf("%t", runAsRoot),
-		"USER": func() string {
-			if runAsRoot {
-				return "root"
-			}
-			return "kernel"
-		}(),
 		"WIDTH":           "1024",
 		"HEIGHT":          "768",
 		"ENABLE_WEBRTC":   os.Getenv("ENABLE_WEBRTC"),
@@ -254,6 +245,14 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string, ru
 	logger.Info("[snapshot]", "action", "upload cleaned zip", "bytes", len(cleanZipBytes))
 	if err := uploadUserDataZip(ctx, cleanZipBytes); err != nil {
 		t.Fatalf("[snapshot] upload cleaned zip: %v", err)
+	}
+
+	// Check file state after uploading
+	logger.Info("[restart]", "action", "checking file state after uploading")
+	if err := runCookieDebugScript(ctx, t); err != nil {
+		logger.Warn("[restart]", "action", "post-stop debug script failed", "error", err)
+	} else {
+		logger.Info("[restart]", "action", "post-stop debug script completed")
 	}
 
 	// Verify that the cookie exists in the container's cookies database after upload
@@ -769,7 +768,13 @@ func uploadUserDataZip(ctx context.Context, zipBytes []byte) error {
 		return err
 	}
 	_, err = client.UploadZipWithBodyWithResponse(ctx, w.FormDataContentType(), &body)
-	return err
+	if err != nil {
+		return err
+	}
+	if _, err := execCombinedOutput(ctx, "chown", []string{"-R", "kernel:kernel", "/home/kernel/user-data"}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func startChromiumViaAPI(ctx context.Context) error {

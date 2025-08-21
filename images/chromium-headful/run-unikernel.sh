@@ -41,21 +41,16 @@ trap 'rm -rf "$FLAGS_DIR"' EXIT
 
 
 deploy_args=(
-  -M 8192
+  -M 4096
   -p 9222:9222/tls
+  -p 444:10001/tls
   -e DISPLAY_NUM=1
   -e HEIGHT=768
   -e WIDTH=1024
-  -e HOME=/
   -e RUN_AS_ROOT="$RUN_AS_ROOT" \
   -v "$volume_name":/chromium
   -n "$NAME"
 )
-
-if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  deploy_args+=( -p 444:10001/tls )
-  deploy_args+=( -e WITH_KERNEL_IMAGES_API=true )
-fi
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Deploying with WebRTC enabled"

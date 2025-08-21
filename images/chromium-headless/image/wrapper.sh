@@ -3,7 +3,7 @@
 set -o pipefail -o errexit -o nounset
 
 # If we are outside Docker-in-Docker make sure /dev/shm exists
-if [ -z "${WITH_DOCKER:-}" ]; then
+if [ -z "${WITHDOCKER:-}" ]; then
   mkdir -p /dev/shm
   chmod 777 /dev/shm
   mount -t tmpfs tmpfs /dev/shm
@@ -90,26 +90,33 @@ export CHROMIUM_FLAGS
 # -----------------------------------------------------------------------------
 if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
   dirs=(
+    /home/kernel/user-data
+    /home/kernel/.config/chromium
     /home/kernel/.pki/nssdb
     /home/kernel/.cache/dconf
+    /tmp
     /var/log
     /var/log/supervisord
   )
+
   for dir in "${dirs[@]}"; do
     if [ ! -d "$dir" ]; then
       mkdir -p "$dir"
     fi
   done
+
   # Ensure correct ownership (ignore errors if already correct)
-  chown -R kernel:kernel /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+  chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
 else
   # When running as root, just create the necessary directories without ownership changes
   dirs=(
+    /tmp
     /var/log
     /var/log/supervisord
     /home/kernel
     /home/kernel/user-data
   )
+
   for dir in "${dirs[@]}"; do
     if [ ! -d "$dir" ]; then
       mkdir -p "$dir"
@@ -215,15 +222,13 @@ for i in {1..100}; do
   sleep 0.2
 done
 
-if [[ "${WITH_KERNEL_IMAGES_API:-}" == "true" ]]; then
-  echo "[wrapper] ✨ Starting kernel-images API via supervisord."
-  supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
-  API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
-  echo "[wrapper] Waiting for kernel-images API on 127.0.0.1:${API_PORT}..."
-  while ! (echo >/dev/tcp/127.0.0.1/"${API_PORT}") >/dev/null 2>&1; do
-    sleep 0.5
-  done
-fi
+echo "[wrapper] ✨ Starting kernel-images API via supervisord."
+supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
+API_PORT="${KERNEL_IMAGES_API_PORT:-10001}"
+echo "[wrapper] Waiting for kernel-images API on 127.0.0.1:${API_PORT}..."
+while ! (echo >/dev/tcp/127.0.0.1/"${API_PORT}") >/dev/null 2>&1; do
+  sleep 0.5
+done
 
 echo "[wrapper] startup complete!"
 # Re-enable scale-to-zero once startup has completed (when not under Docker)

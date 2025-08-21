@@ -24,6 +24,7 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 RUN_AS_ROOT="${RUN_AS_ROOT:-false}"
 
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
+  echo "Running chromium as root"
   exec chromium \
     --remote-debugging-port="$INTERNAL_PORT" \
     --user-data-dir=/home/kernel/user-data \
@@ -31,6 +32,7 @@ if [[ "$RUN_AS_ROOT" == "true" ]]; then
     --no-first-run \
     ${CHROMIUM_FLAGS:-}
 else
+  echo "Running chromium as kernel user"
   exec runuser -u kernel -- env \
     DISPLAY=":1" \
     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket" \

@@ -67,6 +67,8 @@ RUN set -eux; \
 # Remove upower to prevent spurious D-Bus activations and logs
 RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 
+ENV WITHDOCKER=true
+
 # Create a non-root user with a home directory
 RUN useradd -m -s /bin/bash kernel
 
@@ -84,6 +86,5 @@ COPY images/chromium-headless/image/supervisor/services/ /etc/supervisor/conf.d/
 
 # Copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
-ENV WITH_KERNEL_IMAGES_API=false
 
 ENTRYPOINT [ "/usr/bin/wrapper.sh" ]
