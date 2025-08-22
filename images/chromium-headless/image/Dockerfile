@@ -9,12 +9,16 @@ ENV CGO_ENABLED=0
 # Go module dependencies first for better layer caching
 COPY server/go.mod ./
 COPY server/go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY server/ .
 
 # Build kernel-images API
-RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
 
 # Build chromium launcher
@@ -23,10 +27,13 @@ RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
 
 FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
-
-RUN set -xe; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -xe; \
     apt-get -yqq update; \
-    apt-get -yqq install \
+    apt-get -yqq --no-install-recommends install \
     libcups2 \
     libnss3 \
     libatk1.0-0 \
@@ -43,12 +50,13 @@ RUN set -xe; \
     libxrandr2 \
     libgbm1 \
     libnss3; \
-    apt-get -yqq install \
+    apt-get -yqq --no-install-recommends install \
     ca-certificates \
     curl \
     build-essential \
     libssl-dev \
     git \
+    gpg-agent \
     dbus \
     dbus-x11 \
     xvfb \
@@ -58,21 +66,38 @@ RUN set -xe; \
     supervisor;
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium sqlite3
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+    add-apt-repository -y ppa:xtradeb/apps
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+    apt-get update -y && apt-get --no-install-recommends install -y chromium sqlite3
 
 # Install FFmpeg (latest static build) for the recording server
-RUN set -eux; \
+RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
+    set -eux; \
     URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
-    echo "Downloading FFmpeg static build from $URL"; \
-    curl -fsSL "$URL" -o /tmp/ffmpeg.tar.xz; \
-    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
+    echo "Downloading FFmpeg MD5 checksum"; \
+    curl -fsSL "${URL}.md5" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
+    sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
+    echo "Checking cache for FFmpeg archive and validating MD5 checksum"; \
+    if md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then \
+        echo "Checksum validated, using cached FFmpeg archive"; \
+    else \
+        echo "Downloading FFmpeg static build from $URL"; \
+        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz; \
+        echo "Validating MD5 checksum of FFmpeg static build download"; \
+        md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
+    fi; \
+    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp; \
     install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
     install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
     rm -rf /tmp/ffmpeg*
 
 # Remove upower to prevent spurious D-Bus activations and logs
-RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+    apt-get -yqq purge upower || true
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
 COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
