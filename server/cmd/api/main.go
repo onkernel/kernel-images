@@ -82,6 +82,9 @@ func main() {
 	strictHandler := oapi.NewStrictHandler(apiService, nil)
 	oapi.HandlerFromMux(strictHandler, r)
 
+	// Register our custom endpoint handler
+	r.Get("/screen/resolution", apiService.SetScreenResolutionHandler)
+
 	// endpoints to expose the spec
 	r.Get("/spec.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.oai.openapi")

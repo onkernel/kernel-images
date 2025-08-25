@@ -2,12 +2,19 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
@@ -28,7 +35,199 @@ type ApiService struct {
 	procs  map[string]*processHandle
 }
 
+// We're extending the StrictServerInterface to include our new endpoint
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
+
+// SetScreenResolution endpoint
+// (GET /screen/resolution)
+// IsWebSocketAvailable checks if a WebSocket connection can be established to the given URL
+func isWebSocketAvailable(wsURL string) bool {
+	// First check if we can establish a TCP connection by parsing the URL
+	u, err := url.Parse(wsURL)
+	if err != nil {
+		return false
+	}
+
+	// Get host and port
+	host := u.Host
+	if !strings.Contains(host, ":") {
+		// Add default port based on scheme
+		if u.Scheme == "ws" {
+			host = host + ":80"
+		} else if u.Scheme == "wss" {
+			host = host + ":443"
+		}
+	}
+
+	// Try TCP connection
+	conn, err := net.DialTimeout("tcp", host, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+
+	// Try WebSocket connection
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 200 * time.Millisecond,
+	}
+
+	wsConn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		return false
+	}
+	defer wsConn.Close()
+
+	return true
+}
+
+// GetWebSocketURL determines the appropriate WebSocket URL from an HTTP request
+// It can be used in tests
+func getWebSocketURL(r *http.Request) string {
+	// Auth parameters for WS connection
+	authParams := "?password=admin&username=kernel"
+
+	// Default local development URL - will try only in local dev
+	localDevURL := "ws://localhost:8080/ws" + authParams
+
+	// In tests or other cases where request is nil
+	if r == nil {
+		return localDevURL
+	}
+
+	log := logger.FromContext(r.Context())
+
+	// Get URL components from the request
+	scheme := "ws"
+	if r.TLS != nil || strings.HasPrefix(r.Proto, "HTTPS") || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "wss"
+	}
+
+	// Get host from request header, strip the port if present
+	// This is crucial for production where we don't want ports in WS URLs
+	host := r.Host
+	if host == "" {
+		log.Warn("empty host in request, using fallback mechanisms")
+
+		// Try the internal WebSocket endpoint
+		internalURL := "ws://127.0.0.1:8080/ws" + authParams
+		log.Info("trying internal WebSocket URL", "url", internalURL)
+
+		// If it fails, return the URL anyway since we need to return something
+		return internalURL
+	}
+
+	// Remove port from host if present (critical for production)
+	if hostParts := strings.Split(host, ":"); len(hostParts) > 1 {
+		host = hostParts[0]
+	}
+
+	// Determine the base path by removing screen/resolution if present
+	basePath := r.URL.Path
+	for len(basePath) > 0 && basePath[len(basePath)-1] == '/' {
+		basePath = basePath[:len(basePath)-1]
+	}
+
+	if len(basePath) >= 18 && basePath[len(basePath)-18:] == "/screen/resolution" {
+		basePath = basePath[:len(basePath)-18]
+	}
+
+	// Construct WebSocket URL with auth parameters, but NO PORT
+	wsURL := fmt.Sprintf("%s://%s%s/ws%s", scheme, host, basePath, authParams)
+
+	// For localhost requests in development, default to the known working port
+	if strings.Contains(host, "localhost") {
+		// In development, we use a specific port for WebSocket
+		wsURL = fmt.Sprintf("ws://localhost:8080/ws%s", authParams)
+		log.Info("localhost detected, using development WebSocket URL", "url", wsURL)
+		return wsURL
+	}
+
+	log.Info("using host-based WebSocket URL", "url", wsURL)
+	return wsURL
+}
+
+func (s *ApiService) SetScreenResolutionHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	width := 0
+	height := 0
+	var rate *int
+
+	// Calculate the WebSocket URL from the request
+	wsURL := getWebSocketURL(r)
+
+	// Parse width
+	widthStr := r.URL.Query().Get("width")
+	if widthStr == "" {
+		http.Error(w, "missing required query parameter: width", http.StatusBadRequest)
+		return
+	}
+	var err error
+	width, err = strconv.Atoi(widthStr)
+	if err != nil {
+		http.Error(w, "invalid width parameter: must be an integer", http.StatusBadRequest)
+		return
+	}
+
+	// Parse height
+	heightStr := r.URL.Query().Get("height")
+	if heightStr == "" {
+		http.Error(w, "missing required query parameter: height", http.StatusBadRequest)
+		return
+	}
+	height, err = strconv.Atoi(heightStr)
+	if err != nil {
+		http.Error(w, "invalid height parameter: must be an integer", http.StatusBadRequest)
+		return
+	}
+
+	// Parse optional rate parameter
+	rateStr := r.URL.Query().Get("rate")
+	if rateStr != "" {
+		rateVal, err := strconv.Atoi(rateStr)
+		if err != nil {
+			http.Error(w, "invalid rate parameter: must be an integer", http.StatusBadRequest)
+			return
+		}
+		rate = &rateVal
+	}
+
+	// Create request object
+	reqObj := SetScreenResolutionRequestObject{
+		Width:  width,
+		Height: height,
+		Rate:   rate,
+		WSURL:  wsURL,
+	}
+
+	// Call the actual implementation
+	resp, err := s.SetScreenResolution(r.Context(), reqObj)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Handle different response types
+	switch r := resp.(type) {
+	case SetScreenResolution200JSONResponse:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(r)
+	case SetScreenResolution400JSONResponse:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(r)
+	case SetScreenResolution409JSONResponse:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(r)
+	case SetScreenResolution500JSONResponse:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(r)
+	default:
+		http.Error(w, "unexpected response type", http.StatusInternalServerError)
+	}
+}
 
 func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory) (*ApiService, error) {
 	switch {

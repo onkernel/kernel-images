@@ -737,6 +737,53 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+          
+  /screen/resolution:
+    get:
+      summary: Set screen resolution
+      operationId: setScreenResolution
+      parameters:
+        - name: width
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 200
+            maximum: 8000
+          description: Screen width in pixels
+        - name: height
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 200
+            maximum: 8000
+          description: Screen height in pixels
+        - name: rate
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 24
+            maximum: 240
+          description: Screen refresh rate in Hz
+      responses:
+        "200":
+          description: Screen resolution set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          description: Cannot set resolution due to ongoing recording
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
