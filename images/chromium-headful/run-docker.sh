@@ -43,7 +43,7 @@ RUN_ARGS=(
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
 
-# noVNC vs WebRTC port mapping
+# WebRTC port mapping
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Running container with WebRTC"
   RUN_ARGS+=( -p 8080:8080 )
@@ -55,9 +55,6 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
     RUN_ARGS+=( -e NEKO_WEBRTC_NAT1TO1=127.0.0.1 )
     RUN_ARGS+=( -p 56000-56100:56000-56100/udp )
   fi
-else
-  echo "Running container with noVNC"
-  RUN_ARGS+=( -p 8080:6080 )
 fi
 
 docker rm -f "$NAME" 2>/dev/null || true
