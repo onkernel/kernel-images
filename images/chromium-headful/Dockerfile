@@ -42,8 +42,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcac
     set -eux; \
     apt-get update; \
     apt-get --no-install-recommends -y install \
-    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
-    && rm -rf /var/lib/apt/lists/*;
+    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev;
 COPY images/chromium-headful/xorg-deps/ /xorg/
 # build xf86-video-dummy v0.3.8 with RandR support
 RUN set -eux; \
