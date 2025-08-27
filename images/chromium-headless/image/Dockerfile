@@ -27,8 +27,8 @@ RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
 
 FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     set -xe; \
@@ -66,37 +66,48 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcac
     supervisor;
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     add-apt-repository -y ppa:xtradeb/apps
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     apt-get update -y && apt-get --no-install-recommends install -y chromium sqlite3
 
 # Install FFmpeg (latest static build) for the recording server
 RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
-    set -eux; \
-    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
-    echo "Downloading FFmpeg MD5 checksum"; \
-    curl -fsSL "${URL}.md5" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
-    sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
-    echo "Checking cache for FFmpeg archive and validating MD5 checksum"; \
-    if md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then \
-        echo "Checksum validated, using cached FFmpeg archive"; \
-    else \
-        echo "Downloading FFmpeg static build from $URL"; \
-        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz; \
-        echo "Validating MD5 checksum of FFmpeg static build download"; \
-        md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; \
-    fi; \
-    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp; \
-    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
-    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
+    <<-'EOT'
+    set -eux
+    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+    echo "Downloading FFmpeg MD5 checksum"
+    if ! curl --connect-timeout 10 -fsSL "${URL}.md5" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then
+        echo "Failed to connect to ffmpeg static build provider for MD5 checksum."
+        echo "Checking for cached version to use."
+	if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5 ]; then
+	    echo "Unable to locate cached MD5 checksum. Exiting."
+	    exit 1
+	else
+	    echo "Found cached MD5 checksum."
+	fi
+    fi
+    sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5
+    echo "Checking cache for FFmpeg archive and validating MD5 checksum"
+    if md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then
+        echo "Checksum validated, using cached FFmpeg archive"
+    else
+        echo "Downloading FFmpeg static build from $URL"
+        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz
+        echo "Validating MD5 checksum of FFmpeg static build download"
+        md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5
+    fi
+    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp
+    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg
+    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe
     rm -rf /tmp/ffmpeg*
+EOT
 
 # Remove upower to prevent spurious D-Bus activations and logs
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     apt-get -yqq purge upower || true
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
