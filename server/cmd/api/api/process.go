@@ -92,7 +92,7 @@ func buildCmd(body *oapi.ProcessExecRequest) (*exec.Cmd, error) {
 	}
 	cmd.Env = env
 
-	// Configure user credentials if requested
+	// Configure user if requested
 	if body.AsRoot != nil && *body.AsRoot && body.AsUser != nil && *body.AsUser != "" {
 		return nil, errors.New("cannot specify both as_root and as_user")
 	}
@@ -129,10 +129,12 @@ func buildCmd(body *oapi.ProcessExecRequest) (*exec.Cmd, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid gid for user %q: %w", spec, err)
 		}
-		// If gid override provided and numeric, use it
+		// If gid override provided, require it to be numeric
 		if gidStr != "" {
 			if gOverride, err := strconv.ParseUint(gidStr, 10, 32); err == nil {
 				gid64 = gOverride
+			} else {
+				return nil, fmt.Errorf("gid override must be numeric, got %q", gidStr)
 			}
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{
