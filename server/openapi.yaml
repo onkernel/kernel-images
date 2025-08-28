@@ -25,7 +25,7 @@ paths:
           $ref: "#/components/responses/InternalError"
   /process/exec:
     post:
-      summary: Execute a command synchronously (optional streaming)
+      summary: Execute a command synchronously
       operationId: processExec
       requestBody:
         required: true
@@ -91,7 +91,7 @@ paths:
           $ref: "#/components/responses/InternalError"
   /process/{process_id}/stdout/stream:
     get:
-      summary: Stream process stdout/stderr (SSE)
+      summary: Stream process stdout over SSE
       operationId: processStdoutStream
       parameters:
         - name: process_id
@@ -312,7 +312,7 @@ paths:
           $ref: "#/components/responses/InternalError"
   /logs/stream:
     get:
-      summary: Subscribe to logs via SSE
+      summary: Stream logs over SSE
       operationId: logsStream
       parameters:
         - in: query
@@ -1008,10 +1008,6 @@ components:
           type: integer
           description: Maximum execution time in seconds.
           nullable: true
-        stream:
-          type: boolean
-          description: If true, stream output via SSE instead of returning complete buffers.
-          default: false
       additionalProperties: false
     ProcessExecResult:
       type: object
@@ -1033,12 +1029,6 @@ components:
     ProcessSpawnRequest:
       allOf:
         - $ref: "#/components/schemas/ProcessExecRequest"
-        - type: object
-          properties:
-            stream:
-              type: boolean
-              readOnly: true
-              description: Streaming is handled via the stdout/stream endpoint for spawned processes.
     ProcessSpawnResult:
       type: object
       description: Information about a spawned process.

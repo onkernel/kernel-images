@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -89,19 +91,63 @@ func buildCmd(body *oapi.ProcessExecRequest) (*exec.Cmd, error) {
 		env = append(env, k+"="+v)
 	}
 	cmd.Env = env
+
+	// Configure user credentials if requested
+	if body.AsRoot != nil && *body.AsRoot && body.AsUser != nil && *body.AsUser != "" {
+		return nil, errors.New("cannot specify both as_root and as_user")
+	}
+	if body.AsRoot != nil && *body.AsRoot {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: 0, Gid: 0},
+		}
+	} else if body.AsUser != nil && *body.AsUser != "" {
+		spec := *body.AsUser
+		// support forms: "username" or "uid" or "uid:gid"
+		var uidStr, gidStr string
+		if i := strings.IndexByte(spec, ':'); i >= 0 {
+			uidStr = spec[:i]
+			gidStr = spec[i+1:]
+		} else {
+			uidStr = spec
+		}
+
+		var u *user.User
+		var err error
+		if _, errNum := strconv.Atoi(uidStr); errNum == nil {
+			u, err = user.LookupId(uidStr)
+		} else {
+			u, err = user.Lookup(uidStr)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to lookup user %q: %w", spec, err)
+		}
+		uid64, err := strconv.ParseUint(u.Uid, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid uid for user %q: %w", spec, err)
+		}
+		gid64, err := strconv.ParseUint(u.Gid, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("invalid gid for user %q: %w", spec, err)
+		}
+		// If gid override provided and numeric, use it
+		if gidStr != "" {
+			if gOverride, err := strconv.ParseUint(gidStr, 10, 32); err == nil {
+				gid64 = gOverride
+			}
+		}
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: uint32(uid64), Gid: uint32(gid64)},
+		}
+	}
 	return cmd, nil
 }
 
-// Execute a command synchronously (optional streaming)
+// Execute a command synchronously
 // (POST /process/exec)
 func (s *ApiService) ProcessExec(ctx context.Context, request oapi.ProcessExecRequestObject) (oapi.ProcessExecResponseObject, error) {
 	log := logger.FromContext(ctx)
 	if request.Body == nil {
 		return oapi.ProcessExec400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
-	}
-	// Streaming over this endpoint is not supported by the current API definition
-	if request.Body.Stream != nil && *request.Body.Stream {
-		return oapi.ProcessExec400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "streaming not supported for /process/exec"}}, nil
 	}
 
 	cmd, err := buildCmd((*oapi.ProcessExecRequest)(request.Body))
