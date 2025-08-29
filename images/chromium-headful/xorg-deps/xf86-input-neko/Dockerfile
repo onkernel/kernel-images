@@ -2,8 +2,8 @@ FROM debian:bullseye-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=debian-bullseye-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=debian-bullseye-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=debian-bullseye-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=debian-bullseye-aptlib \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     set -eux; \

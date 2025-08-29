@@ -4,8 +4,8 @@ FROM $BASE_IMAGE AS xorg-deps
 WORKDIR /xorg
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     set -eux; \
