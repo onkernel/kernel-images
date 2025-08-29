@@ -35,8 +35,8 @@ RUN --mount=type=cache,target=/root/.npm npm run build
 FROM docker.io/ubuntu:22.04 AS xorg-deps
 WORKDIR /xorg
 ENV DEBIAN_FRONTEND=noninteractive
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     set -eux; \
@@ -68,8 +68,8 @@ FROM docker.io/ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_PRIORITY=high
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     apt-get update && \
@@ -151,8 +151,8 @@ EOT
 
 # runtime
 ENV USERNAME=root
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     set -eux; \
     apt-get update; \
     apt-get --no-install-recommends -y install \
@@ -185,11 +185,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcac
     chown -R $USERNAME:$USERNAME /home/$USERNAME;
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     add-apt-repository -y ppa:xtradeb/apps;
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
     apt update -y && apt --no-install-recommends -y install chromium sqlite3;
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
