@@ -117,35 +117,36 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     unzip;
 
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
-# as of writing these static builds will be the latest 7.0.x release.
 RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
     <<-'EOT'
     set -eux
-    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-    echo "Downloading FFmpeg MD5 checksum"
-    if ! curl --connect-timeout 10 -fsSL "${URL}.md5" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then
-        echo "Failed to connect to ffmpeg static build provider for MD5 checksum."
+    ARCHIVE_NAME="ffmpeg-master-latest-linux64-gpl.tar.xz"
+    URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
+    echo "Downloading FFmpeg checksum"
+    if ! curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+        echo "Failed to connect to ffmpeg static build provider for checksum."
         echo "Checking for cached version to use."
-        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5 ]; then
-            echo "Unable to locate cached MD5 checksum. Exiting."
+        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 ]; then
+            echo "Unable to locate cached checksum. Exiting."
             exit 1
         else
-            echo "Found cached MD5 checksum."
+            echo "Found cached checksum."
         fi
     fi
-    sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5
-    echo "Checking cache for FFmpeg archive and validating MD5 checksum"
-    if md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then
+    sed -i -n -e "/$ARCHIVE_NAME/p" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    echo "Checking cache for FFmpeg archive and validating checksum"
+    if sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
         echo "Checksum validated, using cached FFmpeg archive"
     else
         echo "Downloading FFmpeg static build from $URL"
         curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz
-        echo "Validating MD5 checksum of FFmpeg static build download"
-        md5sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5
+        echo "Validating checksum of FFmpeg static build download"
+        sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
     fi
     tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp
-    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg
-    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe
+    install -m755 /tmp/ffmpeg-*/bin/ffmpeg  /usr/local/bin/ffmpeg
+    install -m755 /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
     rm -rf /tmp/ffmpeg*
 EOT
 
