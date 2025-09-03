@@ -71,7 +71,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     add-apt-repository -y ppa:xtradeb/apps
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
     --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
-    apt-get update -y && apt-get --no-install-recommends install -y chromium sqlite3
+    apt-get update -y && \
+    apt-get -y install chromium && \
+    apt-get --no-install-recommends -y install sqlite3;
 
 # Install FFmpeg (latest static build) for the recording server
 RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \

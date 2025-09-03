@@ -190,7 +190,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     add-apt-repository -y ppa:xtradeb/apps;
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
     --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
-    apt update -y && apt --no-install-recommends -y install chromium sqlite3;
+    apt update -y && \
+    apt -y install chromium && \
+    apt --no-install-recommends -y install sqlite3;
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
 COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
