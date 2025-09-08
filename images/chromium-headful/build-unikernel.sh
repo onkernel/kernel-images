@@ -23,7 +23,7 @@ docker rm cnt-"$app_name" || true
 docker create --platform linux/amd64 --name cnt-"$app_name" "$IMAGE" /bin/sh
 docker cp cnt-"$app_name":/ ./.rootfs
 rm -f initrd || true
-sudo mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
+sudo mkfs.erofs --all-root -d2 -E noinline_data,fragments -b 4096 -C 131072 -x 0 -z lz4 initrd ./.rootfs
 
 # Package the unikernel (and the new initrd) to KraftCloud
 kraft pkg \
