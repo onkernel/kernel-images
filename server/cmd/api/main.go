@@ -141,7 +141,7 @@ func main() {
 		})
 	})
 	rDevtools.Get("/*", func(w http.ResponseWriter, r *http.Request) {
-		devtoolsproxy.WebSocketProxyHandler(upstreamMgr, slogger).ServeHTTP(w, r)
+		devtoolsproxy.WebSocketProxyHandler(upstreamMgr, slogger, config.LogCDPMessages).ServeHTTP(w, r)
 	})
 
 	srvDevtools := &http.Server{

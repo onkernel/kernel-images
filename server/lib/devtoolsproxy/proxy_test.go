@@ -98,7 +98,7 @@ func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 	// seed current upstream to echo server including path/query (bypass tailing)
 	mgr.setCurrent((&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path, RawQuery: u.RawQuery}).String())
 
-	proxy := WebSocketProxyHandler(mgr, logger)
+	proxy := WebSocketProxyHandler(mgr, logger, false)
 	proxySrv := httptest.NewServer(proxy)
 	defer proxySrv.Close()
 
