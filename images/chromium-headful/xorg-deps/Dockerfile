@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
     set -eux; \
     apt-get update; \
-    apt-get install --no-install-recommends -y \
+    apt-get --no-install-recommends -y install \
     git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev;
 
 

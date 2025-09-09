@@ -84,12 +84,12 @@ RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
     if ! curl --connect-timeout 10 -fsSL "${URL}.md5" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5; then
         echo "Failed to connect to ffmpeg static build provider for MD5 checksum."
         echo "Checking for cached version to use."
-	if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5 ]; then
-	    echo "Unable to locate cached MD5 checksum. Exiting."
-	    exit 1
-	else
-	    echo "Found cached MD5 checksum."
-	fi
+        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5 ]; then
+            echo "Unable to locate cached MD5 checksum. Exiting."
+            exit 1
+        else
+            echo "Found cached MD5 checksum."
+        fi
     fi
     sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.md5
     echo "Checking cache for FFmpeg archive and validating MD5 checksum"
