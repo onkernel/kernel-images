@@ -133,7 +133,8 @@ RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
             echo "Found cached checksum."
         fi
     fi
-    sed -i -n -e "/$ARCHIVE_NAME/p" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    grep -F "$ARCHIVE_NAME" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 > /tmp/cache/ffmpeg/tmp_sha256_only
+    mv /tmp/cache/ffmpeg/tmp_sha256_only /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
     sed -i -e 's/ .*$/ \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
     echo "Checking cache for FFmpeg archive and validating checksum"
     if sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
