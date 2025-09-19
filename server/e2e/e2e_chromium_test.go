@@ -132,9 +132,6 @@ func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string) {
 	if strings.Contains(image, "headful") {
 		// headless image sets its own flags, so only do this for headful
 		env["CHROMIUM_FLAGS"] = "--no-sandbox --disable-dev-shm-usage --disable-gpu --start-maximized --disable-software-rasterizer --remote-allow-origins=* --no-zygote --password-store=basic --no-first-run --proxy-server=http://127.0.0.1:3128"
-	} else {
-		// headless image respects CHROMIUM_FLAGS env var
-		env["CHROMIUM_FLAGS"] = "--proxy-server=http://127.0.0.1:3128"
 	}
 	logger.Info("[setup]", "action", "starting container", "image", image, "name", containerName)
 	_, exitCh, err := runContainer(baseCtx, image, containerName, env)
