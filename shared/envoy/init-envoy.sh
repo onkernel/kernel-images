@@ -11,12 +11,14 @@ if [[ -f /etc/envoy/templates/bootstrap.yaml && -n "${INST_NAME:-}" && -n "${MET
 fi
 
 if $render_from_template; then
+  echo "[envoy-init] Rendering template with INST_NAME=${INST_NAME} and METRO_NAME=${METRO_NAME}"
   inst_esc=$(printf '%s' "$INST_NAME" | sed -e 's/[\/&]/\\&/g')
   metro_esc=$(printf '%s' "$METRO_NAME" | sed -e 's/[\/&]/\\&/g')
   sed -e "s|{INSTANCE_NAME}|$inst_esc|g" \
       -e "s|{METRO_NAME}|$metro_esc|g" \
       /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
 else
+  echo "[envoy-init] Using default configuration (template vars not provided)"
   cp -f /etc/envoy/default.yaml /etc/envoy/bootstrap.yaml
 fi
 

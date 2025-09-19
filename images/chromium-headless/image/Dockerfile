@@ -63,7 +63,8 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/
 RUN mkdir -p /etc/envoy/templates
 COPY shared/envoy/bootstrap.yaml /etc/envoy/templates/bootstrap.yaml
-COPY shared/envoy/default.yaml /etc/envoy/default.yaml
+# Copy default config to bootstrap.yaml so supervisor can start envoy immediately
+COPY shared/envoy/default.yaml /etc/envoy/bootstrap.yaml
 COPY shared/envoy/init-envoy.sh /usr/local/bin/init-envoy.sh
 RUN chmod +x /usr/local/bin/init-envoy.sh
 
