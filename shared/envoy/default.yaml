@@ -1,0 +1,71 @@
+static_resources:
+  listeners:
+    - name: http_explicit_forward_proxy
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 3128
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: hcm
+                normalize_path: true
+                http_filters:
+                  - name: envoy.filters.http.dynamic_forward_proxy
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
+                      dns_cache_config:
+                        name: local_dns_cache
+                        dns_lookup_family: V4_ONLY
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: forward_proxy
+                      domains: ["*"]
+                      routes:
+                        - match: { connect_matcher: {} }
+                          route:
+                            cluster: dynamic_forward_proxy_cluster
+                            upgrade_configs:
+                              - upgrade_type: CONNECT
+                                connect_config: {}
+                        - match: { prefix: "/" }
+                          route:
+                            cluster: dynamic_forward_proxy_cluster
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                      log_format:
+                        text_format: "[%START_TIME%] %DOWNSTREAM_REMOTE_ADDRESS% %REQ(:method)% %REQ(:authority)% %REQ(:path)% -> %RESPONSE_CODE% (%BYTES_SENT%b) %DURATION%ms %RESPONSE_FLAGS% %UPSTREAM_TRANSPORT_FAILURE_REASON%\n"
+
+  clusters:
+    - name: dynamic_forward_proxy_cluster
+      connect_timeout: 5s
+      lb_policy: CLUSTER_PROVIDED
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          upstream_http_protocol_options:
+            auto_sni: true
+            auto_san_validation: true
+      cluster_type:
+        name: envoy.clusters.dynamic_forward_proxy
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig
+          dns_cache_config:
+            name: local_dns_cache
+            dns_lookup_family: V4_ONLY
+
+admin:
+  address:
+    socket_address: { address: 127.0.0.1, port_value: 9901 }
+
+

@@ -168,12 +168,30 @@ COPY --from=client /src/dist/ /var/www
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/xorg/modules/drivers/dummy_drv.so
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
+# Install Envoy proxy (official apt.envoyproxy.io) and add bootstrap configuration
+ENV ENVOY_PACKAGE=envoy-1.32
+RUN set -eux; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://apt.envoyproxy.io/signing.key | gpg --dearmor -o /etc/apt/keyrings/envoy-keyring.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/envoy-keyring.gpg] https://apt.envoyproxy.io jammy main" > /etc/apt/sources.list.d/envoy.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends "${ENVOY_PACKAGE}" || (apt-cache policy "${ENVOY_PACKAGE}" envoy && exit 1); \
+    apt-mark hold "${ENVOY_PACKAGE}"; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/
+RUN mkdir -p /etc/envoy/templates
+COPY shared/envoy/bootstrap.yaml /etc/envoy/templates/bootstrap.yaml
+COPY shared/envoy/default.yaml /etc/envoy/default.yaml
+COPY shared/envoy/init-envoy.sh /usr/local/bin/init-envoy.sh
+RUN chmod +x /usr/local/bin/init-envoy.sh
+
 COPY images/chromium-headful/image-chromium/ /
 COPY images/chromium-headful/start-chromium.sh /images/chromium-headful/start-chromium.sh
 RUN chmod +x /images/chromium-headful/start-chromium.sh
 COPY images/chromium-headful/wrapper.sh /wrapper.sh
 COPY images/chromium-headful/supervisord.conf /etc/supervisor/supervisord.conf
 COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/services/
+COPY shared/envoy/supervisor-envoy.conf /etc/supervisor/conf.d/services/envoy.conf
 
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
