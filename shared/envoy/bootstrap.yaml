@@ -8,6 +8,9 @@ dynamic_resources:
     grpc_services:
     - envoy_grpc:
         cluster_name: xds_server
+    initial_metadata:
+    - key: "authorization"
+      value: "Bearer {XDS_JWT}"
   lds_config:
     ads: {}
     resource_api_version: V3
@@ -21,6 +24,11 @@ static_resources:
     type: STRICT_DNS
     connect_timeout: 2s
     http2_protocol_options: {}
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        sni: {XDS_SERVER}
     load_assignment:
       cluster_name: xds_server
       endpoints:
@@ -28,7 +36,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: control-plane
+                address: {XDS_SERVER}
                 port_value: 18000
 
 admin:
