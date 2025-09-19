@@ -18,8 +18,7 @@ if $render_from_template; then
       -e "s|{METRO_NAME}|$metro_esc|g" \
       /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
 else
-  echo "[envoy-init] Using default configuration (template vars not provided)"
-  cp -f /etc/envoy/default.yaml /etc/envoy/bootstrap.yaml
+  echo "[envoy-init] Using default configuration (template vars INST_NAME and METRO_NAME not provided)"
 fi
 
 echo "[envoy-init] Starting Envoy via supervisord"
