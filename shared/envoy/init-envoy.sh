@@ -16,13 +16,13 @@ if $render_from_template; then
   metro_esc=$(printf '%s' "$METRO_NAME" | sed -e 's/[\/&]/\\&/g')
   xds_esc=$(printf '%s' "$XDS_SERVER" | sed -e 's/[\/&]/\\&/g')
   jwt_esc=$(printf '%s' "$XDS_JWT" | sed -e 's/[\/&]/\\&/g')
-  sed -e "s|{INSTANCE_NAME}|$inst_esc|g" \
+  sed -e "s|{INST_NAME}|$inst_esc|g" \
       -e "s|{METRO_NAME}|$metro_esc|g" \
       -e "s|{XDS_SERVER}|$xds_esc|g" \
       -e "s|{XDS_JWT}|$jwt_esc|g" \
       /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
 else
-  echo "[envoy-init] Using default configuration (template vars not provided: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT=${XDS_JWT:+set}${XDS_JWT:-unset})"
+  echo "[envoy-init] Using default configuration (template vars not provided: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT)"
 fi
 
 echo "[envoy-init] Starting Envoy via supervisord"
