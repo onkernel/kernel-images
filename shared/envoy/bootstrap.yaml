@@ -1,16 +1,27 @@
+# Envoy bootstrap configuration for xDS-managed proxy
+# This config connects to a control plane for dynamic configuration management
+# Requires: INST_NAME, METRO_NAME, XDS_SERVER, XDS_JWT environment variables
+
+# Node identity sent to xDS server for configuration targeting, authenticated by JWT
 node:
   id: "{INSTANCE_NAME}-{METRO_NAME}"
 
+# Dynamic configuration via xDS protocol
 dynamic_resources:
+  # Aggregated Discovery Service - single gRPC stream for all config types
   ads_config:
     api_type: GRPC
     transport_api_version: V3
     grpc_services:
     - envoy_grpc:
+        # Reference to xDS server cluster below
         cluster_name: xds_server
+    # Send JWT authentication for all xDS requests
     initial_metadata:
     - key: "authorization"
       value: "Bearer {XDS_JWT}"
+  
+  # Listener Discovery Service and Cluster Discovery Service use ADS
   lds_config:
     ads: {}
     resource_api_version: V3
@@ -18,15 +29,20 @@ dynamic_resources:
     ads: {}
     resource_api_version: V3
 
+# Static configuration (always present)
 static_resources:
   clusters:
+  # xDS server: control plane for configuration
   - name: xds_server
+    # Resolve hostname via DNS, for DNS lookup
     type: STRICT_DNS
     connect_timeout: 2s
     http2_protocol_options: {}
+    # TLS configuration for secure xDS connection
     transport_socket:
       name: envoy.transport_sockets.tls
       typed_config:
+        # Uses TLS to verify xDS server, and SNI hostname for TLS handshake
         "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
         sni: {XDS_SERVER}
     load_assignment:
@@ -39,10 +55,9 @@ static_resources:
                 address: {XDS_SERVER}
                 port_value: 443
 
+# Envoy admin interface for debugging
 admin:
   address:
     socket_address:
       address: 127.0.0.1
       port_value: 9901
-
-

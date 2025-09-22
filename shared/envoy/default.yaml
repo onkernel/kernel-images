@@ -1,24 +1,38 @@
+# HTTP forward proxy, direct egress to internet
 static_resources:
   listeners:
     - name: http_explicit_forward_proxy
       address:
+        # e.g. on chromium, set --proxy-server=http://127.0.0.1:3128
         socket_address:
           address: 0.0.0.0
           port_value: 3128
       filter_chains:
+        # One filter chain for HTTP/1.1 proxy traffic
         - filters:
+            # HTTP Connection Manager filter:
+            # this is handling the connection between the client and the proxy,
+            # which is an HTTP connection.
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: hcm
                 normalize_path: true
+                # Enable forward proxy behavior
                 http_filters:
+                  # Dynamic Forward Proxy filter: resolves upstreams on-the-fly and caches DNS
+                  # Browsers send CONNECT to this proxy to tunnel HTTPS upstreams
+                  # e.g. CONNECT target.example.com
+                  # Envoy establishes a TCP tunnel to the target.
                   - name: envoy.filters.http.dynamic_forward_proxy
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig
                       dns_cache_config:
                         name: local_dns_cache
                         dns_lookup_family: V4_ONLY
+                  # Router filter: actually routes/tunnels the request once target is known
+                  # See what happens here down in route_config, slightly different
+                  # for HTTPS vs HTTP upstream requests.
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -28,22 +42,35 @@ static_resources:
                     - name: forward_proxy
                       domains: ["*"]
                       routes:
+                        # === HTTPS upstream traffic (CONNECT tunnel) ===
+                        # Handle CONNECT method for HTTPS tunneling (creates TCP tunnel)
+                        # 'connect_matcher' is a special matcher that matches CONNECT requests
+                        # "Note that CONNECT support is currently considered alpha in Envoy."
+                        # https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route_components.proto#envoy-v3-api-field-config-route-v3-routematch-connect-matcher
                         - match: { connect_matcher: {} }
                           route:
+                            # Use single DFP cluster; CONNECT handled via connect_config
                             cluster: dynamic_forward_proxy_cluster
+                            # This tells Envoy to upgrade the connection to a TCP tunnel
+                            # which we only do after getting the CONNECT request.
                             upgrade_configs:
                               - upgrade_type: CONNECT
                                 connect_config: {}
+                        # === HTTP upstream traffic (absolute-form proxy) ===
+                        # The client didn't send CONNECT, because it's an HTTP request.
                         - match: { prefix: "/" }
                           route:
+                            # Same cluster for HTTP proxying
                             cluster: dynamic_forward_proxy_cluster
                 access_log:
+                  # Access log sink: print one line per request to stdout
                   - name: envoy.access_loggers.stdout
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
                       log_format:
                         text_format: "[%START_TIME%] %DOWNSTREAM_REMOTE_ADDRESS% %REQ(:method)% %REQ(:authority)% %REQ(:path)% -> %RESPONSE_CODE% (%BYTES_SENT%b) %DURATION%ms %RESPONSE_FLAGS% %UPSTREAM_TRANSPORT_FAILURE_REASON%\n"
 
+  # Connection pooling / load balancing to target(s)
   clusters:
     - name: dynamic_forward_proxy_cluster
       connect_timeout: 5s
@@ -64,8 +91,8 @@ static_resources:
             name: local_dns_cache
             dns_lookup_family: V4_ONLY
 
+# Admin interface for debugging and monitoring
 admin:
   address:
+    # Admin interface (metrics, config dump, clusters, listeners). Not exposed publicly.
     socket_address: { address: 127.0.0.1, port_value: 9901 }
-
-

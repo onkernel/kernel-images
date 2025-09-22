@@ -165,6 +165,17 @@ curl http://localhost:10001/recording/download --output recording.mp4
 
 Note: the recording file is encoded into a H.264/MPEG-4 AVC video file. [QuickTime has known issues with playback](https://discussions.apple.com/thread/254851789?sortBy=rank) so please make sure to use a compatible media player!
 
+## Proxy configuration
+
+[Envoy](https://www.envoyproxy.io/) is installed with the browser images, which allows for configuration of a forward proxy chain for egress browser traffic. This proxy is part of the Kernel platform, configured by the following environment variables:
+
+**INST_NAME**: Instance name in the platform of this browser, used to identify this browser with the platform
+**METRO_NAME**: Dataplane server name in the platform of this browser, used to identify this browser with the platform
+**XDS_SERVER**: The xDS server hostname, where envoy can discover configuration
+**XDS_JWT**: A token used to authenticate this browser to the xDS server
+
+Envoy is running alongside of the browser. The browser may be configured to proxy through envoy using the [--proxy-server flag](https://www.chromium.org/developers/design-documents/network-settings/). The default configuration directly egresses traffic to the internet. When configured to receive dynamic configuration, the xDS server can control the egress traffic flows of the browser, for example through a forward proxy chain.
+
 ## Documentation
 
 This repo powers our managed [browser infrastructure](https://onkernel.com/docs).
