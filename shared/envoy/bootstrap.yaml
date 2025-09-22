@@ -37,7 +37,7 @@ static_resources:
             address:
               socket_address:
                 address: {XDS_SERVER}
-                port_value: 18000
+                port_value: 443
 
 admin:
   address:
