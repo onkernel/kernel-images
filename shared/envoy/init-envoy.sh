@@ -22,7 +22,7 @@ if $render_from_template; then
       -e "s|{XDS_JWT}|$jwt_esc|g" \
       /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
 else
-  echo "[envoy-init] Using default configuration (template vars not provided: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT=${XDS_JWT:+***}${XDS_JWT:-unset})"
+  echo "[envoy-init] Using default configuration (template vars not provided: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT=${XDS_JWT:+set}${XDS_JWT:-unset})"
 fi
 
 echo "[envoy-init] Starting Envoy via supervisord"
