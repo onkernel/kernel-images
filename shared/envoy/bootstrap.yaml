@@ -5,6 +5,7 @@
 # Node identity sent to xDS server for configuration targeting, authenticated by JWT
 node:
   id: "{INST_NAME}-{METRO_NAME}"
+  cluster: "{INST_NAME}-{METRO_NAME}"
 
 # Dynamic configuration via xDS protocol
 dynamic_resources:
@@ -37,7 +38,6 @@ static_resources:
     # Resolve hostname via DNS, for DNS lookup
     type: STRICT_DNS
     connect_timeout: 2s
-    http2_protocol_options: {}
     # TLS configuration for secure xDS connection
     transport_socket:
       name: envoy.transport_sockets.tls
