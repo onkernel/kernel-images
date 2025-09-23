@@ -16,10 +16,10 @@ dynamic_resources:
     - envoy_grpc:
         # Reference to xDS server cluster below
         cluster_name: xds_server
-    # Send JWT authentication for all xDS requests
-    initial_metadata:
-    - key: "authorization"
-      value: "Bearer {XDS_JWT}"
+      # Send JWT authentication for all xDS requests
+      initial_metadata:
+      - key: "authorization"
+        value: "Bearer {XDS_JWT}"
   
   # Listener Discovery Service and Cluster Discovery Service use ADS
   lds_config:
