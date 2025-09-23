@@ -5,7 +5,7 @@
 # Node identity sent to xDS server for configuration targeting, authenticated by JWT
 node:
   id: "{INST_NAME}-{METRO_NAME}"
-  cluster: "{INST_NAME}-{METRO_NAME}"
+  cluster: "kernel"
 
 # Dynamic configuration via xDS protocol
 dynamic_resources:
