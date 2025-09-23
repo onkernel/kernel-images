@@ -17,6 +17,7 @@ dynamic_resources:
     - envoy_grpc:
         # Reference to xDS server cluster below
         cluster_name: xds_server
+      authority: "{XDS_SERVER}"
       # Send JWT authentication for all xDS requests
       initial_metadata:
       - key: "authorization"
