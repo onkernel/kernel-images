@@ -116,7 +116,7 @@ RUN set -eux; \
     install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
     rm -rf /tmp/ffmpeg*
 
-# runtime
+    # runtime
 ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
@@ -126,7 +126,8 @@ RUN set -eux; \
     libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-    gstreamer1.0-pulseaudio gstreamer1.0-omx; \
+    gstreamer1.0-pulseaudio gstreamer1.0-omx \
+    libnss3-tools; \
     #
     # install libxcvt0 (not available in debian:bullseye)
     ARCH=$(dpkg --print-architecture); \
@@ -185,6 +186,14 @@ COPY shared/envoy/bootstrap.yaml /etc/envoy/templates/bootstrap.yaml
 COPY shared/envoy/default.yaml /etc/envoy/bootstrap.yaml
 COPY shared/envoy/init-envoy.sh /usr/local/bin/init-envoy.sh
 RUN chmod +x /usr/local/bin/init-envoy.sh
+
+# Download and extract BrightData proxy certificate
+RUN set -eux; \
+    mkdir -p /etc/envoy/brightdata; \
+    curl -fsSL https://brightdata.com/static/brightdata_proxy_ca.zip -o /tmp/brightdata_proxy_ca.zip; \
+    unzip -j /tmp/brightdata_proxy_ca.zip '*/*.crt' -d /etc/envoy/brightdata/ || true; \
+    rm /tmp/brightdata_proxy_ca.zip; \
+    echo "BrightData certificates extracted to /etc/envoy/brightdata/"
 
 COPY images/chromium-headful/image-chromium/ /
 COPY images/chromium-headful/start-chromium.sh /images/chromium-headful/start-chromium.sh

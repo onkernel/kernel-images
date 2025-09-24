@@ -19,7 +19,7 @@ if [[ "$RUN_AS_ROOT" == "true" ]]; then
   CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
 fi
 if [[ -n "${XDS_JWT:-}" ]]; then
-  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --proxy-server=https://127.0.0.1:3128 --ignore-certificate-errors"
+  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --proxy-server=https://127.0.0.1:3128"
 fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
 rm -rf .tmp/chromium

@@ -20,13 +20,51 @@ if [[ ! -f /etc/envoy/certs/proxy.crt || ! -f /etc/envoy/certs/proxy.key ]]; the
   echo "[envoy-init] Certificate generated successfully"
   
   # Add certificate to system trust store for Chrome/Chromium
-  echo "[envoy-init] Adding certificate to system trust store"
-  mkdir -p /usr/local/share/ca-certificates
-  cp /etc/envoy/certs/proxy.crt /usr/local/share/ca-certificates/kernel-envoy-proxy.crt
-  update-ca-certificates 2>&1 | sed 's/^/[envoy-init] /'
-  echo "[envoy-init] Certificate added to system trust store"
+ echo "[envoy-init] Adding certificate to system trust store"
+ cp /etc/envoy/certs/proxy.crt /usr/local/share/ca-certificates/kernel-envoy-proxy.crt
+ cp /etc/envoy/certs/proxy.crt /kernel-envoy-proxy.crt
+ update-ca-certificates 2>&1 | sed 's/^/[envoy-init] /'
+ echo "[envoy-init] Certificate added to system trust store"
+ if [[ $RUN_AS_ROOT == "true" ]]; then
+    mkdir -p /root/.pki/nssdb
+    certutil -d /root/.pki/nssdb -N --empty-password 2>/dev/null || true
+    certutil -d /root/.pki/nssdb -A -t "C,," -n "Kernel Envoy Proxy" -i /etc/envoy/certs/proxy.crt
+    echo "[envoy-init] Certificate added to nssdb as root"
+ else
+  mkdir -p /home/kernel/.pki/nssdb
+  certutil -d /home/kernel/.pki/nssdb -N --empty-password 2>/dev/null || true
+  certutil -d /home/kernel/.pki/nssdb -A -t "C,," -n "Kernel Envoy Proxy" -i /etc/envoy/certs/proxy.crt
+  chown -R kernel:kernel /home/kernel/.pki
+  echo "[envoy-init] Certificate added to nssdb as kernel"
+ fi
+ echo "[envoy-init] Certificate added to nssdb"
 else
   echo "[envoy-init] Certificates already exist, skipping generation"
+fi
+
+# Install BrightData certificates if they exist
+if [[ -d /etc/envoy/brightdata ]] && [[ -n "$(ls -A /etc/envoy/brightdata/*.crt 2>/dev/null)" ]]; then
+  echo "[envoy-init] Installing BrightData certificates"
+  for cert in /etc/envoy/brightdata/*.crt; do
+    cert_name=$(basename "$cert" .crt)
+    echo "[envoy-init] Processing BrightData certificate: $cert_name"
+    
+    # Add to system trust store
+    cp "$cert" "/usr/local/share/ca-certificates/brightdata-${cert_name}.crt"
+    
+    # Add to NSS database
+    if [[ $RUN_AS_ROOT == "true" ]]; then
+      certutil -d /root/.pki/nssdb -A -t "C,," -n "BrightData $cert_name" -i "$cert" 2>&1 | sed 's/^/[envoy-init] /'
+    else
+      certutil -d /home/kernel/.pki/nssdb -A -t "C,," -n "BrightData $cert_name" -i "$cert" 2>&1 | sed 's/^/[envoy-init] /'
+    fi
+  done
+  
+  # Update system certificates
+  update-ca-certificates 2>&1 | sed 's/^/[envoy-init] /'
+  echo "[envoy-init] BrightData certificates installed"
+else
+  echo "[envoy-init] No BrightData certificates found in /etc/envoy/brightdata"
 fi
 
 render_from_template=false
