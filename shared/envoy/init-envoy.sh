@@ -2,6 +2,20 @@
 
 set -o pipefail -o errexit -o nounset
 
+# Check for required environment variables, to see if envoy is enabled
+if [[ -z "${INST_NAME:-}" || -z "${METRO_NAME:-}" || -z "${XDS_SERVER:-}" || -z "${XDS_JWT:-}" ]]; then
+  echo "[envoy-init] Required environment variables not set. Skipping Envoy initialization."
+  echo "[envoy-init] Required: INST_NAME, METRO_NAME, XDS_SERVER, XDS_JWT"
+  echo "[envoy-init] Current values: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT=***"
+  exit 0
+fi
+
+# Also check for template file
+if [[ ! -f /etc/envoy/templates/bootstrap.yaml ]]; then
+  echo "[envoy-init] Template file /etc/envoy/templates/bootstrap.yaml not found. Skipping Envoy initialization."
+  exit 0
+fi
+
 echo "[envoy-init] Preparing Envoy bootstrap configuration"
 mkdir -p /etc/envoy
 
@@ -69,25 +83,17 @@ else
   echo "[envoy-init] No BrightData certificates found in /etc/envoy/brightdata"
 fi
 
-render_from_template=false
-if [[ -f /etc/envoy/templates/bootstrap.yaml && -n "${INST_NAME:-}" && -n "${METRO_NAME:-}" && -n "${XDS_SERVER:-}" && -n "${XDS_JWT:-}" ]]; then
-  render_from_template=true
-fi
-
-if $render_from_template; then
-  echo "[envoy-init] Rendering template with INST_NAME=${INST_NAME}, METRO_NAME=${METRO_NAME}, XDS_SERVER=${XDS_SERVER}, XDS_JWT=***"
-  inst_esc=$(printf '%s' "$INST_NAME" | sed -e 's/[\/&]/\\&/g')
-  metro_esc=$(printf '%s' "$METRO_NAME" | sed -e 's/[\/&]/\\&/g')
-  xds_esc=$(printf '%s' "$XDS_SERVER" | sed -e 's/[\/&]/\\&/g')
-  jwt_esc=$(printf '%s' "$XDS_JWT" | sed -e 's/[\/&]/\\&/g')
-  sed -e "s|{INST_NAME}|$inst_esc|g" \
-      -e "s|{METRO_NAME}|$metro_esc|g" \
-      -e "s|{XDS_SERVER}|$xds_esc|g" \
-      -e "s|{XDS_JWT}|$jwt_esc|g" \
-      /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
-else
-  echo "[envoy-init] Using default configuration (template vars not provided: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT)"
-fi
+# Render template with provided environment variables
+echo "[envoy-init] Rendering template with INST_NAME=${INST_NAME}, METRO_NAME=${METRO_NAME}, XDS_SERVER=${XDS_SERVER}, XDS_JWT=***"
+inst_esc=$(printf '%s' "$INST_NAME" | sed -e 's/[\/&]/\\&/g')
+metro_esc=$(printf '%s' "$METRO_NAME" | sed -e 's/[\/&]/\\&/g')
+xds_esc=$(printf '%s' "$XDS_SERVER" | sed -e 's/[\/&]/\\&/g')
+jwt_esc=$(printf '%s' "$XDS_JWT" | sed -e 's/[\/&]/\\&/g')
+sed -e "s|{INST_NAME}|$inst_esc|g" \
+    -e "s|{METRO_NAME}|$metro_esc|g" \
+    -e "s|{XDS_SERVER}|$xds_esc|g" \
+    -e "s|{XDS_JWT}|$jwt_esc|g" \
+    /etc/envoy/templates/bootstrap.yaml > /etc/envoy/bootstrap.yaml
 
 echo "[envoy-init] Starting Envoy via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start envoy
