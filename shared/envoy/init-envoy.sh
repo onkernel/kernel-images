@@ -5,6 +5,30 @@ set -o pipefail -o errexit -o nounset
 echo "[envoy-init] Preparing Envoy bootstrap configuration"
 mkdir -p /etc/envoy
 
+# Generate self-signed certificates for TLS forward proxy
+echo "[envoy-init] Generating self-signed certificates for TLS forward proxy"
+mkdir -p /etc/envoy/certs
+
+if [[ ! -f /etc/envoy/certs/proxy.crt || ! -f /etc/envoy/certs/proxy.key ]]; then
+  echo "[envoy-init] Creating new self-signed certificate"
+  openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /etc/envoy/certs/proxy.key \
+    -out /etc/envoy/certs/proxy.crt \
+    -subj "/C=US/ST=CA/O=Kernel/CN=localhost" \
+    -addext "subjectAltName = DNS:localhost,IP:127.0.0.1" \
+    2>&1 | sed 's/^/[envoy-init] /'
+  echo "[envoy-init] Certificate generated successfully"
+  
+  # Add certificate to system trust store for Chrome/Chromium
+  echo "[envoy-init] Adding certificate to system trust store"
+  mkdir -p /usr/local/share/ca-certificates
+  cp /etc/envoy/certs/proxy.crt /usr/local/share/ca-certificates/kernel-envoy-proxy.crt
+  update-ca-certificates 2>&1 | sed 's/^/[envoy-init] /'
+  echo "[envoy-init] Certificate added to system trust store"
+else
+  echo "[envoy-init] Certificates already exist, skipping generation"
+fi
+
 render_from_template=false
 if [[ -f /etc/envoy/templates/bootstrap.yaml && -n "${INST_NAME:-}" && -n "${METRO_NAME:-}" && -n "${XDS_SERVER:-}" && -n "${XDS_JWT:-}" ]]; then
   render_from_template=true

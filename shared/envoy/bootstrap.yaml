@@ -39,6 +39,8 @@ static_resources:
     # Resolve hostname via DNS, for DNS lookup
     type: STRICT_DNS
     connect_timeout: 2s
+    http2_protocol_options: {}
+    dns_lookup_family: V4_ONLY
     # TLS configuration for secure xDS connection
     transport_socket:
       name: envoy.transport_sockets.tls
@@ -60,5 +62,5 @@ static_resources:
 admin:
   address:
     socket_address:
-      address: 127.0.0.1
+      address: 0.0.0.0
       port_value: 9901

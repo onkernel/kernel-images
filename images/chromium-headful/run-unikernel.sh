@@ -54,6 +54,20 @@ deploy_args=(
   -n "$NAME"
 )
 
+# Add XDS environment variables if provided
+if [[ -n "${INST_NAME:-}" ]]; then
+  deploy_args+=(-e "INST_NAME=$INST_NAME")
+fi
+if [[ -n "${METRO_NAME:-}" ]]; then
+  deploy_args+=(-e "METRO_NAME=$METRO_NAME")
+fi
+if [[ -n "${XDS_SERVER:-}" ]]; then
+  deploy_args+=(-e "XDS_SERVER=$XDS_SERVER")
+fi
+if [[ -n "${XDS_JWT:-}" ]]; then
+  deploy_args+=(-e "XDS_JWT=$XDS_JWT")
+fi
+
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Deploying with WebRTC enabled"
   kraft cloud inst create --start \
