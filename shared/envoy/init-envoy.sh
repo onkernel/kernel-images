@@ -25,7 +25,7 @@ if [[ ! -f /etc/envoy/certs/proxy.crt || ! -f /etc/envoy/certs/proxy.key ]]; the
  cp /etc/envoy/certs/proxy.crt /kernel-envoy-proxy.crt
  update-ca-certificates 2>&1 | sed 's/^/[envoy-init] /'
  echo "[envoy-init] Certificate added to system trust store"
- if [[ $RUN_AS_ROOT == "true" ]]; then
+if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
     mkdir -p /root/.pki/nssdb
     certutil -d /root/.pki/nssdb -N --empty-password 2>/dev/null || true
     certutil -d /root/.pki/nssdb -A -t "C,," -n "Kernel Envoy Proxy" -i /etc/envoy/certs/proxy.crt
@@ -53,7 +53,7 @@ if [[ -d /etc/envoy/brightdata ]] && [[ -n "$(ls -A /etc/envoy/brightdata/*.crt 
     cp "$cert" "/usr/local/share/ca-certificates/brightdata-${cert_name}.crt"
     
     # Add to NSS database
-    if [[ $RUN_AS_ROOT == "true" ]]; then
+    if [[ "${RUN_AS_ROOT:-}" == "true" ]]; then
       certutil -d /root/.pki/nssdb -A -t "C,," -n "BrightData $cert_name" -i "$cert" 2>&1 | sed 's/^/[envoy-init] /'
       echo "[envoy-init] Certificate added to nssdb as root"
     else

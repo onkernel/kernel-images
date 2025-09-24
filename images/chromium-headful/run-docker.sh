@@ -60,8 +60,6 @@ if [[ -n "${XDS_JWT:-}" ]]; then
   RUN_ARGS+=( -e "XDS_JWT=$XDS_JWT" )
   RUN_ARGS+=( -p 9901:9901 )
   RUN_ARGS+=( -p 3128:3128 )
-  # TODO: import bright data and self-signed client proxy cert to chrome instead of ignore
-  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --proxy-server=https://127.0.0.1:3128 --ignore-certificate-errors"
 fi
 
 # WebRTC port mapping
