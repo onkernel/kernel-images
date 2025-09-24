@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 func silentLogger() *slog.Logger {
@@ -66,21 +66,24 @@ func TestWaitForInitialTimeoutWhenLogMissing(t *testing.T) {
 func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 	// Start an echo websocket server as upstream
 	echoSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
-		c, err := upgrader.Upgrade(w, r, nil)
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+			OriginPatterns: []string{"*"},
+		})
 		if err != nil {
-			t.Fatalf("upgrade failed: %v", err)
+			t.Fatalf("accept failed: %v", err)
 			return
 		}
-		defer c.Close()
+		defer c.Close(websocket.StatusNormalClosure, "")
+
+		ctx := r.Context()
 		for {
-			mt, msg, err := c.ReadMessage()
+			mt, msg, err := c.Read(ctx)
 			if err != nil {
 				return
 			}
 			// echo back with path+query prefixed to verify preservation
 			payload := []byte(r.URL.Path + "?" + r.URL.RawQuery + "|" + string(msg))
-			if err := c.WriteMessage(mt, payload); err != nil {
+			if err := c.Write(ctx, mt, payload); err != nil {
 				return
 			}
 		}
@@ -109,16 +112,18 @@ func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 	pu.Path = "/client"
 	pu.RawQuery = "x=y"
 
-	conn, _, err := websocket.DefaultDialer.Dial(pu.String(), nil)
+	ctx := context.Background()
+	conn, _, err := websocket.Dial(ctx, pu.String(), nil)
 	if err != nil {
 		t.Fatalf("dial proxy failed: %v", err)
 	}
-	defer conn.Close()
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
 	msg := "hello"
-	if err := conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, []byte(msg)); err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
-	_, resp, err := conn.ReadMessage()
+	_, resp, err := conn.Read(ctx)
 	if err != nil {
 		t.Fatalf("read failed: %v", err)
 	}
