@@ -55,8 +55,10 @@ if [[ -d /etc/envoy/brightdata ]] && [[ -n "$(ls -A /etc/envoy/brightdata/*.crt 
     # Add to NSS database
     if [[ $RUN_AS_ROOT == "true" ]]; then
       certutil -d /root/.pki/nssdb -A -t "C,," -n "BrightData $cert_name" -i "$cert" 2>&1 | sed 's/^/[envoy-init] /'
+      echo "[envoy-init] Certificate added to nssdb as root"
     else
       certutil -d /home/kernel/.pki/nssdb -A -t "C,," -n "BrightData $cert_name" -i "$cert" 2>&1 | sed 's/^/[envoy-init] /'
+      echo "[envoy-init] Certificate added to nssdb as kernel"
     fi
   done
   
