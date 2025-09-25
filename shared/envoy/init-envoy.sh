@@ -5,8 +5,6 @@ set -o pipefail -o errexit -o nounset
 # Check for required environment variables, to see if envoy is enabled
 if [[ -z "${INST_NAME:-}" || -z "${METRO_NAME:-}" || -z "${XDS_SERVER:-}" || -z "${XDS_JWT:-}" ]]; then
   echo "[envoy-init] Required environment variables not set. Skipping Envoy initialization."
-  echo "[envoy-init] Required: INST_NAME, METRO_NAME, XDS_SERVER, XDS_JWT"
-  echo "[envoy-init] Current values: INST_NAME=${INST_NAME:-unset}, METRO_NAME=${METRO_NAME:-unset}, XDS_SERVER=${XDS_SERVER:-unset}, XDS_JWT=***"
   exit 0
 fi
 
