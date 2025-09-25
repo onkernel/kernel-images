@@ -1,0 +1,226 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/onkernel/kernel-images/server/lib/logger"
+	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/ziputil"
+)
+
+// UploadExtensionsAndRestart handles multipart upload of one or more extension zips, extracts
+// them under /home/kernel/extensions/<name>, writes /chromium/flags to enable them, restarts
+// Chromium via supervisord, and waits (via UpstreamManager) until DevTools is ready.
+func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oapi.UploadExtensionsAndRestartRequestObject) (oapi.UploadExtensionsAndRestartResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	if request.Body == nil {
+		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+
+	// Strict handler gives us *multipart.Reader; use NextPart() directly
+	mr, ok := any(request.Body).(interface {
+		NextPart() (*multipart.Part, error)
+	})
+	if !ok {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "multipart reader not available"}}, nil
+	}
+
+	temps := []string{}
+	defer func() {
+		for _, p := range temps {
+			_ = os.Remove(p)
+		}
+	}()
+
+	// Parse fields: extensions[<i>].zip_file and extensions[<i>].name
+	parseIndexAndField := func(name string) (int, string, bool) {
+		if !strings.HasPrefix(name, "extensions") {
+			return 0, "", false
+		}
+		if strings.HasPrefix(name, "extensions[") {
+			end := strings.Index(name, "]")
+			if end == -1 {
+				return 0, "", false
+			}
+			idxStr := name[len("extensions["):end]
+			rest := name[end+1:]
+			rest = strings.TrimPrefix(rest, ".")
+			var field string
+			if strings.HasPrefix(rest, "[") && strings.HasSuffix(rest, "]") {
+				field = rest[1 : len(rest)-1]
+			} else {
+				field = rest
+			}
+			idx := 0
+			if v, err := strconv.Atoi(idxStr); err == nil && v >= 0 {
+				idx = v
+			} else {
+				return 0, "", false
+			}
+			return idx, field, true
+		}
+		if strings.HasPrefix(name, "extensions.") {
+			parts := strings.Split(name, ".")
+			if len(parts) != 3 {
+				return 0, "", false
+			}
+			idx := 0
+			if v, err := strconv.Atoi(parts[1]); err == nil && v >= 0 {
+				idx = v
+			} else {
+				return 0, "", false
+			}
+			return idx, parts[2], true
+		}
+		return 0, "", false
+	}
+
+	type pending struct {
+		zipTemp     string
+		name        string
+		zipReceived bool
+	}
+	pendings := map[int]*pending{}
+
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Error("read form part", "err", err)
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read form part"}}, nil
+		}
+		idx, field, ok := parseIndexAndField(part.FormName())
+		if !ok {
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid form field: " + part.FormName()}}, nil
+		}
+		p, exists := pendings[idx]
+		if !exists {
+			p = &pending{}
+			pendings[idx] = p
+		}
+		switch field {
+		case "zip_file":
+			tmp, err := os.CreateTemp("", "ext-*.zip")
+			if err != nil {
+				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+			}
+			temps = append(temps, tmp.Name())
+			if _, err := io.Copy(tmp, part); err != nil {
+				tmp.Close()
+				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read zip file"}}, nil
+			}
+			if err := tmp.Close(); err != nil {
+				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+			}
+			p.zipTemp = tmp.Name()
+			p.zipReceived = true
+		case "name":
+			b, err := io.ReadAll(part)
+			if err != nil {
+				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read name"}}, nil
+			}
+			name := strings.TrimSpace(string(b))
+			if name == "" || !regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`).MatchString(name) {
+				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid extension name"}}, nil
+			}
+			p.name = name
+		default:
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid field: " + field}}, nil
+		}
+	}
+
+	if len(pendings) == 0 {
+		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no extensions provided"}}, nil
+	}
+
+	// Materialize uploads
+	extBase := "/home/kernel/extensions"
+	if err := os.MkdirAll(extBase, 0o755); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extensions dir"}}, nil
+	}
+
+	for _, p := range pendings {
+		if !p.zipReceived || p.name == "" {
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each item must include zip_file and name"}}, nil
+		}
+		dest := filepath.Join(extBase, p.name)
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extension dir"}}, nil
+		}
+		if err := ziputil.Unzip(p.zipTemp, dest); err != nil {
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid zip file"}}, nil
+		}
+		// chown best-effort to kernel:kernel (uid/gid 1000) recursively
+		_ = filepath.WalkDir(dest, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			_ = os.Chown(path, 1000, 1000)
+			return nil
+		})
+	}
+
+	// Build flags overlay
+	var paths []string
+	for _, p := range pendings {
+		paths = append(paths, filepath.Join(extBase, p.name))
+	}
+	overlay := fmt.Sprintf("--disable-extensions-except=%s --load-extension=%s\n", strings.Join(paths, ","), strings.Join(paths, ","))
+	// Ensure /chromium exists
+	_ = os.MkdirAll("/chromium", 0o755)
+	if err := os.WriteFile("/chromium/flags", []byte(overlay), 0o644); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
+	}
+	_ = os.Chown("/chromium/flags", 0, 0)
+
+	// Subscribe to upstream updates BEFORE triggering restart to avoid races
+	updates, cancelSub := s.upstreamMgr.Subscribe()
+	defer cancelSub()
+
+	// Fire-and-forget supervisorctl restart in a background goroutine.
+	// Capture first error if it happens; do not block returning success if upstream is ready earlier.
+	errCh := make(chan error, 1)
+	go func() {
+		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
+		if err != nil {
+			log.Error("failed to restart chromium", "err", err, "out", string(out))
+			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)
+			return
+		}
+		// signal success by closing channel if no error was sent
+		close(errCh)
+	}()
+
+	// Wait for either a new upstream, a restart error, or timeout
+	timeout := time.NewTimer(15 * time.Second)
+	defer timeout.Stop()
+	select {
+	case <-updates:
+		return oapi.UploadExtensionsAndRestart201Response{}, nil
+	case err := <-errCh:
+		if err != nil {
+			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()}}, nil
+		}
+		select {
+		case <-updates:
+			return oapi.UploadExtensionsAndRestart201Response{}, nil
+		case <-timeout.C:
+			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
+		}
+	case <-timeout.C:
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
+	}
+}

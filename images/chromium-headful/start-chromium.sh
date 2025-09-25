@@ -10,12 +10,58 @@ echo "Starting Chromium launcher"
 # Resolve internal port for the remote debugging interface
 INTERNAL_PORT="${INTERNAL_PORT:-9223}"
 
-# Load additional Chromium flags from env and optional file
-CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-}"
+# Load flags from env (base) and optional runtime overlay file
+BASE_FLAGS="${CHROMIUM_FLAGS:-}"
+RUNTIME_FLAGS=""
 if [[ -f /chromium/flags ]]; then
-  CHROMIUM_FLAGS="$CHROMIUM_FLAGS $(cat /chromium/flags)"
+  RUNTIME_FLAGS="$(cat /chromium/flags)"
 fi
-echo "CHROMIUM_FLAGS: $CHROMIUM_FLAGS"
+
+# When runtime overlay includes extension directives, strip conflicting flags
+has_extension_overlay=false
+if [[ "$RUNTIME_FLAGS" == *"--load-extension"* || "$RUNTIME_FLAGS" == *"--disable-extensions-except"* ]]; then
+  has_extension_overlay=true
+fi
+
+FILTERED_BASE=()
+if [[ "$has_extension_overlay" == true ]]; then
+  for tok in $BASE_FLAGS; do
+    case "$tok" in
+      --disable-extensions|--disable-extensions=*|--load-extension|--load-extension=*|--disable-extensions-except|--disable-extensions-except=*)
+        ;;
+      *)
+        FILTERED_BASE+=("$tok")
+        ;;
+    esac
+  done
+else
+  for tok in $BASE_FLAGS; do
+    FILTERED_BASE+=("$tok")
+  done
+fi
+
+COMBINED=()
+for tok in "${FILTERED_BASE[@]}"; do
+  COMBINED+=("$tok")
+done
+for tok in $RUNTIME_FLAGS; do
+  COMBINED+=("$tok")
+done
+
+declare -A SEEN
+DEDUP=()
+for tok in "${COMBINED[@]}"; do
+  if [[ -z "${SEEN[$tok]:-}" && -n "$tok" ]]; then
+    DEDUP+=("$tok")
+    SEEN[$tok]=1
+  fi
+done
+
+FINAL_FLAGS="${DEDUP[*]}"
+
+echo "BASE_FLAGS: $BASE_FLAGS"
+echo "RUNTIME_FLAGS: $RUNTIME_FLAGS"
+echo "FINAL_FLAGS: $FINAL_FLAGS"
 
 # Always use display :1 and point DBus to the system bus socket
 export DISPLAY=":1"
@@ -30,7 +76,7 @@ if [[ "$RUN_AS_ROOT" == "true" ]]; then
     --user-data-dir=/home/kernel/user-data \
     --password-store=basic \
     --no-first-run \
-    ${CHROMIUM_FLAGS:-}
+    ${FINAL_FLAGS:-}
 else
   echo "Running chromium as kernel user"
   exec runuser -u kernel -- env \
@@ -44,5 +90,5 @@ else
     --user-data-dir=/home/kernel/user-data \
     --password-store=basic \
     --no-first-run \
-    ${CHROMIUM_FLAGS:-}
+    ${FINAL_FLAGS:-}
 fi
