@@ -116,7 +116,7 @@ RUN set -eux; \
     install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
     rm -rf /tmp/ffmpeg*
 
-    # runtime
+# runtime
 ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
