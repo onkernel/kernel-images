@@ -58,9 +58,9 @@ static_resources:
                 address: {XDS_SERVER}
                 port_value: 443
 
-# Envoy admin interface for debugging
-admin:
-  address:
-    socket_address:
-      address: 0.0.0.0
-      port_value: 9901
+# Enable Envoy admin interface for debugging locally
+# admin:
+#   address:
+#     socket_address:
+#       address: 0.0.0.0
+#       port_value: 9901
