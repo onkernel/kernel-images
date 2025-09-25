@@ -195,6 +195,7 @@ supervisorctl -c /etc/supervisor/supervisord.conf start chromium
 echo "[wrapper] Waiting for Chromium remote debugging on 127.0.0.1:$INTERNAL_PORT..."
 for i in {1..100}; do
   if nc -z 127.0.0.1 "$INTERNAL_PORT" 2>/dev/null; then
+    echo "connected to chrome debugging port."
     break
   fi
   sleep 0.2
