@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 var devtoolsListeningRegexp = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
@@ -147,8 +148,11 @@ func (u *UpstreamManager) runTailOnce(ctx context.Context) {
 // WebSocketProxyHandler returns an http.Handler that upgrades incoming connections and
 // proxies them to the current upstream websocket URL. It expects only websocket requests.
 // If logCDPMessages is true, all CDP messages will be logged with their direction.
-func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool) http.Handler {
+func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool, ctrl scaletozero.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctrl.Disable(context.WithoutCancel(r.Context()))
+		defer ctrl.Enable(context.WithoutCancel(r.Context()))
+
 		upstreamCurrent := mgr.Current()
 		if upstreamCurrent == "" {
 			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)

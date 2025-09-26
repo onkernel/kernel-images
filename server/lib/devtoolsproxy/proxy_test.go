@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 func silentLogger() *slog.Logger {
@@ -101,7 +102,7 @@ func TestWebSocketProxyHandler_ProxiesEcho(t *testing.T) {
 	// seed current upstream to echo server including path/query (bypass tailing)
 	mgr.setCurrent((&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path, RawQuery: u.RawQuery}).String())
 
-	proxy := WebSocketProxyHandler(mgr, logger, false)
+	proxy := WebSocketProxyHandler(mgr, logger, false, scaletozero.NewNoopController())
 	proxySrv := httptest.NewServer(proxy)
 	defer proxySrv.Close()
 
