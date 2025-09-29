@@ -16,7 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 var devtoolsListeningRegexp = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
@@ -180,8 +181,11 @@ func (u *UpstreamManager) runTailOnce(ctx context.Context) {
 // WebSocketProxyHandler returns an http.Handler that upgrades incoming connections and
 // proxies them to the current upstream websocket URL. It expects only websocket requests.
 // If logCDPMessages is true, all CDP messages will be logged with their direction.
-func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool) http.Handler {
+func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool, ctrl scaletozero.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctrl.Disable(context.WithoutCancel(r.Context()))
+		defer ctrl.Enable(context.WithoutCancel(r.Context()))
+
 		upstreamCurrent := mgr.Current()
 		if upstreamCurrent == "" {
 			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
@@ -194,48 +198,35 @@ func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMess
 		}
 		// Always use the full upstream path and query, ignoring the client's request path/query
 		upstreamURL := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: parsed.Path, RawQuery: parsed.RawQuery}).String()
-		upgrader := websocket.Upgrader{
-			ReadBufferSize:    65536,
-			WriteBufferSize:   65536,
-			EnableCompression: true,
-			CheckOrigin:       func(r *http.Request) bool { return true },
+		acceptOptions := &websocket.AcceptOptions{
+			OriginPatterns:  []string{"*"},
+			CompressionMode: websocket.CompressionContextTakeover,
 		}
-		logger.Info("upgrader config", slog.Any("upgrader", upgrader))
-		clientConn, err := upgrader.Upgrade(w, r, nil)
+		logger.Info("accept options", slog.Any("options", acceptOptions))
+		clientConn, err := websocket.Accept(w, r, acceptOptions)
 		if err != nil {
-			logger.Error("websocket upgrade failed", slog.String("err", err.Error()))
+			logger.Error("websocket accept failed", slog.String("err", err.Error()))
 			return
 		}
-		clientConn.SetReadDeadline(time.Time{})    // No timeout--hold on to connections for dear life
-		clientConn.SetWriteDeadline(time.Time{})   // No timeout--hold on to connections for dear life
 		clientConn.SetReadLimit(100 * 1024 * 1024) // 100 MB. Effectively no maximum size of message from client
-		clientConn.EnableWriteCompression(true)
-		clientConn.SetCompressionLevel(6)
-
-		dialer := websocket.Dialer{
-			ReadBufferSize:   65536,
-			WriteBufferSize:  65536,
-			HandshakeTimeout: 30 * time.Second,
+		dialOptions := &websocket.DialOptions{
+			CompressionMode: websocket.CompressionContextTakeover,
 		}
-		logger.Info("dialer config", slog.Any("dialer", dialer))
-		upstreamConn, _, err := dialer.Dial(upstreamURL, nil)
+		logger.Info("dial options", slog.Any("options", dialOptions))
+		upstreamConn, _, err := websocket.Dial(r.Context(), upstreamURL, dialOptions)
 		if err != nil {
 			logger.Error("dial upstream failed", slog.String("err", err.Error()), slog.String("url", upstreamURL))
-			_ = clientConn.Close()
+			_ = clientConn.Close(websocket.StatusInternalError, "failed to connect to upstream")
 			return
 		}
 		upstreamConn.SetReadLimit(100 * 1024 * 1024) // 100 MB. Effectively no maximum size of message from upstream
-		upstreamConn.EnableWriteCompression(true)
-		upstreamConn.SetCompressionLevel(6)
-		upstreamConn.SetReadDeadline(time.Time{})  // no timeout
-		upstreamConn.SetWriteDeadline(time.Time{}) // no timeout
 		logger.Debug("proxying devtools websocket", slog.String("url", upstreamURL))
 
 		var once sync.Once
 		cleanup := func() {
 			once.Do(func() {
-				_ = upstreamConn.Close()
-				_ = clientConn.Close()
+				_ = upstreamConn.Close(websocket.StatusNormalClosure, "")
+				_ = clientConn.Close(websocket.StatusNormalClosure, "")
 			})
 		}
 		proxyWebSocket(r.Context(), clientConn, upstreamConn, cleanup, logger, logCDPMessages)
@@ -243,14 +234,14 @@ func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMess
 }
 
 type wsConn interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	Close() error
+	Read(ctx context.Context) (websocket.MessageType, []byte, error)
+	Write(ctx context.Context, typ websocket.MessageType, p []byte) error
+	Close(statusCode websocket.StatusCode, reason string) error
 }
 
 // logCDPMessage logs a CDP message with its direction if logging is enabled
-func logCDPMessage(logger *slog.Logger, direction string, mt int, msg []byte) {
-	if mt != websocket.TextMessage {
+func logCDPMessage(logger *slog.Logger, direction string, mt websocket.MessageType, msg []byte) {
+	if mt != websocket.MessageText {
 		return // Only log text messages (CDP messages)
 	}
 
@@ -331,7 +322,7 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 
 	go func() {
 		for {
-			mt, msg, err := clientConn.ReadMessage()
+			mt, msg, err := clientConn.Read(ctx)
 			if err != nil {
 				logger.Error("client read error", slog.String("err", err.Error()))
 				errChan <- err
@@ -343,7 +334,7 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 				logCDPMessage(logger, "->", mt, msg)
 			}
 
-			if err := upstreamConn.WriteMessage(mt, msg); err != nil {
+			if err := upstreamConn.Write(ctx, mt, msg); err != nil {
 				logger.Error("upstream write error", slog.String("err", err.Error()))
 				errChan <- err
 				break
@@ -352,7 +343,7 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 	}()
 	go func() {
 		for {
-			mt, msg, err := upstreamConn.ReadMessage()
+			mt, msg, err := upstreamConn.Read(ctx)
 			if err != nil {
 				logger.Error("upstream read error", slog.String("err", err.Error()))
 				errChan <- err
@@ -364,7 +355,7 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 				logCDPMessage(logger, "<-", mt, msg)
 			}
 
-			if err := clientConn.WriteMessage(mt, msg); err != nil {
+			if err := clientConn.Write(ctx, mt, msg); err != nil {
 				logger.Error("client write error", slog.String("err", err.Error()))
 				errChan <- err
 				break
