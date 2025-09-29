@@ -23,6 +23,8 @@ import (
 // Chromium via supervisord, and waits (via UpstreamManager) until DevTools is ready.
 func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oapi.UploadExtensionsAndRestartRequestObject) (oapi.UploadExtensionsAndRestartResponseObject, error) {
 	log := logger.FromContext(ctx)
+	start := time.Now()
+	log.Info("upload extensions: begin")
 
 	if request.Body == nil {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
@@ -142,35 +144,30 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		}
 	}
 
+	log.Info("parsed multipart fields", "items", len(pendings))
+
 	if len(pendings) == 0 {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no extensions provided"}}, nil
 	}
 
 	// Materialize uploads
 	extBase := "/home/kernel/extensions"
-	if err := os.MkdirAll(extBase, 0o755); err != nil {
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extensions dir"}}, nil
-	}
 
 	for _, p := range pendings {
 		if !p.zipReceived || p.name == "" {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each item must include zip_file and name"}}, nil
 		}
 		dest := filepath.Join(extBase, p.name)
+		log.Info("processing extension", "name", p.name, "dest", dest)
 		if err := os.MkdirAll(dest, 0o755); err != nil {
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extension dir"}}, nil
 		}
 		if err := ziputil.Unzip(p.zipTemp, dest); err != nil {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid zip file"}}, nil
 		}
-		// chown best-effort to kernel:kernel (uid/gid 1000) recursively
-		_ = filepath.WalkDir(dest, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			_ = os.Chown(path, 1000, 1000)
-			return nil
-		})
+		// chown best-effort to kernel:kernel recursively
+		_ = exec.Command("chown", "-R", "kernel:kernel", dest).Run()
+		log.Info("installed extension", "name", p.name)
 	}
 
 	// Build flags overlay
@@ -185,14 +182,17 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
 	}
 	_ = os.Chown("/chromium/flags", 0, 0)
+	log.Info("wrote /chromium/flags", "paths", strings.Join(paths, ","))
 
 	// Subscribe to upstream updates BEFORE triggering restart to avoid races
 	updates, cancelSub := s.upstreamMgr.Subscribe()
 	defer cancelSub()
+	log.Info("subscribed to upstream updates")
 
 	// Fire-and-forget supervisorctl restart in a background goroutine.
 	// Capture first error if it happens; do not block returning success if upstream is ready earlier.
 	errCh := make(chan error, 1)
+	log.Info("restarting chromium via supervisorctl")
 	go func() {
 		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
@@ -209,6 +209,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	defer timeout.Stop()
 	select {
 	case <-updates:
+		log.Info("devtools ready", "elapsed", time.Since(start).String())
 		return oapi.UploadExtensionsAndRestart201Response{}, nil
 	case err := <-errCh:
 		if err != nil {
@@ -216,11 +217,14 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		}
 		select {
 		case <-updates:
+			log.Info("devtools ready (after restart completes)", "elapsed", time.Since(start).String())
 			return oapi.UploadExtensionsAndRestart201Response{}, nil
 		case <-timeout.C:
+			log.Info("devtools not ready in time (post-restart)", "elapsed", time.Since(start).String())
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
 		}
 	case <-timeout.C:
+		log.Info("devtools not ready in time", "elapsed", time.Since(start).String())
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
 	}
 }
