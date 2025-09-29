@@ -157,8 +157,8 @@ RUN apt update -y && apt install -y chromium sqlite3
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
-ENV HEIGHT=768
-ENV WIDTH=1024
+ENV HEIGHT=1080
+ENV WIDTH=1920
 ENV WITHDOCKER=true
 
 COPY images/chromium-headful/xorg.conf /etc/neko/xorg.conf
@@ -169,6 +169,8 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
 COPY images/chromium-headful/image-chromium/ /
+COPY images/chromium-headful/start-pulseaudio.sh /images/chromium-headful/start-pulseaudio.sh
+RUN chmod +x /images/chromium-headful/start-pulseaudio.sh
 COPY images/chromium-headful/start-chromium.sh /images/chromium-headful/start-chromium.sh
 RUN chmod +x /images/chromium-headful/start-chromium.sh
 COPY images/chromium-headful/wrapper.sh /wrapper.sh

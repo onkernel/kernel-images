@@ -221,6 +221,10 @@ API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
 
 # Start via supervisord (env overrides are read by the service's command)
 supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
+
+echo "[wrapper] Starting PulseAudio daemon via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start pulseaudio
+
 # close the "--no-sandbox unsupported flag" warning when running as root
 # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
 # and when running as root you must use the --no-sandbox flag, which generates a warning
