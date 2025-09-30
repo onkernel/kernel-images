@@ -190,8 +190,31 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	// Fire-and-forget supervisorctl restart in a background goroutine.
 	// Capture first error if it happens; do not block returning success if upstream is ready earlier.
 	errCh := make(chan error, 1)
+	restartDone := make(chan struct{})
+
+	// Debug goroutine: periodically check supervisorctl status during restart
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-restartDone:
+				log.Info("debug: restart completed, stopping status monitoring")
+				return
+			case <-ticker.C:
+				out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "status").CombinedOutput()
+				if err != nil {
+					log.Info("debug: supervisorctl status failed", "err", err, "out", string(out))
+				} else {
+					fmt.Println("debug: supervisorctl status", string(out))
+				}
+			}
+		}
+	}()
+
 	log.Info("restarting chromium via supervisorctl")
 	go func() {
+		defer close(restartDone)
 		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
 			log.Error("failed to restart chromium", "err", err, "out", string(out))
