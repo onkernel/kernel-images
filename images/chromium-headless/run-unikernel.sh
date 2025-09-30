@@ -15,11 +15,12 @@ deploy_args=(
   --scale-to-zero idle
   --scale-to-zero-cooldown 3000ms
   --scale-to-zero-stateful
+  --vcpus 1
   -M 1024
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
+  -e LOG_CDP_MESSAGES=true \
   -p 9222:9222/tls
   -p 444:10001/tls
-  --vcpus 2
   -n "$NAME"
 )
 
