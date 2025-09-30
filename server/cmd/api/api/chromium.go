@@ -182,7 +182,20 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
 	}
 	_ = os.Chown("/chromium/flags", 0, 0)
+	_ = os.Chmod("/chromium/flags", 0o644)
 	log.Info("wrote /chromium/flags", "paths", strings.Join(paths, ","))
+
+	// Debug: list directories to verify ownership/permissions
+	if out, err := exec.Command("ls", "-alh", "/home/kernel/extensions").CombinedOutput(); err == nil {
+		log.Info("ls -alh /home/kernel/extensions", "out", string(out))
+	} else {
+		log.Info("ls -alh /home/kernel/extensions failed", "err", err.Error(), "out", string(out))
+	}
+	if out, err := exec.Command("ls", "-alh", "/chromium").CombinedOutput(); err == nil {
+		log.Info("ls -alh /chromium", "out", string(out))
+	} else {
+		log.Info("ls -alh /chromium failed", "err", err.Error(), "out", string(out))
+	}
 
 	// Subscribe to upstream updates BEFORE triggering restart to avoid races
 	updates, cancelSub := s.upstreamMgr.Subscribe()
