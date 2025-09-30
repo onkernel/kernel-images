@@ -33,6 +33,8 @@ func (s *ApiService) DisplayStatus(ctx context.Context, _ oapi.DisplayStatusRequ
 
 // SetResolution safely updates the current X display resolution. When require_idle
 // is true (default), it refuses to resize while live view or recording/replay is active.
+// This method automatically detects whether the system is running with Xorg (headful)
+// or Xvfb (headless) and uses the appropriate method to change resolution.
 func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRequestObject) (oapi.SetResolutionResponseObject, error) {
 	log := logger.FromContext(ctx)
 	if req.Body == nil {
@@ -63,43 +65,155 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 	}
 
 	display := s.resolveDisplayFromEnv()
-	args := []string{"-lc", fmt.Sprintf("xrandr -s %dx%d", width, height)}
-	env := map[string]string{"DISPLAY": display}
-	execReq := oapi.ProcessExecRequest{Command: "bash", Args: &args, Env: &env}
-	resp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &execReq})
-	if err != nil {
-		return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to execute xrandr"}}, nil
-	}
-	switch r := resp.(type) {
-	case oapi.ProcessExec200JSONResponse:
-		if r.ExitCode != nil && *r.ExitCode != 0 {
-			var stderr string
-			if r.StderrB64 != nil {
-				if b, decErr := base64.StdEncoding.DecodeString(*r.StderrB64); decErr == nil {
-					stderr = strings.TrimSpace(string(b))
+
+	// Detect if we're using Xorg (headful) or Xvfb (headless) by checking supervisor services
+	// This is more reliable than checking xrandr support since xrandr might be installed
+	// but not functional with Xvfb
+	checkCmd := []string{"-lc", "supervisorctl status xvfb >/dev/null 2>&1 && echo 'xvfb' || echo 'xorg'"}
+	checkReq := oapi.ProcessExecRequest{Command: "bash", Args: &checkCmd}
+	checkResp, _ := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &checkReq})
+
+	isXorg := true
+	if execResp, ok := checkResp.(oapi.ProcessExec200JSONResponse); ok {
+		if execResp.StdoutB64 != nil {
+			if output, err := base64.StdEncoding.DecodeString(*execResp.StdoutB64); err == nil {
+				outputStr := strings.TrimSpace(string(output))
+				if outputStr == "xvfb" {
+					isXorg = false
+					log.Info("detected Xvfb display (headless mode)")
+				} else {
+					log.Info("detected Xorg display (headful mode)")
 				}
 			}
-			if stderr == "" {
-				stderr = "xrandr returned non-zero exit code"
-			}
-			return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("failed to set resolution: %s", stderr)}}, nil
 		}
-		log.Info("resolution updated", "display", display, "width", width, "height", height)
+	}
 
-		// Restart Chromium to ensure it adapts to the new resolution
-		log.Info("restarting chromium to adapt to new resolution")
-		restartCmd := []string{"-lc", "supervisorctl restart chromium"}
-		restartEnv := map[string]string{}
-		restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd, Env: &restartEnv}
-		restartResp, restartErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq})
-		if restartErr != nil {
-			log.Error("failed to restart chromium after resolution change", "error", restartErr)
-			// Still return success since resolution change succeeded
+	if isXorg {
+		// Xorg path: use xrandr
+		args := []string{"-lc", fmt.Sprintf("xrandr -s %dx%d", width, height)}
+		env := map[string]string{"DISPLAY": display}
+		execReq := oapi.ProcessExecRequest{Command: "bash", Args: &args, Env: &env}
+		resp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &execReq})
+		if err != nil {
+			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to execute xrandr"}}, nil
+		}
+		switch r := resp.(type) {
+		case oapi.ProcessExec200JSONResponse:
+			if r.ExitCode != nil && *r.ExitCode != 0 {
+				var stderr string
+				if r.StderrB64 != nil {
+					if b, decErr := base64.StdEncoding.DecodeString(*r.StderrB64); decErr == nil {
+						stderr = strings.TrimSpace(string(b))
+					}
+				}
+				if stderr == "" {
+					stderr = "xrandr returned non-zero exit code"
+				}
+				return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("failed to set resolution: %s", stderr)}}, nil
+			}
+			log.Info("resolution updated via xrandr", "display", display, "width", width, "height", height)
+
+			// Restart Chromium to ensure it adapts to the new resolution
+			log.Info("restarting chromium to adapt to new resolution")
+			restartCmd := []string{"-lc", "supervisorctl restart chromium"}
+			restartEnv := map[string]string{}
+			restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd, Env: &restartEnv}
+			restartResp, restartErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq})
+			if restartErr != nil {
+				log.Error("failed to restart chromium after resolution change", "error", restartErr)
+				// Still return success since resolution change succeeded
+				return oapi.SetResolution200JSONResponse{Ok: true}, nil
+			}
+
+			// Check if restart succeeded
+			if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
+				if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
+					log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
+				} else {
+					log.Info("chromium restarted successfully")
+				}
+			}
+
+			return oapi.SetResolution200JSONResponse{Ok: true}, nil
+		case oapi.ProcessExec400JSONResponse:
+			return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: r.Message}}, nil
+		case oapi.ProcessExec500JSONResponse:
+			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: r.Message}}, nil
+		default:
+			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unexpected response from process exec"}}, nil
+		}
+	} else {
+		// Xvfb path: restart with new dimensions
+		log.Info("updating Xvfb resolution requires restart", "width", width, "height", height)
+
+		// Update supervisor config to include environment variables
+		// First, remove any existing environment line to avoid duplicates
+		log.Info("updating xvfb supervisor config with new dimensions")
+		removeEnvCmd := []string{"-lc", `sed -i '/^environment=/d' /etc/supervisor/conf.d/services/xvfb.conf`}
+		removeEnvReq := oapi.ProcessExecRequest{Command: "bash", Args: &removeEnvCmd}
+		s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &removeEnvReq})
+
+		// Now add the environment line with WIDTH and HEIGHT
+		addEnvCmd := []string{"-lc", fmt.Sprintf(`sed -i '/\[program:xvfb\]/a environment=WIDTH="%d",HEIGHT="%d",DPI="96",DISPLAY=":1"' /etc/supervisor/conf.d/services/xvfb.conf`, width, height)}
+		addEnvReq := oapi.ProcessExecRequest{Command: "bash", Args: &addEnvCmd}
+		configResp, configErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &addEnvReq})
+		if configErr != nil {
+			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
+		}
+
+		// Check if config update succeeded
+		if execResp, ok := configResp.(oapi.ProcessExec200JSONResponse); ok {
+			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
+				log.Error("failed to update xvfb config", "exit_code", *execResp.ExitCode)
+				return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
+			}
+		}
+
+		// Reload supervisor configuration
+		log.Info("reloading supervisor configuration")
+		reloadCmd := []string{"-lc", "supervisorctl reread && supervisorctl update"}
+		reloadReq := oapi.ProcessExecRequest{Command: "bash", Args: &reloadCmd}
+		_, reloadErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &reloadReq})
+		if reloadErr != nil {
+			log.Error("failed to reload supervisor config", "error", reloadErr)
+		}
+
+		// Restart xvfb with new configuration
+		log.Info("restarting xvfb with new resolution")
+		restartXvfbCmd := []string{"-lc", "supervisorctl restart xvfb"}
+		restartXvfbReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartXvfbCmd}
+		xvfbResp, xvfbErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartXvfbReq})
+		if xvfbErr != nil {
+			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to restart Xvfb"}}, nil
+		}
+
+		// Check if Xvfb restart succeeded
+		if execResp, ok := xvfbResp.(oapi.ProcessExec200JSONResponse); ok {
+			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
+				return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "Xvfb restart failed"}}, nil
+			}
+		}
+
+		// Wait for Xvfb to be ready
+		log.Info("waiting for Xvfb to be ready")
+		waitCmd := []string{"-lc", "sleep 2"}
+		waitReq := oapi.ProcessExecRequest{Command: "bash", Args: &waitCmd}
+		s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &waitReq})
+
+		// Restart Chromium
+		log.Info("restarting chromium after Xvfb restart")
+		restartChromeCmd := []string{"-lc", "supervisorctl restart chromium"}
+		restartChromeEnv := map[string]string{}
+		restartChromeReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartChromeCmd, Env: &restartChromeEnv}
+		chromeResp, chromeErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartChromeReq})
+		if chromeErr != nil {
+			log.Error("failed to restart chromium after Xvfb restart", "error", chromeErr)
+			// Still return success since Xvfb restart succeeded
 			return oapi.SetResolution200JSONResponse{Ok: true}, nil
 		}
 
-		// Check if restart succeeded
-		if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
+		// Check if Chromium restart succeeded
+		if execResp, ok := chromeResp.(oapi.ProcessExec200JSONResponse); ok {
 			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
 				log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
 			} else {
@@ -107,13 +221,8 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 			}
 		}
 
+		log.Info("Xvfb resolution updated", "display", display, "width", width, "height", height)
 		return oapi.SetResolution200JSONResponse{Ok: true}, nil
-	case oapi.ProcessExec400JSONResponse:
-		return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: r.Message}}, nil
-	case oapi.ProcessExec500JSONResponse:
-		return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: r.Message}}, nil
-	default:
-		return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unexpected response from process exec"}}, nil
 	}
 }
 
