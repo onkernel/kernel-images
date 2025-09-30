@@ -9,18 +9,69 @@ ENV CGO_ENABLED=0
 # Go module dependencies first for better layer caching
 COPY server/go.mod ./
 COPY server/go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy the rest of the server source and build the binary
 COPY server/ .
-RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
 
-FROM docker.io/ubuntu:22.04
-
-RUN set -xe; \
+FROM docker.io/ubuntu:22.04 AS ffmpeg-downloader
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -xe; \
     apt-get -yqq update; \
-    apt-get -yqq install \
+    apt-get -yqq --no-install-recommends install ca-certificates curl xz-utils;
+
+# Download FFmpeg (latest static build) for the recording server
+RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
+    <<-'EOT'
+    set -eux
+    ARCHIVE_NAME="ffmpeg-master-latest-linux64-gpl.tar.xz"
+    URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
+    echo "Downloading FFmpeg checksum"
+    if ! curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+        echo "Failed to connect to ffmpeg static build provider for checksum."
+        echo "Checking for cached version to use."
+        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 ]; then
+            echo "Unable to locate cached checksum. Exiting."
+            exit 1
+        else
+            echo "Found cached checksum."
+        fi
+    fi
+    grep -F "$ARCHIVE_NAME" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 > /tmp/cache/ffmpeg/tmp_sha256_only
+    mv /tmp/cache/ffmpeg/tmp_sha256_only /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    sed -i -e 's/  .*$/  \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    echo "Checking cache for FFmpeg archive and validating checksum"
+    if sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+        echo "Checksum validated, using cached FFmpeg archive"
+    else
+        echo "Downloading FFmpeg static build from $URL"
+        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz
+        echo "Validating checksum of FFmpeg static build download"
+        sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    fi
+    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp
+    install -m755 /tmp/ffmpeg-*/bin/ffmpeg  /usr/local/bin/ffmpeg
+    install -m755 /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
+    rm -rf /tmp/ffmpeg*
+EOT
+
+FROM docker.io/ubuntu:22.04
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -xe; \
+    apt-get -yqq update; \
+    apt-get -yqq --no-install-recommends install \
     libcups2 \
     libnss3 \
     libatk1.0-0 \
@@ -37,12 +88,13 @@ RUN set -xe; \
     libxrandr2 \
     libgbm1 \
     libnss3; \
-    apt-get -yqq install \
+    apt-get -yqq --no-install-recommends install \
     ca-certificates \
     curl \
     build-essential \
     libssl-dev \
     git \
+    gpg-agent \
     dbus \
     dbus-x11 \
     xvfb \
@@ -51,21 +103,23 @@ RUN set -xe; \
     supervisor;
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium sqlite3
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    add-apt-repository -y ppa:xtradeb/apps
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    apt-get update -y && \
+    apt-get -y install chromium && \
+    apt-get --no-install-recommends -y install sqlite3;
 
 # Install FFmpeg (latest static build) for the recording server
-RUN set -eux; \
-    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
-    echo "Downloading FFmpeg static build from $URL"; \
-    curl -fsSL "$URL" -o /tmp/ffmpeg.tar.xz; \
-    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
-    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
-    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
-    rm -rf /tmp/ffmpeg*
+COPY --from=ffmpeg-downloader /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg-downloader /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
 # Remove upower to prevent spurious D-Bus activations and logs
-RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    apt-get -yqq purge upower || true
 
 ENV WITHDOCKER=true
 

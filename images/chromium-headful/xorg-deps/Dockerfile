@@ -4,11 +4,15 @@ FROM $BASE_IMAGE AS xorg-deps
 WORKDIR /xorg
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -eux; \
     apt-get update; \
-    apt-get install -y \
-        git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
-    && rm -rf /var/lib/apt/lists/*;
+    apt-get --no-install-recommends -y install \
+    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev;
+
 
 COPY . /xorg/
 

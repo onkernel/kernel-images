@@ -7,29 +7,36 @@ ENV CGO_ENABLED=0
 
 COPY server/go.mod ./
 COPY server/go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY server/ .
-RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
 
 # webrtc client
 FROM node:22-bullseye-slim AS client
 WORKDIR /src
 COPY images/chromium-headful/client/package*.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm npm install
 COPY images/chromium-headful/client/ .
-RUN npm run build
+RUN --mount=type=cache,target=/root/.npm npm run build
 
 # xorg dependencies
 FROM docker.io/ubuntu:22.04 AS xorg-deps
 WORKDIR /xorg
 ENV DEBIAN_FRONTEND=noninteractive
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -eux; \
     apt-get update; \
-    apt-get install -y \
-    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev \
-    && rm -rf /var/lib/apt/lists/*;
+    apt-get --no-install-recommends -y install \
+    git gcc pkgconf autoconf automake libtool make xorg-dev xutils-dev;
 COPY images/chromium-headful/xorg-deps/ /xorg/
 # build xf86-video-dummy v0.3.8 with RandR support
 RUN set -eux; \
@@ -47,6 +54,50 @@ RUN set -eux; \
     make -j$(nproc); \
     make install;
 
+FROM docker.io/ubuntu:22.04 AS ffmpeg-downloader
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    set -xe; \
+    apt-get -yqq update; \
+    apt-get -yqq --no-install-recommends install ca-certificates curl xz-utils;
+
+# Download FFmpeg (latest static build) for the recording server
+RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
+    <<-'EOT'
+    set -eux
+    ARCHIVE_NAME="ffmpeg-master-latest-linux64-gpl.tar.xz"
+    URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
+    echo "Downloading FFmpeg checksum"
+    if ! curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+        echo "Failed to connect to ffmpeg static build provider for checksum."
+        echo "Checking for cached version to use."
+        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 ]; then
+            echo "Unable to locate cached checksum. Exiting."
+            exit 1
+        else
+            echo "Found cached checksum."
+        fi
+    fi
+    grep -F "$ARCHIVE_NAME" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 > /tmp/cache/ffmpeg/tmp_sha256_only
+    mv /tmp/cache/ffmpeg/tmp_sha256_only /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    sed -i -e 's/  .*$/  \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    echo "Checking cache for FFmpeg archive and validating checksum"
+    if sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+        echo "Checksum validated, using cached FFmpeg archive"
+    else
+        echo "Downloading FFmpeg static build from $URL"
+        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz
+        echo "Validating checksum of FFmpeg static build download"
+        sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    fi
+    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp
+    install -m755 /tmp/ffmpeg-*/bin/ffmpeg  /usr/local/bin/ffmpeg
+    install -m755 /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
+    rm -rf /tmp/ffmpeg*
+EOT
+
 FROM ghcr.io/onkernel/neko/base:3.0.6-v1.0.1 AS neko
 # ^--- now has event.SYSTEM_PONG with legacy support to keepalive
 FROM docker.io/ubuntu:22.04
@@ -54,9 +105,14 @@ FROM docker.io/ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV DEBIAN_PRIORITY=high
 
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
+    apt-get update && \
     apt-get -y upgrade && \
-    apt-get -y install \
+    apt-get --no-install-recommends -y install  \
+    gpg-agent \
     # UI Requirements
     xvfb \
     xterm \
@@ -88,39 +144,26 @@ RUN apt-get update && \
     software-properties-common && \
     # Userland apps
     sudo add-apt-repository ppa:mozillateam/ppa && \
-    sudo apt-get install -y --no-install-recommends \
-    chromium-browser \
-    libreoffice \
+    sudo apt-get --no-install-recommends -y install \
     x11-apps \
-    xpdf \
-    gedit \
-    xpaint \
     tint2 \
-    galculator \
-    pcmanfm \
     wget \
     xdg-utils \
     libvulkan1 \
     fonts-liberation \
-    unzip && \
-    apt-get clean
+    unzip;
 
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
-# as of writing these static builds will be the latest 7.0.x release.
-RUN set -eux; \
-    URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \
-    echo "Downloading FFmpeg static build from $URL"; \
-    curl -fsSL "$URL" -o /tmp/ffmpeg.tar.xz; \
-    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp; \
-    install -m755 /tmp/ffmpeg-*/ffmpeg  /usr/local/bin/ffmpeg; \
-    install -m755 /tmp/ffmpeg-*/ffprobe /usr/local/bin/ffprobe; \
-    rm -rf /tmp/ffmpeg*
+COPY --from=ffmpeg-downloader /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg-downloader /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
 # runtime
 ENV USERNAME=root
-RUN set -eux; \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
+    apt-get --no-install-recommends -y install \
     wget ca-certificates python2 supervisor xclip xdotool \
     pulseaudio dbus-x11 xserver-xorg-video-dummy \
     libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
@@ -131,7 +174,7 @@ RUN set -eux; \
     # install libxcvt0 (not available in debian:bullseye)
     ARCH=$(dpkg --print-architecture); \
     wget http://ftp.de.debian.org/debian/pool/main/libx/libxcvt/libxcvt0_0.1.2-1_${ARCH}.deb; \
-    apt-get install --no-install-recommends ./libxcvt0_0.1.2-1_${ARCH}.deb; \
+    apt-get --no-install-recommends install ./libxcvt0_0.1.2-1_${ARCH}.deb; \
     rm ./libxcvt0_0.1.2-1_${ARCH}.deb; \
     #
     # workaround for an X11 problem: http://blog.tigerteufel.de/?p=476
@@ -146,14 +189,17 @@ RUN set -eux; \
     /home/$USERNAME/.local/share/xorg; \
     chmod 1777 /var/log/neko; \
     chown $USERNAME /var/log/neko/ /tmp/runtime-$USERNAME; \
-    chown -R $USERNAME:$USERNAME /home/$USERNAME; \
-    # clean up
-    apt-get clean -y; \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/
+    chown -R $USERNAME:$USERNAME /home/$USERNAME;
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN add-apt-repository -y ppa:xtradeb/apps
-RUN apt update -y && apt install -y chromium sqlite3
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    add-apt-repository -y ppa:xtradeb/apps;
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
+    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+    apt update -y && \
+    apt -y install chromium && \
+    apt --no-install-recommends -y install sqlite3;
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
