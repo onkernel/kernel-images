@@ -11,7 +11,7 @@
 
 ## What's Kernel?
 
-Kernel provides sandboxed, ready-to-use Chrome browsers for browser automations and web agents. This repo powers our [hosted services](https://docs.onkernel.com/introduction).
+Kernel provides sandboxed, ready-to-use Chrome browsers for browser automations and web agents. This repo powers our [hosted services](https://onkernel.com/docs/introduction).
 
 Sign up [here](https://www.onkernel.com/)!
 
@@ -167,7 +167,7 @@ Note: the recording file is encoded into a H.264/MPEG-4 AVC video file. [QuickTi
 
 ## Documentation
 
-This repo powers our managed [browser infrastructure](https://docs.onkernel.com).
+This repo powers our managed [browser infrastructure](https://onkernel.com/docs).
 
 ## Contributing
 

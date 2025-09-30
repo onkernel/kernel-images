@@ -19,6 +19,9 @@ type Config struct {
 
 	// Absolute or relative path to the ffmpeg binary. If empty the code falls back to "ffmpeg" on $PATH.
 	PathToFFmpeg string `envconfig:"FFMPEG_PATH" default:"ffmpeg"`
+
+	// DevTools proxy configuration
+	LogCDPMessages bool `envconfig:"LOG_CDP_MESSAGES" default:"false"`
 }
 
 // Load loads configuration from environment variables
