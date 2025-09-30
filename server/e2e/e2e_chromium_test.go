@@ -174,14 +174,14 @@ func TestExtensionUploadAndActivation(t *testing.T) {
 		}
 		var body bytes.Buffer
 		w := multipart.NewWriter(&body)
-		fw, err := w.CreateFormFile("extensions[0].zip_file", "ext.zip")
+		fw, err := w.CreateFormFile("extensions.zip_file", "ext.zip")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := io.Copy(fw, bytes.NewReader(extZip)); err != nil {
 			t.Fatal(err)
 		}
-		if err := w.WriteField("extensions[0].name", "testext"); err != nil {
+		if err := w.WriteField("extensions.name", "testext"); err != nil {
 			t.Fatal(err)
 		}
 		if err := w.Close(); err != nil {

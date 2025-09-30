@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,55 +44,17 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		}
 	}()
 
-	// Parse fields: extensions[<i>].zip_file and extensions[<i>].name
-	parseIndexAndField := func(name string) (int, string, bool) {
-		if !strings.HasPrefix(name, "extensions") {
-			return 0, "", false
-		}
-		if strings.HasPrefix(name, "extensions[") {
-			end := strings.Index(name, "]")
-			if end == -1 {
-				return 0, "", false
-			}
-			idxStr := name[len("extensions["):end]
-			rest := name[end+1:]
-			rest = strings.TrimPrefix(rest, ".")
-			var field string
-			if strings.HasPrefix(rest, "[") && strings.HasSuffix(rest, "]") {
-				field = rest[1 : len(rest)-1]
-			} else {
-				field = rest
-			}
-			idx := 0
-			if v, err := strconv.Atoi(idxStr); err == nil && v >= 0 {
-				idx = v
-			} else {
-				return 0, "", false
-			}
-			return idx, field, true
-		}
-		if strings.HasPrefix(name, "extensions.") {
-			parts := strings.Split(name, ".")
-			if len(parts) != 3 {
-				return 0, "", false
-			}
-			idx := 0
-			if v, err := strconv.Atoi(parts[1]); err == nil && v >= 0 {
-				idx = v
-			} else {
-				return 0, "", false
-			}
-			return idx, parts[2], true
-		}
-		return 0, "", false
-	}
-
 	type pending struct {
 		zipTemp     string
 		name        string
 		zipReceived bool
 	}
-	pendings := map[int]*pending{}
+	// We now only accept consecutive pairs of fields:
+	//   extensions.name (text)
+	//   extensions.zip_file (file)
+	// Order may be name then zip or zip then name, but they must be consecutive.
+	items := []pending{}
+	var current *pending
 
 	for {
 		part, err := mr.NextPart()
@@ -104,17 +65,15 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			log.Error("read form part", "err", err)
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read form part"}}, nil
 		}
-		idx, field, ok := parseIndexAndField(part.FormName())
-		if !ok {
+		fieldName := part.FormName()
+		if fieldName != "extensions.zip_file" && fieldName != "extensions.name" {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid form field: " + part.FormName()}}, nil
 		}
-		p, exists := pendings[idx]
-		if !exists {
-			p = &pending{}
-			pendings[idx] = p
+		if current == nil {
+			current = &pending{}
 		}
-		switch field {
-		case "zip_file":
+		switch fieldName {
+		case "extensions.zip_file":
 			tmp, err := os.CreateTemp("", "ext-*.zip")
 			if err != nil {
 				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
@@ -127,9 +86,12 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			if err := tmp.Close(); err != nil {
 				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
 			}
-			p.zipTemp = tmp.Name()
-			p.zipReceived = true
-		case "name":
+			if current.zipReceived {
+				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "duplicate zip_file in pair"}}, nil
+			}
+			current.zipTemp = tmp.Name()
+			current.zipReceived = true
+		case "extensions.name":
 			b, err := io.ReadAll(part)
 			if err != nil {
 				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read name"}}, nil
@@ -138,22 +100,35 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			if name == "" || !regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`).MatchString(name) {
 				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid extension name"}}, nil
 			}
-			p.name = name
+			if current.name != "" {
+				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "duplicate name in pair"}}, nil
+			}
+			current.name = name
 		default:
-			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid field: " + field}}, nil
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid field"}}, nil
+		}
+		// If we have both fields, finalize this item
+		if current != nil && current.zipReceived && current.name != "" {
+			items = append(items, *current)
+			current = nil
 		}
 	}
 
-	log.Info("parsed multipart fields", "items", len(pendings))
+	// If the last pair is incomplete, reject the request
+	if current != nil && (!current.zipReceived || current.name == "") {
+		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each extension must include consecutive name and zip_file"}}, nil
+	}
 
-	if len(pendings) == 0 {
+	log.Info("parsed multipart fields", "items", len(items))
+
+	if len(items) == 0 {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no extensions provided"}}, nil
 	}
 
 	// Materialize uploads
 	extBase := "/home/kernel/extensions"
 
-	for _, p := range pendings {
+	for _, p := range items {
 		if !p.zipReceived || p.name == "" {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each item must include zip_file and name"}}, nil
 		}
@@ -174,7 +149,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 
 	// Build flags overlay
 	var paths []string
-	for _, p := range pendings {
+	for _, p := range items {
 		paths = append(paths, filepath.Join(extBase, p.name))
 	}
 	overlay := fmt.Sprintf("--disable-extensions-except=%s --load-extension=%s\n", strings.Join(paths, ","), strings.Join(paths, ","))
