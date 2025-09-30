@@ -737,6 +737,42 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /display/set_resolution:
+    post:
+      summary: Safely set the X display resolution
+      operationId: setResolution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetResolutionRequest"
+      responses:
+        "200":
+          description: Resolution updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /display/status:
+    get:
+      summary: Report whether resize is currently safe
+      operationId: displayStatus
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayStatus"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -788,14 +824,12 @@ components:
         isRecording:
           type: boolean
         started_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording started
         finished_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording finished
     ClickMouseRequest:
       type: object
@@ -986,9 +1020,8 @@ components:
             type: string
           default: []
         cwd:
-          type: string
+          type: [string, "null"]
           description: Working directory (absolute path) to run the command in.
-          nullable: true
           pattern: "^/.*"
         env:
           type: object
@@ -997,17 +1030,15 @@ components:
             type: string
           default: {}
         as_user:
-          type: string
+          type: [string, "null"]
           description: Run the process as this user.
-          nullable: true
         as_root:
           type: boolean
           description: Run the process with root privileges.
           default: false
         timeout_sec:
-          type: integer
+          type: [integer, "null"]
           description: Maximum execution time in seconds.
-          nullable: true
       additionalProperties: false
     ProcessExecResult:
       type: object
@@ -1054,8 +1085,7 @@ components:
           enum: [running, exited]
           description: Process state.
         exit_code:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Exit code if the process has exited.
         cpu_pct:
           type: number
@@ -1110,6 +1140,35 @@ components:
         exit_code:
           type: integer
           description: Exit code when the event is "exit".
+      additionalProperties: false
+    SetResolutionRequest:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+          minimum: 320
+        height:
+          type: integer
+          minimum: 240
+        require_idle:
+          type: boolean
+          description: If true, refuse to resize when live view or recording/replay is active.
+          default: true
+      additionalProperties: false
+    DisplayStatus:
+      type: object
+      properties:
+        live_view_sessions:
+          type: integer
+          description: Number of active Neko viewer sessions.
+        is_recording:
+          type: boolean
+        is_replaying:
+          type: boolean
+        resizable_now:
+          type: boolean
+          description: True when no blockers are present.
       additionalProperties: false
     LogEvent:
       type: object
