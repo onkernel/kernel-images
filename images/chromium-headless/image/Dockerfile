@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     apt-get -yqq --no-install-recommends install ca-certificates curl xz-utils;
 
 # Download FFmpeg (latest static build) for the recording server
-RUN --mount=type=cache,target=/tmp/cache/ffmpeg,id=ffmpeg \
+RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
     <<-'EOT'
     set -eux
     ARCHIVE_NAME="ffmpeg-master-latest-linux64-gpl.tar.xz"
