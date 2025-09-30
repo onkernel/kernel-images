@@ -119,8 +119,6 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each extension must include consecutive name and zip_file"}}, nil
 	}
 
-	log.Info("parsed multipart fields", "items", len(items))
-
 	if len(items) == 0 {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no extensions provided"}}, nil
 	}
@@ -133,7 +131,6 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each item must include zip_file and name"}}, nil
 		}
 		dest := filepath.Join(extBase, p.name)
-		log.Info("processing extension", "name", p.name, "dest", dest)
 		if err := os.MkdirAll(dest, 0o755); err != nil {
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extension dir"}}, nil
 		}
@@ -145,6 +142,11 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
 		}
 		log.Info("installed extension", "name", p.name)
+		// Debug: list extension directory
+		if out, err := exec.Command("ls", "-alh", dest).CombinedOutput(); err == nil {
+			fmt.Println("ls -alh", dest)
+			fmt.Println(string(out))
+		}
 	}
 
 	// Build flags overlay
@@ -163,18 +165,21 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	if err := os.Chmod("/chromium/flags", 0o644); err != nil {
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod chromium flags"}}, nil
 	}
-	log.Info("wrote /chromium/flags", "paths", strings.Join(paths, ","))
 
 	// Debug: list directories to verify ownership/permissions
 	if out, err := exec.Command("ls", "-alh", "/home/kernel/extensions").CombinedOutput(); err == nil {
-		log.Info("ls -alh /home/kernel/extensions", "out", string(out))
+		fmt.Println("ls -alh /home/kernel/extensions")
+		fmt.Println(string(out))
 	} else {
-		log.Info("ls -alh /home/kernel/extensions failed", "err", err.Error(), "out", string(out))
+		fmt.Println("ls -alh /home/kernel/extensions failed:", err.Error())
+		fmt.Println(string(out))
 	}
 	if out, err := exec.Command("ls", "-alh", "/chromium").CombinedOutput(); err == nil {
-		log.Info("ls -alh /chromium", "out", string(out))
+		fmt.Println("ls -alh /chromium")
+		fmt.Println(string(out))
 	} else {
-		log.Info("ls -alh /chromium failed", "err", err.Error(), "out", string(out))
+		fmt.Println("ls -alh /chromium failed:", err.Error())
+		fmt.Println(string(out))
 	}
 
 	// Subscribe to upstream updates BEFORE triggering restart to avoid races
