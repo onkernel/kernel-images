@@ -165,8 +165,10 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		if err := ziputil.Unzip(p.zipTemp, dest); err != nil {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid zip file"}}, nil
 		}
-		// chown best-effort to kernel:kernel recursively
-		_ = exec.Command("chown", "-R", "kernel:kernel", dest).Run()
+		if err := exec.Command("chown", "-R", "kernel:kernel", dest).Run(); err != nil {
+			log.Error("failed to chown extension dir", "err", err)
+			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
+		}
 		log.Info("installed extension", "name", p.name)
 	}
 
@@ -177,12 +179,15 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	}
 	overlay := fmt.Sprintf("--disable-extensions-except=%s --load-extension=%s\n", strings.Join(paths, ","), strings.Join(paths, ","))
 	// Ensure /chromium exists
-	_ = os.MkdirAll("/chromium", 0o755)
+	if err := exec.Command("mkdir", "-p", "/chromium").Run(); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create chromium dir"}}, nil
+	}
 	if err := os.WriteFile("/chromium/flags", []byte(overlay), 0o644); err != nil {
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
 	}
-	_ = os.Chown("/chromium/flags", 0, 0)
-	_ = os.Chmod("/chromium/flags", 0o644)
+	if err := os.Chmod("/chromium/flags", 0o644); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod chromium flags"}}, nil
+	}
 	log.Info("wrote /chromium/flags", "paths", strings.Join(paths, ","))
 
 	// Debug: list directories to verify ownership/permissions
