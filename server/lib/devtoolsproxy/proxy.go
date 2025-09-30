@@ -10,12 +10,14 @@ import (
 	"net/url"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
 
 var devtoolsListeningRegexp = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
@@ -145,9 +147,12 @@ func (u *UpstreamManager) runTailOnce(ctx context.Context) {
 
 // WebSocketProxyHandler returns an http.Handler that upgrades incoming connections and
 // proxies them to the current upstream websocket URL. It expects only websocket requests.
-func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger) http.Handler {
-	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+// If logCDPMessages is true, all CDP messages will be logged with their direction.
+func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool, ctrl scaletozero.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctrl.Disable(context.WithoutCancel(r.Context()))
+		defer ctrl.Enable(context.WithoutCancel(r.Context()))
+
 		upstreamCurrent := mgr.Current()
 		if upstreamCurrent == "" {
 			http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
@@ -160,77 +165,144 @@ func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger) http.Handl
 		}
 		// Always use the full upstream path and query, ignoring the client's request path/query
 		upstreamURL := (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: parsed.Path, RawQuery: parsed.RawQuery}).String()
-		clientConn, err := upgrader.Upgrade(w, r, nil)
+		acceptOptions := &websocket.AcceptOptions{
+			OriginPatterns:  []string{"*"},
+			CompressionMode: websocket.CompressionContextTakeover,
+		}
+		logger.Info("accept options", slog.Any("options", acceptOptions))
+		clientConn, err := websocket.Accept(w, r, acceptOptions)
 		if err != nil {
-			logger.Error("websocket upgrade failed", slog.String("err", err.Error()))
+			logger.Error("websocket accept failed", slog.String("err", err.Error()))
 			return
 		}
-		upstreamConn, _, err := websocket.DefaultDialer.Dial(upstreamURL, nil)
+		clientConn.SetReadLimit(100 * 1024 * 1024) // 100 MB. Effectively no maximum size of message from client
+		dialOptions := &websocket.DialOptions{
+			CompressionMode: websocket.CompressionContextTakeover,
+		}
+		logger.Info("dial options", slog.Any("options", dialOptions))
+		upstreamConn, _, err := websocket.Dial(r.Context(), upstreamURL, dialOptions)
 		if err != nil {
 			logger.Error("dial upstream failed", slog.String("err", err.Error()), slog.String("url", upstreamURL))
-			_ = clientConn.Close()
+			_ = clientConn.Close(websocket.StatusInternalError, "failed to connect to upstream")
 			return
 		}
+		upstreamConn.SetReadLimit(100 * 1024 * 1024) // 100 MB. Effectively no maximum size of message from upstream
 		logger.Debug("proxying devtools websocket", slog.String("url", upstreamURL))
 
 		var once sync.Once
 		cleanup := func() {
 			once.Do(func() {
-				_ = upstreamConn.Close()
-				_ = clientConn.Close()
+				_ = upstreamConn.Close(websocket.StatusNormalClosure, "")
+				_ = clientConn.Close(websocket.StatusNormalClosure, "")
 			})
 		}
-		proxyWebSocket(r.Context(), clientConn, upstreamConn, cleanup, logger)
+		proxyWebSocket(r.Context(), clientConn, upstreamConn, cleanup, logger, logCDPMessages)
 	})
 }
 
 type wsConn interface {
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
-	Close() error
+	Read(ctx context.Context) (websocket.MessageType, []byte, error)
+	Write(ctx context.Context, typ websocket.MessageType, p []byte) error
+	Close(statusCode websocket.StatusCode, reason string) error
 }
 
-func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClose func(), logger *slog.Logger) {
+// logCDPMessage logs a CDP message with its direction if logging is enabled
+func logCDPMessage(logger *slog.Logger, direction string, mt websocket.MessageType, msg []byte) {
+	if mt != websocket.MessageText {
+		return // Only log text messages (CDP messages)
+	}
+
+	// Extract fields using regex from raw message
+	rawMsg := string(msg)
+
+	// Regex patterns to match "key":"val" or "key": "val" for string values
+	extractStringField := func(key string) string {
+		pattern := fmt.Sprintf(`"%s"\s*:\s*"([^"]*)"`, key)
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(rawMsg)
+		if len(matches) > 1 {
+			return matches[1]
+		}
+		return ""
+	}
+
+	// Regex pattern to match "key": number for numeric id
+	extractNumberField := func(key string) interface{} {
+		pattern := fmt.Sprintf(`"%s"\s*:\s*(\d+)`, key)
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(rawMsg)
+		if len(matches) > 1 {
+			// Try to parse as int first
+			if val, err := strconv.Atoi(matches[1]); err == nil {
+				return val
+			}
+			// Fall back to float64
+			if val, err := strconv.ParseFloat(matches[1], 64); err == nil {
+				return val
+			}
+		}
+		return nil
+	}
+
+	// Extract fields using regex
+	method := extractStringField("method")
+	id := extractNumberField("id")
+	sessionId := extractStringField("sessionId")
+	targetId := extractStringField("targetId")
+	frameId := extractStringField("frameId")
+
+	// Build log attributes, only including non-empty values
+	attrs := []slog.Attr{
+		slog.String("dir", direction),
+	}
+
+	if sessionId != "" {
+		attrs = append(attrs, slog.String("sessionId", sessionId))
+	}
+	if targetId != "" {
+		attrs = append(attrs, slog.String("targetId", targetId))
+	}
+	if id != nil {
+		attrs = append(attrs, slog.Any("id", id))
+	}
+	if frameId != "" {
+		attrs = append(attrs, slog.String("frameId", frameId))
+	}
+
+	if method != "" {
+		attrs = append(attrs, slog.String("method", method))
+	}
+
+	attrs = append(attrs, slog.Int("raw_length", len(msg)))
+
+	// Convert attrs to individual slog.Attr arguments
+	args := make([]any, len(attrs))
+	for i, attr := range attrs {
+		args[i] = attr
+	}
+
+	logger.Info("cdp", args...)
+}
+
+func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClose func(), logger *slog.Logger, logCDPMessages bool) {
 	errChan := make(chan error, 2)
 
-	// Single-writer guarantee for client connection
-	var clientWriteMu sync.Mutex
-
-	// Heartbeat tracking
-	var hbMu sync.Mutex
-	lastClientActivity := time.Now()
-	var lastPingSent time.Time
-	var lastPongReceived time.Time
-	var outstandingPing bool
-
 	go func() {
 		for {
-			mt, msg, err := clientConn.ReadMessage()
+			mt, msg, err := clientConn.Read(ctx)
 			if err != nil {
+				logger.Error("client read error", slog.String("err", err.Error()))
 				errChan <- err
 				break
 			}
-			// Record any client activity
-			hbMu.Lock()
-			lastClientActivity = time.Now()
-			hbMu.Unlock()
 
-			// Handle control frames from client
-			if mt == websocket.PongMessage {
-				hbMu.Lock()
-				lastPongReceived = time.Now()
-				outstandingPing = false
-				hbMu.Unlock()
-				continue
-			}
-			if mt == websocket.PingMessage {
-				clientWriteMu.Lock()
-				_ = clientConn.WriteMessage(websocket.PongMessage, nil)
-				clientWriteMu.Unlock()
-				continue
+			// Log CDP messages if enabled
+			if logCDPMessages {
+				logCDPMessage(logger, "->", mt, msg)
 			}
 
-			if err := upstreamConn.WriteMessage(mt, msg); err != nil {
+			if err := upstreamConn.Write(ctx, mt, msg); err != nil {
+				logger.Error("upstream write error", slog.String("err", err.Error()))
 				errChan <- err
 				break
 			}
@@ -238,66 +310,22 @@ func proxyWebSocket(ctx context.Context, clientConn, upstreamConn wsConn, onClos
 	}()
 	go func() {
 		for {
-			mt, msg, err := upstreamConn.ReadMessage()
+			mt, msg, err := upstreamConn.Read(ctx)
 			if err != nil {
+				logger.Error("upstream read error", slog.String("err", err.Error()))
 				errChan <- err
 				break
 			}
-			clientWriteMu.Lock()
-			if err := clientConn.WriteMessage(mt, msg); err != nil {
-				clientWriteMu.Unlock()
+
+			// Log CDP messages if enabled
+			if logCDPMessages {
+				logCDPMessage(logger, "<-", mt, msg)
+			}
+
+			if err := clientConn.Write(ctx, mt, msg); err != nil {
+				logger.Error("client write error", slog.String("err", err.Error()))
 				errChan <- err
 				break
-			}
-			clientWriteMu.Unlock()
-		}
-	}()
-
-	// Heartbeat goroutine
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				now := time.Now()
-				hbMu.Lock()
-				inactivity := now.Sub(lastClientActivity)
-				pingOutstanding := outstandingPing
-				lastPing := lastPingSent
-				lastPong := lastPongReceived
-				hbMu.Unlock()
-
-				if pingOutstanding {
-					if now.Sub(lastPing) > 10*time.Second && lastPong.Before(lastPing) {
-						logger.Warn("client ping timeout; closing devtools websocket")
-						select {
-						case errChan <- fmt.Errorf("ping timeout"):
-						default:
-						}
-						return
-					}
-					continue
-				}
-
-				if inactivity >= 30*time.Second {
-					clientWriteMu.Lock()
-					pingErr := clientConn.WriteMessage(websocket.PingMessage, nil)
-					clientWriteMu.Unlock()
-					if pingErr != nil {
-						select {
-						case errChan <- pingErr:
-						default:
-						}
-						return
-					}
-					hbMu.Lock()
-					lastPingSent = now
-					outstandingPing = true
-					hbMu.Unlock()
-				}
 			}
 		}
 	}()

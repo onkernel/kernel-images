@@ -24,7 +24,7 @@ func TestProcessExec(t *testing.T) {
 	svc := &ApiService{procs: make(map[string]*processHandle)}
 
 	cmd := "sh"
-	args := []string{"-c", "echo -n out; echo -n err 1>&2; exit 3"}
+	args := []string{"-c", "printf out; printf err 1>&2; exit 3"}
 	body := &oapi.ProcessExecRequest{Command: cmd, Args: &args}
 	resp, err := svc.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: body})
 	require.NoError(t, err, "ProcessExec error")

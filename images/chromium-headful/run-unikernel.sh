@@ -41,13 +41,15 @@ trap 'rm -rf "$FLAGS_DIR"' EXIT
 
 
 deploy_args=(
+  --vcpus 4
   -M 4096
   -p 9222:9222/tls
   -p 444:10001/tls
   -e DISPLAY_NUM=1
   -e HEIGHT=768
   -e WIDTH=1024
-  -e RUN_AS_ROOT="$RUN_AS_ROOT" \
+  -e RUN_AS_ROOT="$RUN_AS_ROOT"
+  -e LOG_CDP_MESSAGES=true
   -v "$volume_name":/chromium
   -n "$NAME"
 )
