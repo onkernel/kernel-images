@@ -14,40 +14,164 @@ if [[ -f /chromium/flags ]]; then
   RUNTIME_FLAGS="$(cat /chromium/flags)"
 fi
 
-# When runtime overlay includes extension directives, strip conflicting flags
-# from the base (e.g. --disable-extensions and prior extension directives)
-has_extension_overlay=false
-if [[ "$RUNTIME_FLAGS" == *"--load-extension"* || "$RUNTIME_FLAGS" == *"--disable-extensions-except"* ]]; then
-  has_extension_overlay=true
-fi
+# Parse and merge flags, paying careful attention to extension-related flags.
+# Rules:
+# - Base extension directives always carry over and are merged (union) with runtime values.
+# - Runtime still has precedence when it explicitly disables all extensions via --disable-extensions.
+# - We preserve other non-extension flags as-is (base + runtime), with simple dedupe.
 
-FILTERED_BASE=()
-if [[ "$has_extension_overlay" == true ]]; then
-  for tok in $BASE_FLAGS; do
+# Tokenize inputs into arrays so we can look ahead for flags that use space-separated values.
+read -r -a BASE_TOKENS <<< "${BASE_FLAGS}"
+read -r -a RUNTIME_TOKENS <<< "${RUNTIME_FLAGS}"
+
+# Buckets for non-extension flags
+BASE_NONEXT=()
+RUNTIME_NONEXT=()
+
+# Buckets for extension lists
+BASE_LOAD_EXT=()
+BASE_DISABLE_EXCEPT=()
+RT_LOAD_EXT=()
+RT_DISABLE_EXCEPT=()
+
+# Track if runtime explicitly disables all extensions
+RT_DISABLE_ALL_EXTENSIONS=""
+
+# Helper: append comma-separated list into an array (splits on ',')
+append_csv_into_array() {
+  local csv="$1"
+  local -n arr_ref=$2
+  local IFS=','
+  read -r -a _parts <<< "$csv"
+  for _p in "${_parts[@]}"; do
+    if [[ -n "$_p" ]]; then
+      arr_ref+=("$_p")
+    fi
+  done
+}
+
+# Parse a token stream, extracting extension directives and preserving others
+parse_tokens() {
+  local -n TOKENS=$1
+  local who="$2" # "base" or "runtime"
+  local -n OUT_NONEXT=$3
+
+  local i=0
+  while (( i < ${#TOKENS[@]} )); do
+    local tok="${TOKENS[i]}"
     case "$tok" in
-      --disable-extensions|--disable-extensions=*|--load-extension|--load-extension=*|--disable-extensions-except|--disable-extensions-except=*)
-        # drop conflicting/duplicate extension-related flags from base
+      --load-extension=*)
+        local val="${tok#--load-extension=}"
+        if [[ "$who" == "base" ]]; then
+          append_csv_into_array "$val" BASE_LOAD_EXT
+        else
+          append_csv_into_array "$val" RT_LOAD_EXT
+        fi
+        ;;
+      --load-extension)
+        local next_val=""
+        if (( i + 1 < ${#TOKENS[@]} )); then
+          next_val="${TOKENS[i+1]}"
+          ((i++))
+        fi
+        if [[ -n "$next_val" ]]; then
+          if [[ "$who" == "base" ]]; then
+            append_csv_into_array "$next_val" BASE_LOAD_EXT
+          else
+            append_csv_into_array "$next_val" RT_LOAD_EXT
+          fi
+        fi
+        ;;
+      --disable-extensions-except=*)
+        local val="${tok#--disable-extensions-except=}"
+        if [[ "$who" == "base" ]]; then
+          append_csv_into_array "$val" BASE_DISABLE_EXCEPT
+        else
+          append_csv_into_array "$val" RT_DISABLE_EXCEPT
+        fi
+        ;;
+      --disable-extensions-except)
+        local next_val=""
+        if (( i + 1 < ${#TOKENS[@]} )); then
+          next_val="${TOKENS[i+1]}"
+          ((i++))
+        fi
+        if [[ -n "$next_val" ]]; then
+          if [[ "$who" == "base" ]]; then
+            append_csv_into_array "$next_val" BASE_DISABLE_EXCEPT
+          else
+            append_csv_into_array "$next_val" RT_DISABLE_EXCEPT
+          fi
+        fi
+        ;;
+      --disable-extensions|--disable-extensions=*)
+        if [[ "$who" == "runtime" ]]; then
+          RT_DISABLE_ALL_EXTENSIONS="$tok"
+        fi
         ;;
       *)
-        FILTERED_BASE+=("$tok")
+        OUT_NONEXT+=("$tok")
         ;;
     esac
+    ((i++))
   done
+}
+
+parse_tokens BASE_TOKENS base BASE_NONEXT
+parse_tokens RUNTIME_TOKENS runtime RUNTIME_NONEXT
+
+# Merge helper: take base + runtime arrays and produce deduped merged union
+merge_lists_union() {
+  local -n base_arr=$1
+  local -n rt_arr=$2
+  local -n out_arr=$3
+  declare -A seen=()
+  local tmp=()
+  for v in "${base_arr[@]}" "${rt_arr[@]}"; do
+    if [[ -n "$v" && -z "${seen[$v]:-}" ]]; then
+      tmp+=("$v")
+      seen[$v]=1
+    fi
+  done
+  out_arr=("${tmp[@]}")
+}
+
+MERGED_LOAD=()
+MERGED_EXCEPT=()
+merge_lists_union BASE_LOAD_EXT RT_LOAD_EXT MERGED_LOAD
+merge_lists_union BASE_DISABLE_EXCEPT RT_DISABLE_EXCEPT MERGED_EXCEPT
+
+# Reconstruct extension flags
+EXT_FLAGS=()
+if [[ -n "$RT_DISABLE_ALL_EXTENSIONS" ]]; then
+  EXT_FLAGS+=("$RT_DISABLE_ALL_EXTENSIONS")
 else
-  # no overlay, keep base as-is
-  for tok in $BASE_FLAGS; do
-    FILTERED_BASE+=("$tok")
-  done
+  if (( ${#MERGED_LOAD[@]} > 0 )); then
+    merged=""
+    for v in "${MERGED_LOAD[@]}"; do
+      if [[ -z "$merged" ]]; then merged="$v"; else merged+=",$v"; fi
+    done
+    if [[ -n "$merged" ]]; then
+      EXT_FLAGS+=("--load-extension=$merged")
+    fi
+  fi
+  if (( ${#MERGED_EXCEPT[@]} > 0 )); then
+    merged=""
+    for v in "${MERGED_EXCEPT[@]}"; do
+      if [[ -z "$merged" ]]; then merged="$v"; else merged+=",$v"; fi
+    done
+    if [[ -n "$merged" ]]; then
+      EXT_FLAGS+=("--disable-extensions-except=$merged")
+    fi
+  fi
 fi
 
-# Merge filtered base with runtime overlay, deduplicating while preserving order
-COMBINED=()
-for tok in "${FILTERED_BASE[@]}"; do
-  COMBINED+=("$tok")
-done
-for tok in $RUNTIME_FLAGS; do
-  COMBINED+=("$tok")
-done
+# Combine: base non-extension flags + runtime non-extension flags + reconstructed extension flags
+COMBINED=(
+  "${BASE_NONEXT[@]}"
+  "${RUNTIME_NONEXT[@]}"
+  "${EXT_FLAGS[@]}"
+)
 
 declare -A SEEN
 DEDUP=()

@@ -49,7 +49,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		name        string
 		zipReceived bool
 	}
-	// We now only accept consecutive pairs of fields:
+	// Process consecutive pairs of fields:
 	//   extensions.name (text)
 	//   extensions.zip_file (file)
 	// Order may be name then zip or zip then name, but they must be consecutive.
@@ -142,11 +142,6 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
 		}
 		log.Info("installed extension", "name", p.name)
-		// Debug: list extension directory
-		if out, err := exec.Command("ls", "-alh", dest).CombinedOutput(); err == nil {
-			fmt.Println("ls -alh", dest)
-			fmt.Println(string(out))
-		}
 	}
 
 	// Build flags overlay
@@ -166,55 +161,15 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod chromium flags"}}, nil
 	}
 
-	// Debug: list directories to verify ownership/permissions
-	if out, err := exec.Command("ls", "-alh", "/home/kernel/extensions").CombinedOutput(); err == nil {
-		fmt.Println("ls -alh /home/kernel/extensions")
-		fmt.Println(string(out))
-	} else {
-		fmt.Println("ls -alh /home/kernel/extensions failed:", err.Error())
-		fmt.Println(string(out))
-	}
-	if out, err := exec.Command("ls", "-alh", "/chromium").CombinedOutput(); err == nil {
-		fmt.Println("ls -alh /chromium")
-		fmt.Println(string(out))
-	} else {
-		fmt.Println("ls -alh /chromium failed:", err.Error())
-		fmt.Println(string(out))
-	}
-
 	// Subscribe to upstream updates BEFORE triggering restart to avoid races
 	updates, cancelSub := s.upstreamMgr.Subscribe()
 	defer cancelSub()
-	log.Info("subscribed to upstream updates")
 
 	// Fire-and-forget supervisorctl restart in a background goroutine.
 	// Capture first error if it happens; do not block returning success if upstream is ready earlier.
 	errCh := make(chan error, 1)
-	restartDone := make(chan struct{})
-
-	// Debug goroutine: periodically check supervisorctl status during restart
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-restartDone:
-				log.Info("debug: restart completed, stopping status monitoring")
-				return
-			case <-ticker.C:
-				out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "status").CombinedOutput()
-				if err != nil {
-					log.Info("debug: supervisorctl status failed", "err", err, "out", string(out))
-				} else {
-					fmt.Println("debug: supervisorctl status", string(out))
-				}
-			}
-		}
-	}()
-
 	log.Info("restarting chromium via supervisorctl")
 	go func() {
-		defer close(restartDone)
 		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
 			log.Error("failed to restart chromium", "err", err, "out", string(out))
