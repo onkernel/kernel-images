@@ -17,6 +17,8 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/ziputil"
 )
 
+var nameRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{1,255}$`)
+
 // UploadExtensionsAndRestart handles multipart upload of one or more extension zips, extracts
 // them under /home/kernel/extensions/<name>, writes /chromium/flags to enable them, restarts
 // Chromium via supervisord, and waits (via UpstreamManager) until DevTools is ready.
@@ -97,7 +99,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read name"}}, nil
 			}
 			name := strings.TrimSpace(string(b))
-			if name == "" || !regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`).MatchString(name) {
+			if name == "" || !nameRegex.MatchString(name) {
 				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid extension name"}}, nil
 			}
 			if current.name != "" {
