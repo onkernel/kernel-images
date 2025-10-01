@@ -20,7 +20,7 @@ fi
 # - Runtime still has precedence when it explicitly disables all extensions via --disable-extensions.
 # - We preserve other non-extension flags as-is (base + runtime), with simple dedupe.
 
-# Tokenize inputs into arrays so we can look ahead for flags that use space-separated values.
+# Tokenize inputs into arrays (all flags expected as --flag or --flag=value form)
 read -r -a BASE_TOKENS <<< "${BASE_FLAGS}"
 read -r -a RUNTIME_TOKENS <<< "${RUNTIME_FLAGS}"
 
@@ -50,7 +50,7 @@ append_csv_into_array() {
   done
 }
 
-# Parse a token stream, extracting extension directives and preserving others
+# Parse a token stream, extracting extension directives (equals form only) and preserving others
 parse_tokens() {
   local -n TOKENS=$1
   local who="$2" # "base" or "runtime"
@@ -68,40 +68,12 @@ parse_tokens() {
           append_csv_into_array "$val" RT_LOAD_EXT
         fi
         ;;
-      --load-extension)
-        local next_val=""
-        if (( i + 1 < ${#TOKENS[@]} )); then
-          next_val="${TOKENS[i+1]}"
-          i=$((i+1))
-        fi
-        if [[ -n "$next_val" ]]; then
-          if [[ "$who" == "base" ]]; then
-            append_csv_into_array "$next_val" BASE_LOAD_EXT
-          else
-            append_csv_into_array "$next_val" RT_LOAD_EXT
-          fi
-        fi
-        ;;
       --disable-extensions-except=*)
         local val="${tok#--disable-extensions-except=}"
         if [[ "$who" == "base" ]]; then
           append_csv_into_array "$val" BASE_DISABLE_EXCEPT
         else
           append_csv_into_array "$val" RT_DISABLE_EXCEPT
-        fi
-        ;;
-      --disable-extensions-except)
-        local next_val=""
-        if (( i + 1 < ${#TOKENS[@]} )); then
-          next_val="${TOKENS[i+1]}"
-          i=$((i+1))
-        fi
-        if [[ -n "$next_val" ]]; then
-          if [[ "$who" == "base" ]]; then
-            append_csv_into_array "$next_val" BASE_DISABLE_EXCEPT
-          else
-            append_csv_into_array "$next_val" RT_DISABLE_EXCEPT
-          fi
         fi
         ;;
       --disable-extensions|--disable-extensions=*)
