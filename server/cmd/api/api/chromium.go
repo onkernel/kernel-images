@@ -144,13 +144,12 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		log.Info("installed extension", "name", p.name)
 	}
 
-	// Build flags overlay
+	// Build flags overlay file in /chromium/flags
 	var paths []string
 	for _, p := range items {
 		paths = append(paths, filepath.Join(extBase, p.name))
 	}
 	overlay := fmt.Sprintf("--disable-extensions-except=%s --load-extension=%s\n", strings.Join(paths, ","), strings.Join(paths, ","))
-	// Ensure /chromium exists
 	if err := exec.Command("mkdir", "-p", "/chromium").Run(); err != nil {
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create chromium dir"}}, nil
 	}
@@ -161,12 +160,12 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod chromium flags"}}, nil
 	}
 
-	// Subscribe to upstream updates BEFORE triggering restart to avoid races
+	// Begin listening for devtools URL updates, since we are about to restart Chromium
 	updates, cancelSub := s.upstreamMgr.Subscribe()
 	defer cancelSub()
 
-	// Fire-and-forget supervisorctl restart in a background goroutine.
-	// Capture first error if it happens; do not block returning success if upstream is ready earlier.
+	// Fire-and-forget supervisorctl restart in a background goroutine, since we want to return as soon as the new CDP URL is available
+	// Still capture an error if it happens
 	errCh := make(chan error, 1)
 	log.Info("restarting chromium via supervisorctl")
 	go func() {

@@ -26,5 +26,3 @@ jobs:
       - name: Run chromium-launcher unit tests
         run: go test ./cmd/chromium-launcher -v
         working-directory: server
-
-

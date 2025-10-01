@@ -766,7 +766,7 @@ paths:
                       name:
                         type: string
                         description: Folder name to place the extension under /home/kernel/extensions/<name>
-                        pattern: "^[A-Za-z0-9._-]{1,64}$"
+                        pattern: "^[A-Za-z0-9._-]{1,255}$"
                     required: [zip_file, name]
               required: [extensions]
       responses:

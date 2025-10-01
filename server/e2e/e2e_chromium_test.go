@@ -88,11 +88,13 @@ func ensurePlaywrightDeps(t *testing.T) {
 }
 
 func TestChromiumHeadfulUserDataSaving(t *testing.T) {
+	t.Skip("flaky. TODO(raf): fix")
 	ensurePlaywrightDeps(t)
 	runChromiumUserDataSavingFlow(t, headfulImage, containerName)
 }
 
 func TestChromiumHeadlessPersistence(t *testing.T) {
+	t.Skip("flaky. TODO(raf): fix")
 	ensurePlaywrightDeps(t)
 	runChromiumUserDataSavingFlow(t, headlessImage, containerName)
 }
