@@ -77,12 +77,11 @@ ENV WITHDOCKER=true
 # Create a non-root user with a home directory
 RUN useradd -m -s /bin/bash kernel
 
-# Xvfb helper and supervisor-managed start scripts
-COPY images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-chromium.sh
+# supervisor  start scripts
 COPY images/chromium-headless/image/start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
-RUN chmod +x /images/chromium-headless/image/start-chromium.sh /images/chromium-headless/image/start-xvfb.sh
+RUN chmod +x /images/chromium-headless/image/start-xvfb.sh
 
-# Wrapper script set environment
+# Wrapper script to set environment
 COPY images/chromium-headless/image/wrapper.sh /usr/bin/wrapper.sh
 
 # Supervisord configuration
