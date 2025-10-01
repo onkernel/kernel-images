@@ -2,7 +2,7 @@
 # https://neko.m1k1o.net/docs/v3/configuration#file
 
 desktop:
-  screen: "2560x1440@60"
+  screen: "3840x2160@60"
 
 member:
   provider: multiuser
