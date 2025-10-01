@@ -27,6 +27,9 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	start := time.Now()
 	log.Info("upload extensions: begin")
 
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
+
 	if request.Body == nil {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
 	}

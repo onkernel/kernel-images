@@ -79,6 +79,7 @@ func main() {
 		recorder.NewFFmpegManager(),
 		recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams, stz),
 		upstreamMgr,
+		stz,
 	)
 	if err != nil {
 		slogger.Error("failed to create api service", "err", err)
