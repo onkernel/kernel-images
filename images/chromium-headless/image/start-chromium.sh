@@ -72,7 +72,7 @@ parse_tokens() {
         local next_val=""
         if (( i + 1 < ${#TOKENS[@]} )); then
           next_val="${TOKENS[i+1]}"
-          ((i++))
+          i=$((i+1))
         fi
         if [[ -n "$next_val" ]]; then
           if [[ "$who" == "base" ]]; then
@@ -94,7 +94,7 @@ parse_tokens() {
         local next_val=""
         if (( i + 1 < ${#TOKENS[@]} )); then
           next_val="${TOKENS[i+1]}"
-          ((i++))
+          i=$((i+1))
         fi
         if [[ -n "$next_val" ]]; then
           if [[ "$who" == "base" ]]; then
@@ -113,7 +113,7 @@ parse_tokens() {
         OUT_NONEXT+=("$tok")
         ;;
     esac
-    ((i++))
+    i=$((i+1))
   done
 }
 
