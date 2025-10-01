@@ -10,8 +10,14 @@ COPY server/go.sum ./
 RUN go mod download
 
 COPY server/ .
+
+# Build kernel-images API
 RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
+
+# Build chromium launcher
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
 # webrtc client
 FROM node:22-bullseye-slim AS client
@@ -177,6 +183,7 @@ COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/service
 
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
+COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
 
 RUN useradd -m -s /bin/bash kernel
 

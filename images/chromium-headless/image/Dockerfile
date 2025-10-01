@@ -11,10 +11,15 @@ COPY server/go.mod ./
 COPY server/go.sum ./
 RUN go mod download
 
-# Copy the rest of the server source and build the binary
 COPY server/ .
+
+# Build kernel-images API
 RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
+
+# Build chromium launcher
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
 FROM docker.io/ubuntu:22.04
 
@@ -86,5 +91,6 @@ COPY images/chromium-headless/image/supervisor/services/ /etc/supervisor/conf.d/
 
 # Copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
+COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
 
 ENTRYPOINT [ "/usr/bin/wrapper.sh" ]
