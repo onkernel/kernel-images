@@ -70,14 +70,10 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			log.Error("read form part", "err", err)
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read form part"}}, nil
 		}
-		fieldName := part.FormName()
-		if fieldName != "extensions.zip_file" && fieldName != "extensions.name" {
-			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid form field: " + part.FormName()}}, nil
-		}
 		if current == nil {
 			current = &pending{}
 		}
-		switch fieldName {
+		switch part.FormName() {
 		case "extensions.zip_file":
 			tmp, err := os.CreateTemp("", "ext-*.zip")
 			if err != nil {
