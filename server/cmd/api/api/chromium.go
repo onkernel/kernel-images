@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/onkernel/kernel-images/server/lib/chromiumflags"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/ziputil"
@@ -67,7 +68,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			break
 		}
 		if err != nil {
-			log.Error("read form part", "err", err)
+			log.Error("read form part", "error", err)
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read form part"}}, nil
 		}
 		if current == nil {
@@ -77,14 +78,17 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		case "extensions.zip_file":
 			tmp, err := os.CreateTemp("", "ext-*.zip")
 			if err != nil {
+				log.Error("failed to create temporary file", "error", err)
 				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
 			}
 			temps = append(temps, tmp.Name())
 			if _, err := io.Copy(tmp, part); err != nil {
 				tmp.Close()
-				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read zip file"}}, nil
+				log.Error("failed to read zip file", "error", err)
+				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read zip file"}}, nil
 			}
 			if err := tmp.Close(); err != nil {
+				log.Error("failed to finalize temporary file", "error", err)
 				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
 			}
 			if current.zipReceived {
@@ -95,7 +99,8 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		case "extensions.name":
 			b, err := io.ReadAll(part)
 			if err != nil {
-				return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read name"}}, nil
+				log.Error("failed to read name", "error", err)
+				return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read name"}}, nil
 			}
 			name := strings.TrimSpace(string(b))
 			if name == "" || !nameRegex.MatchString(name) {
@@ -106,7 +111,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			}
 			current.name = name
 		default:
-			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid field"}}, nil
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("invalid field: %s", part.FormName())}}, nil
 		}
 		// If we have both fields, finalize this item
 		if current != nil && current.zipReceived && current.name != "" {
@@ -133,32 +138,51 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		}
 		dest := filepath.Join(extBase, p.name)
 		if err := os.MkdirAll(dest, 0o755); err != nil {
+			log.Error("failed to create extension dir", "error", err)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create extension dir"}}, nil
 		}
 		if err := ziputil.Unzip(p.zipTemp, dest); err != nil {
+			log.Error("failed to unzip zip file", "error", err)
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid zip file"}}, nil
 		}
 		if err := exec.Command("chown", "-R", "kernel:kernel", dest).Run(); err != nil {
-			log.Error("failed to chown extension dir", "err", err)
+			log.Error("failed to chown extension dir", "error", err)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
 		}
 		log.Info("installed extension", "name", p.name)
 	}
 
-	// Build flags overlay file in /chromium/flags
+	// Build flags overlay file in /chromium/flags, merging with existing flags
 	var paths []string
 	for _, p := range items {
 		paths = append(paths, filepath.Join(extBase, p.name))
 	}
-	overlay := fmt.Sprintf("--disable-extensions-except=%s --load-extension=%s\n", strings.Join(paths, ","), strings.Join(paths, ","))
-	if err := exec.Command("mkdir", "-p", "/chromium").Run(); err != nil {
+
+	// Read existing runtime flags from /chromium/flags (if any)
+	const flagsPath = "/chromium/flags"
+	existingTokens, err := chromiumflags.ReadOptionalFlagFile(flagsPath)
+	if err != nil {
+		log.Error("failed to read existing flags", "error", err)
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read existing flags"}}, nil
+	}
+
+	// Create new flags for the uploaded extensions
+	newTokens := []string{
+		fmt.Sprintf("--disable-extensions-except=%s", strings.Join(paths, ",")),
+		fmt.Sprintf("--load-extension=%s", strings.Join(paths, ",")),
+	}
+
+	// Merge existing flags with new extension flags using token-aware API
+	mergedTokens := chromiumflags.MergeFlags(existingTokens, newTokens)
+
+	if err := os.MkdirAll("/chromium", 0o755); err != nil {
+		log.Error("failed to create chromium dir", "error", err)
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create chromium dir"}}, nil
 	}
-	if err := os.WriteFile("/chromium/flags", []byte(overlay), 0o644); err != nil {
+	// Write flags file with merged flags
+	if err := chromiumflags.WriteFlagFile(flagsPath, mergedTokens); err != nil {
+		log.Error("failed to write overlay flags", "error", err)
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
-	}
-	if err := os.Chmod("/chromium/flags", 0o644); err != nil {
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chmod chromium flags"}}, nil
 	}
 
 	// Begin listening for devtools URL updates, since we are about to restart Chromium
@@ -172,12 +196,9 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	go func() {
 		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
-			log.Error("failed to restart chromium", "err", err, "out", string(out))
+			log.Error("failed to restart chromium", "error", err, "out", string(out))
 			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)
-			return
 		}
-		// signal success by closing channel if no error was sent
-		close(errCh)
 	}()
 
 	// Wait for either a new upstream, a restart error, or timeout
@@ -188,17 +209,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		log.Info("devtools ready", "elapsed", time.Since(start).String())
 		return oapi.UploadExtensionsAndRestart201Response{}, nil
 	case err := <-errCh:
-		if err != nil {
-			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()}}, nil
-		}
-		select {
-		case <-updates:
-			log.Info("devtools ready (after restart completes)", "elapsed", time.Since(start).String())
-			return oapi.UploadExtensionsAndRestart201Response{}, nil
-		case <-timeout.C:
-			log.Info("devtools not ready in time (post-restart)", "elapsed", time.Since(start).String())
-			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
-		}
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()}}, nil
 	case <-timeout.C:
 		log.Info("devtools not ready in time", "elapsed", time.Since(start).String())
 		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
