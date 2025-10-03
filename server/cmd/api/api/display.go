@@ -3,65 +3,86 @@ package api
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 )
 
-// DisplayStatus reports whether it is currently safe to resize the display.
-// It checks for active Neko viewer sessions (approx. by counting ESTABLISHED TCP
-// connections on port 8080) and whether any recording is active.
-func (s *ApiService) DisplayStatus(ctx context.Context, _ oapi.DisplayStatusRequestObject) (oapi.DisplayStatusResponseObject, error) {
-	live := s.countEstablishedTCPSessions(ctx, 8080)
-	isRecording := s.anyRecordingActive(ctx)
-	isReplaying := false // replay not currently implemented
-
-	resizableNow := (live == 0) && !isRecording && !isReplaying
-
-	return oapi.DisplayStatus200JSONResponse(oapi.DisplayStatus{
-		LiveViewSessions: &live,
-		IsRecording:      &isRecording,
-		IsReplaying:      &isReplaying,
-		ResizableNow:     &resizableNow,
-	}), nil
-}
-
-// SetResolution safely updates the current X display resolution. When require_idle
+// PatchDisplay updates the display configuration. When require_idle
 // is true (default), it refuses to resize while live view or recording/replay is active.
 // This method automatically detects whether the system is running with Xorg (headful)
 // or Xvfb (headless) and uses the appropriate method to change resolution.
-func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRequestObject) (oapi.SetResolutionResponseObject, error) {
+func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequestObject) (oapi.PatchDisplayResponseObject, error) {
 	log := logger.FromContext(ctx)
 	if req.Body == nil {
-		return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "missing request body"}}, nil
+		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "missing request body"}}, nil
 	}
-	width := req.Body.Width
-	height := req.Body.Height
+
+	// Check if resolution change is requested
+	if req.Body.Width == nil && req.Body.Height == nil {
+		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no display parameters to update"}}, nil
+	}
+
+	// Get current resolution if only one dimension is provided
+	currentWidth, currentHeight := s.getCurrentResolution(ctx)
+	width := currentWidth
+	height := currentHeight
+
+	if req.Body.Width != nil {
+		width = *req.Body.Width
+	}
+	if req.Body.Height != nil {
+		height = *req.Body.Height
+	}
+
 	if width <= 0 || height <= 0 {
-		return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid width/height"}}, nil
+		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid width/height"}}, nil
 	}
 	requireIdle := true
 	if req.Body.RequireIdle != nil {
 		requireIdle = *req.Body.RequireIdle
 	}
 
-	// Check current status
-	statusResp, _ := s.DisplayStatus(ctx, oapi.DisplayStatusRequestObject{})
-	var status oapi.DisplayStatus
-	switch v := statusResp.(type) {
-	case oapi.DisplayStatus200JSONResponse:
-		status = oapi.DisplayStatus(v)
-	default:
-		// In unexpected cases, default to conservative behaviour
-		status = oapi.DisplayStatus{LiveViewSessions: ptrInt(0), IsRecording: ptrBool(false), IsReplaying: ptrBool(false), ResizableNow: ptrBool(true)}
+	// Check current status if required
+	if requireIdle {
+		live := s.getActiveNekoSessions(ctx)
+		isRecording := s.anyRecordingActive(ctx)
+		isReplaying := false // replay not currently implemented
+		resizableNow := (live == 0) && !isRecording && !isReplaying
+
+		if !resizableNow {
+			return oapi.PatchDisplay409JSONResponse{
+				ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{
+					Message: "resize refused: live view or recording/replay active",
+				},
+			}, nil
+		}
 	}
-	if requireIdle && status.ResizableNow != nil && !*status.ResizableNow {
-		return oapi.SetResolution409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "resize refused: live view or recording/replay active"}}, nil
+
+	// When Neko is enabled, delegate resolution changes to its API
+	// Neko handles all the complexity of restarting X.org/Xvfb and Chromium
+	if s.isNekoEnabled() {
+		log.Info("delegating resolution change to Neko API", "width", width, "height", height)
+
+		if err := s.setResolutionViaNeko(ctx, width, height); err != nil {
+			log.Error("failed to change resolution via Neko API, falling back to direct method", "error", err)
+			// Fall through to direct implementation
+		} else {
+			// Successfully changed via Neko
+			return oapi.PatchDisplay200JSONResponse{
+				Width:  &width,
+				Height: &height,
+			}, nil
+		}
 	}
 
 	display := s.resolveDisplayFromEnv()
@@ -95,7 +116,7 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 		execReq := oapi.ProcessExecRequest{Command: "bash", Args: &args, Env: &env}
 		resp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &execReq})
 		if err != nil {
-			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to execute xrandr"}}, nil
+			return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to execute xrandr"}}, nil
 		}
 		switch r := resp.(type) {
 		case oapi.ProcessExec200JSONResponse:
@@ -109,7 +130,7 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 				if stderr == "" {
 					stderr = "xrandr returned non-zero exit code"
 				}
-				return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("failed to set resolution: %s", stderr)}}, nil
+				return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("failed to set resolution: %s", stderr)}}, nil
 			}
 			log.Info("resolution updated via xrandr", "display", display, "width", width, "height", height)
 
@@ -122,7 +143,11 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 			if restartErr != nil {
 				log.Error("failed to restart chromium after resolution change", "error", restartErr)
 				// Still return success since resolution change succeeded
-				return oapi.SetResolution200JSONResponse{Ok: true}, nil
+				// Return success with the new dimensions
+				return oapi.PatchDisplay200JSONResponse{
+					Width:  &width,
+					Height: &height,
+				}, nil
 			}
 
 			// Check if restart succeeded
@@ -134,13 +159,17 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 				}
 			}
 
-			return oapi.SetResolution200JSONResponse{Ok: true}, nil
+			// Return success with the new dimensions
+			return oapi.PatchDisplay200JSONResponse{
+				Width:  &width,
+				Height: &height,
+			}, nil
 		case oapi.ProcessExec400JSONResponse:
-			return oapi.SetResolution400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: r.Message}}, nil
+			return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: r.Message}}, nil
 		case oapi.ProcessExec500JSONResponse:
-			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: r.Message}}, nil
+			return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: r.Message}}, nil
 		default:
-			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unexpected response from process exec"}}, nil
+			return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "unexpected response from process exec"}}, nil
 		}
 	} else {
 		// Xvfb path: restart with new dimensions
@@ -158,14 +187,14 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 		addEnvReq := oapi.ProcessExecRequest{Command: "bash", Args: &addEnvCmd}
 		configResp, configErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &addEnvReq})
 		if configErr != nil {
-			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
+			return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
 		}
 
 		// Check if config update succeeded
 		if execResp, ok := configResp.(oapi.ProcessExec200JSONResponse); ok {
 			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
 				log.Error("failed to update xvfb config", "exit_code", *execResp.ExitCode)
-				return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
+				return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to update xvfb config"}}, nil
 			}
 		}
 
@@ -184,13 +213,13 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 		restartXvfbReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartXvfbCmd}
 		xvfbResp, xvfbErr := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartXvfbReq})
 		if xvfbErr != nil {
-			return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to restart Xvfb"}}, nil
+			return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to restart Xvfb"}}, nil
 		}
 
 		// Check if Xvfb restart succeeded
 		if execResp, ok := xvfbResp.(oapi.ProcessExec200JSONResponse); ok {
 			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
-				return oapi.SetResolution500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "Xvfb restart failed"}}, nil
+				return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "Xvfb restart failed"}}, nil
 			}
 		}
 
@@ -209,7 +238,11 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 		if chromeErr != nil {
 			log.Error("failed to restart chromium after Xvfb restart", "error", chromeErr)
 			// Still return success since Xvfb restart succeeded
-			return oapi.SetResolution200JSONResponse{Ok: true}, nil
+			// Return success with the new dimensions
+			return oapi.PatchDisplay200JSONResponse{
+				Width:  &width,
+				Height: &height,
+			}, nil
 		}
 
 		// Check if Chromium restart succeeded
@@ -222,7 +255,11 @@ func (s *ApiService) SetResolution(ctx context.Context, req oapi.SetResolutionRe
 		}
 
 		log.Info("Xvfb resolution updated", "display", display, "width", width, "height", height)
-		return oapi.SetResolution200JSONResponse{Ok: true}, nil
+		// Return success with the new dimensions
+		return oapi.PatchDisplay200JSONResponse{
+			Width:  &width,
+			Height: &height,
+		}, nil
 	}
 }
 
@@ -236,8 +273,43 @@ func (s *ApiService) anyRecordingActive(ctx context.Context) bool {
 	return false
 }
 
+// getActiveNekoSessions queries the Neko API for active viewer sessions.
+// It falls back to counting TCP connections if the API is unavailable.
+func (s *ApiService) getActiveNekoSessions(ctx context.Context) int {
+	log := logger.FromContext(ctx)
+
+	// Create HTTP client with short timeout
+	client := &http.Client{
+		Timeout: 200 * time.Millisecond,
+	}
+
+	// Query Neko API
+	resp, err := client.Get("http://localhost:8080/api/sessions")
+	if err != nil {
+		log.Debug("failed to query Neko API, falling back to TCP counting", "error", err)
+		return s.countEstablishedTCPSessions(ctx, 8080)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		log.Debug("Neko API returned non-OK status, falling back to TCP counting", "status", resp.StatusCode)
+		return s.countEstablishedTCPSessions(ctx, 8080)
+	}
+
+	// Parse response
+	var sessions []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		log.Debug("failed to parse Neko API response, falling back to TCP counting", "error", err)
+		return s.countEstablishedTCPSessions(ctx, 8080)
+	}
+
+	log.Debug("successfully queried Neko API", "active_sessions", len(sessions))
+	return len(sessions)
+}
+
 // countEstablishedTCPSessions returns the number of ESTABLISHED TCP connections for the given local port.
-// Implementation shells out to netstat, which is present in the image (net-tools).
+// This is used as a fallback when the Neko API is unavailable.
 func (s *ApiService) countEstablishedTCPSessions(ctx context.Context, port int) int {
 	cmd := exec.CommandContext(ctx, "/bin/bash", "-lc", fmt.Sprintf("netstat -tn 2>/dev/null | awk '$6==\"ESTABLISHED\" && $4 ~ /:%d$/ {count++} END{print count+0}'", port))
 	out, err := cmd.Output()
@@ -267,5 +339,98 @@ func (s *ApiService) resolveDisplayFromEnv() string {
 	return ":1"
 }
 
-func ptrBool(v bool) *bool { return &v }
-func ptrInt(v int) *int    { return &v }
+// getCurrentResolution returns the current display resolution by querying xrandr
+func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int) {
+	log := logger.FromContext(ctx)
+	display := s.resolveDisplayFromEnv()
+
+	// Use xrandr to get current resolution
+	cmd := exec.CommandContext(ctx, "bash", "-lc", "xrandr | grep -E '\\*' | awk '{print $1}'")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
+
+	out, err := cmd.Output()
+	if err != nil {
+		log.Error("failed to get current resolution", "error", err)
+		// Return default resolution on error
+		return 1024, 768
+	}
+
+	resStr := strings.TrimSpace(string(out))
+	parts := strings.Split(resStr, "x")
+	if len(parts) != 2 {
+		log.Error("unexpected xrandr output format", "output", resStr)
+		return 1024, 768
+	}
+
+	width, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Error("failed to parse width", "error", err, "value", parts[0])
+		return 1024, 768
+	}
+
+	height, err := strconv.Atoi(parts[1])
+	if err != nil {
+		log.Error("failed to parse height", "error", err, "value", parts[1])
+		return 1024, 768
+	}
+
+	return width, height
+}
+
+// isNekoEnabled checks if Neko service is enabled
+func (s *ApiService) isNekoEnabled() bool {
+	return os.Getenv("ENABLE_WEBRTC") == "true"
+}
+
+// setResolutionViaNeko delegates resolution change to Neko API
+func (s *ApiService) setResolutionViaNeko(ctx context.Context, width, height int) error {
+	log := logger.FromContext(ctx)
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Prepare request body for Neko's screen API
+	screenConfig := map[string]interface{}{
+		"width":  width,
+		"height": height,
+		"rate":   60, // Default refresh rate
+	}
+
+	body, err := json.Marshal(screenConfig)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, "POST",
+		"http://localhost:8080/api/room/screen",
+		strings.NewReader(string(body)))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add authentication - Neko requires admin credentials
+	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = "admin" // Default from neko.yaml
+	}
+	req.SetBasicAuth("admin", adminPassword)
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to call Neko API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Neko API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	log.Info("successfully changed resolution via Neko API", "width", width, "height", height)
+	return nil
+}

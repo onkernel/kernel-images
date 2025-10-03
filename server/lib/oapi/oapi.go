@@ -128,16 +128,25 @@ type DeleteRecordingRequest struct {
 	Id *string `json:"id,omitempty"`
 }
 
-// DisplayStatus defines model for DisplayStatus.
-type DisplayStatus struct {
+// DisplayConfig defines model for DisplayConfig.
+type DisplayConfig struct {
+	// Height Current display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// IsRecording Whether recording is currently active
 	IsRecording *bool `json:"is_recording,omitempty"`
+
+	// IsReplaying Whether replay is currently active
 	IsReplaying *bool `json:"is_replaying,omitempty"`
 
 	// LiveViewSessions Number of active Neko viewer sessions.
 	LiveViewSessions *int `json:"live_view_sessions,omitempty"`
 
-	// ResizableNow True when no blockers are present.
+	// ResizableNow True when no blockers are present for resizing
 	ResizableNow *bool `json:"resizable_now,omitempty"`
+
+	// Width Current display width in pixels
+	Width *int `json:"width,omitempty"`
 }
 
 // Error defines model for Error.
@@ -221,6 +230,18 @@ type MovePathRequest struct {
 type OkResponse struct {
 	// Ok Indicates success.
 	Ok bool `json:"ok"`
+}
+
+// PatchDisplayRequest defines model for PatchDisplayRequest.
+type PatchDisplayRequest struct {
+	// Height Display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// RequireIdle If true, refuse to resize when live view or recording/replay is active.
+	RequireIdle *bool `json:"require_idle,omitempty"`
+
+	// Width Display width in pixels
+	Width *int `json:"width,omitempty"`
 }
 
 // ProcessExecRequest Request to execute a command synchronously.
@@ -363,15 +384,6 @@ type SetFilePermissionsRequest struct {
 	Path string `json:"path"`
 }
 
-// SetResolutionRequest defines model for SetResolutionRequest.
-type SetResolutionRequest struct {
-	Height int `json:"height"`
-
-	// RequireIdle If true, refuse to resize when live view or recording/replay is active.
-	RequireIdle *bool `json:"require_idle,omitempty"`
-	Width       int   `json:"width"`
-}
-
 // StartFsWatchRequest defines model for StartFsWatchRequest.
 type StartFsWatchRequest struct {
 	// Path Directory to watch.
@@ -493,8 +505,8 @@ type ClickMouseJSONRequestBody = ClickMouseRequest
 // MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
 type MoveMouseJSONRequestBody = MoveMouseRequest
 
-// SetResolutionJSONRequestBody defines body for SetResolution for application/json ContentType.
-type SetResolutionJSONRequestBody = SetResolutionRequest
+// PatchDisplayJSONRequestBody defines body for PatchDisplay for application/json ContentType.
+type PatchDisplayJSONRequestBody = PatchDisplayRequest
 
 // CreateDirectoryJSONRequestBody defines body for CreateDirectory for application/json ContentType.
 type CreateDirectoryJSONRequestBody = CreateDirectoryRequest
@@ -624,13 +636,10 @@ type ClientInterface interface {
 
 	MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// SetResolutionWithBody request with any body
-	SetResolutionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PatchDisplayWithBody request with any body
+	PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	SetResolution(ctx context.Context, body SetResolutionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DisplayStatus request
-	DisplayStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDirectoryWithBody request with any body
 	CreateDirectoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -788,8 +797,8 @@ func (c *Client) MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, r
 	return c.Client.Do(req)
 }
 
-func (c *Client) SetResolutionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSetResolutionRequestWithBody(c.Server, contentType, body)
+func (c *Client) PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -800,20 +809,8 @@ func (c *Client) SetResolutionWithBody(ctx context.Context, contentType string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) SetResolution(ctx context.Context, body SetResolutionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSetResolutionRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) DisplayStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDisplayStatusRequest(c.Server)
+func (c *Client) PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1384,19 +1381,19 @@ func NewMoveMouseRequestWithBody(server string, contentType string, body io.Read
 	return req, nil
 }
 
-// NewSetResolutionRequest calls the generic SetResolution builder with application/json body
-func NewSetResolutionRequest(server string, body SetResolutionJSONRequestBody) (*http.Request, error) {
+// NewPatchDisplayRequest calls the generic PatchDisplay builder with application/json body
+func NewPatchDisplayRequest(server string, body PatchDisplayJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewSetResolutionRequestWithBody(server, "application/json", bodyReader)
+	return NewPatchDisplayRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewSetResolutionRequestWithBody generates requests for SetResolution with any type of body
-func NewSetResolutionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewPatchDisplayRequestWithBody generates requests for PatchDisplay with any type of body
+func NewPatchDisplayRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1404,7 +1401,7 @@ func NewSetResolutionRequestWithBody(server string, contentType string, body io.
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/display/set_resolution")
+	operationPath := fmt.Sprintf("/display")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1414,39 +1411,12 @@ func NewSetResolutionRequestWithBody(server string, contentType string, body io.
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), body)
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDisplayStatusRequest generates requests for DisplayStatus
-func NewDisplayStatusRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/display/status")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	return req, nil
 }
@@ -2644,13 +2614,10 @@ type ClientWithResponsesInterface interface {
 
 	MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
 
-	// SetResolutionWithBodyWithResponse request with any body
-	SetResolutionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetResolutionResponse, error)
+	// PatchDisplayWithBodyWithResponse request with any body
+	PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
 
-	SetResolutionWithResponse(ctx context.Context, body SetResolutionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetResolutionResponse, error)
-
-	// DisplayStatusWithResponse request
-	DisplayStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DisplayStatusResponse, error)
+	PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
 
 	// CreateDirectoryWithBodyWithResponse request with any body
 	CreateDirectoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDirectoryResponse, error)
@@ -2806,17 +2773,17 @@ func (r MoveMouseResponse) StatusCode() int {
 	return 0
 }
 
-type SetResolutionResponse struct {
+type PatchDisplayResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *OkResponse
+	JSON200      *DisplayConfig
 	JSON400      *BadRequestError
 	JSON409      *ConflictError
 	JSON500      *InternalError
 }
 
 // Status returns HTTPResponse.Status
-func (r SetResolutionResponse) Status() string {
+func (r PatchDisplayResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2824,30 +2791,7 @@ func (r SetResolutionResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r SetResolutionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type DisplayStatusResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *DisplayStatus
-	JSON500      *InternalError
-}
-
-// Status returns HTTPResponse.Status
-func (r DisplayStatusResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DisplayStatusResponse) StatusCode() int {
+func (r PatchDisplayResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3539,30 +3483,21 @@ func (c *ClientWithResponses) MoveMouseWithResponse(ctx context.Context, body Mo
 	return ParseMoveMouseResponse(rsp)
 }
 
-// SetResolutionWithBodyWithResponse request with arbitrary body returning *SetResolutionResponse
-func (c *ClientWithResponses) SetResolutionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetResolutionResponse, error) {
-	rsp, err := c.SetResolutionWithBody(ctx, contentType, body, reqEditors...)
+// PatchDisplayWithBodyWithResponse request with arbitrary body returning *PatchDisplayResponse
+func (c *ClientWithResponses) PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplayWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSetResolutionResponse(rsp)
+	return ParsePatchDisplayResponse(rsp)
 }
 
-func (c *ClientWithResponses) SetResolutionWithResponse(ctx context.Context, body SetResolutionJSONRequestBody, reqEditors ...RequestEditorFn) (*SetResolutionResponse, error) {
-	rsp, err := c.SetResolution(ctx, body, reqEditors...)
+func (c *ClientWithResponses) PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplay(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSetResolutionResponse(rsp)
-}
-
-// DisplayStatusWithResponse request returning *DisplayStatusResponse
-func (c *ClientWithResponses) DisplayStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DisplayStatusResponse, error) {
-	rsp, err := c.DisplayStatus(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDisplayStatusResponse(rsp)
+	return ParsePatchDisplayResponse(rsp)
 }
 
 // CreateDirectoryWithBodyWithResponse request with arbitrary body returning *CreateDirectoryResponse
@@ -3978,22 +3913,22 @@ func ParseMoveMouseResponse(rsp *http.Response) (*MoveMouseResponse, error) {
 	return response, nil
 }
 
-// ParseSetResolutionResponse parses an HTTP response from a SetResolutionWithResponse call
-func ParseSetResolutionResponse(rsp *http.Response) (*SetResolutionResponse, error) {
+// ParsePatchDisplayResponse parses an HTTP response from a PatchDisplayWithResponse call
+func ParsePatchDisplayResponse(rsp *http.Response) (*PatchDisplayResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &SetResolutionResponse{
+	response := &PatchDisplayResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest OkResponse
+		var dest DisplayConfig
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -4012,39 +3947,6 @@ func ParseSetResolutionResponse(rsp *http.Response) (*SetResolutionResponse, err
 			return nil, err
 		}
 		response.JSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest InternalError
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDisplayStatusResponse parses an HTTP response from a DisplayStatusWithResponse call
-func ParseDisplayStatusResponse(rsp *http.Response) (*DisplayStatusResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DisplayStatusResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest DisplayStatus
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -5146,12 +5048,9 @@ type ServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(w http.ResponseWriter, r *http.Request)
-	// Safely set the X display resolution
-	// (POST /display/set_resolution)
-	SetResolution(w http.ResponseWriter, r *http.Request)
-	// Report whether resize is currently safe
-	// (GET /display/status)
-	DisplayStatus(w http.ResponseWriter, r *http.Request)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(w http.ResponseWriter, r *http.Request)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(w http.ResponseWriter, r *http.Request)
@@ -5251,15 +5150,9 @@ func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Safely set the X display resolution
-// (POST /display/set_resolution)
-func (_ Unimplemented) SetResolution(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Report whether resize is currently safe
-// (GET /display/status)
-func (_ Unimplemented) DisplayStatus(w http.ResponseWriter, r *http.Request) {
+// Update display configuration
+// (PATCH /display)
+func (_ Unimplemented) PatchDisplay(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5462,25 +5355,11 @@ func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// SetResolution operation middleware
-func (siw *ServerInterfaceWrapper) SetResolution(w http.ResponseWriter, r *http.Request) {
+// PatchDisplay operation middleware
+func (siw *ServerInterfaceWrapper) PatchDisplay(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetResolution(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DisplayStatus operation middleware
-func (siw *ServerInterfaceWrapper) DisplayStatus(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DisplayStatus(w, r)
+		siw.Handler.PatchDisplay(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6219,10 +6098,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/display/set_resolution", wrapper.SetResolution)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/display/status", wrapper.DisplayStatus)
+		r.Patch(options.BaseURL+"/display", wrapper.PatchDisplay)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/create_directory", wrapper.CreateDirectory)
@@ -6385,69 +6261,44 @@ func (response MoveMouse500JSONResponse) VisitMoveMouseResponse(w http.ResponseW
 	return json.NewEncoder(w).Encode(response)
 }
 
-type SetResolutionRequestObject struct {
-	Body *SetResolutionJSONRequestBody
+type PatchDisplayRequestObject struct {
+	Body *PatchDisplayJSONRequestBody
 }
 
-type SetResolutionResponseObject interface {
-	VisitSetResolutionResponse(w http.ResponseWriter) error
+type PatchDisplayResponseObject interface {
+	VisitPatchDisplayResponse(w http.ResponseWriter) error
 }
 
-type SetResolution200JSONResponse OkResponse
+type PatchDisplay200JSONResponse DisplayConfig
 
-func (response SetResolution200JSONResponse) VisitSetResolutionResponse(w http.ResponseWriter) error {
+func (response PatchDisplay200JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type SetResolution400JSONResponse struct{ BadRequestErrorJSONResponse }
+type PatchDisplay400JSONResponse struct{ BadRequestErrorJSONResponse }
 
-func (response SetResolution400JSONResponse) VisitSetResolutionResponse(w http.ResponseWriter) error {
+func (response PatchDisplay400JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type SetResolution409JSONResponse struct{ ConflictErrorJSONResponse }
+type PatchDisplay409JSONResponse struct{ ConflictErrorJSONResponse }
 
-func (response SetResolution409JSONResponse) VisitSetResolutionResponse(w http.ResponseWriter) error {
+func (response PatchDisplay409JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type SetResolution500JSONResponse struct{ InternalErrorJSONResponse }
+type PatchDisplay500JSONResponse struct{ InternalErrorJSONResponse }
 
-func (response SetResolution500JSONResponse) VisitSetResolutionResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type DisplayStatusRequestObject struct {
-}
-
-type DisplayStatusResponseObject interface {
-	VisitDisplayStatusResponse(w http.ResponseWriter) error
-}
-
-type DisplayStatus200JSONResponse DisplayStatus
-
-func (response DisplayStatus200JSONResponse) VisitDisplayStatusResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type DisplayStatus500JSONResponse struct{ InternalErrorJSONResponse }
-
-func (response DisplayStatus500JSONResponse) VisitDisplayStatusResponse(w http.ResponseWriter) error {
+func (response PatchDisplay500JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -7728,12 +7579,9 @@ type StrictServerInterface interface {
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
-	// Safely set the X display resolution
-	// (POST /display/set_resolution)
-	SetResolution(ctx context.Context, request SetResolutionRequestObject) (SetResolutionResponseObject, error)
-	// Report whether resize is currently safe
-	// (GET /display/status)
-	DisplayStatus(ctx context.Context, request DisplayStatusRequestObject) (DisplayStatusResponseObject, error)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(ctx context.Context, request PatchDisplayRequestObject) (PatchDisplayResponseObject, error)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(ctx context.Context, request CreateDirectoryRequestObject) (CreateDirectoryResponseObject, error)
@@ -7908,11 +7756,11 @@ func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SetResolution operation middleware
-func (sh *strictHandler) SetResolution(w http.ResponseWriter, r *http.Request) {
-	var request SetResolutionRequestObject
+// PatchDisplay operation middleware
+func (sh *strictHandler) PatchDisplay(w http.ResponseWriter, r *http.Request) {
+	var request PatchDisplayRequestObject
 
-	var body SetResolutionJSONRequestBody
+	var body PatchDisplayJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
 		return
@@ -7920,42 +7768,18 @@ func (sh *strictHandler) SetResolution(w http.ResponseWriter, r *http.Request) {
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetResolution(ctx, request.(SetResolutionRequestObject))
+		return sh.ssi.PatchDisplay(ctx, request.(PatchDisplayRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetResolution")
+		handler = middleware(handler, "PatchDisplay")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetResolutionResponseObject); ok {
-		if err := validResponse.VisitSetResolutionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DisplayStatus operation middleware
-func (sh *strictHandler) DisplayStatus(w http.ResponseWriter, r *http.Request) {
-	var request DisplayStatusRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DisplayStatus(ctx, request.(DisplayStatusRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DisplayStatus")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DisplayStatusResponseObject); ok {
-		if err := validResponse.VisitDisplayStatusResponse(w); err != nil {
+	} else if validResponse, ok := response.(PatchDisplayResponseObject); ok {
+		if err := validResponse.VisitPatchDisplayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8747,84 +8571,85 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"RP4vAAD///S81cFWbQAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
