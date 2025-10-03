@@ -67,9 +67,15 @@ RUN set -eux; \
     echo "Madison for chromium:"; apt-cache madison chromium || true; \
     echo "Search chromium packages:"; apt-cache search '^chromium' | sort || true
 RUN set -eux; \
-    for i in 1 2 3; do \
-    apt-get update && apt-get install -y --no-install-recommends chromium sqlite3 && break || { echo 'retry in 60s'; sleep 60; }; \
-    done
+    echo "Inspect PPA Packages indexes:"; \
+    ls -alh /var/lib/apt/lists/*xtradeb*Packages* || true; \
+    for f in /var/lib/apt/lists/*xtradeb*Packages*; do \
+    echo "====== $f"; \
+    grep -nE '^Package: (chromium|ungoogled-chromium)$' -n -A3 "$f" || true; \
+    done; \
+    echo "Policy for ungoogled-chromium:"; apt-cache policy ungoogled-chromium || true
+RUN set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends chromium sqlite3
 
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \
