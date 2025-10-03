@@ -244,84 +244,83 @@ func TestWriteFlagFileAndReadBack(t *testing.T) {
 func TestMergeFlags(t *testing.T) {
 	tests := []struct {
 		name         string
-		baseFlags    string
-		runtimeFlags string
-		want         string
+		baseFlags    []string
+		runtimeFlags []string
+		want         []string
 	}{
 		{
 			name:         "empty base and runtime",
-			baseFlags:    "",
-			runtimeFlags: "",
-			want:         "",
+			baseFlags:    []string{},
+			runtimeFlags: []string{},
+			want:         []string{},
 		},
 		{
 			name:         "base only, no runtime",
-			baseFlags:    "--foo --bar=1",
-			runtimeFlags: "",
-			want:         "--foo --bar=1",
+			baseFlags:    []string{"--foo", "--bar=1"},
+			runtimeFlags: nil,
+			want:         []string{"--foo", "--bar=1"},
 		},
 		{
 			name:         "runtime only, no base",
-			baseFlags:    "",
-			runtimeFlags: "--foo --bar=1",
-			want:         "--foo --bar=1",
+			baseFlags:    nil,
+			runtimeFlags: []string{"--foo", "--bar=1"},
+			want:         []string{"--foo", "--bar=1"},
 		},
 		{
 			name:         "merge non-extension flags",
-			baseFlags:    "--foo --bar=1",
-			runtimeFlags: "--baz --qux=2",
-			want:         "--foo --bar=1 --baz --qux=2",
+			baseFlags:    []string{"--foo", "--bar=1"},
+			runtimeFlags: []string{"--baz", "--qux=2"},
+			want:         []string{"--foo", "--bar=1", "--baz", "--qux=2"},
 		},
 		{
 			name:         "deduplicate non-extension flags",
-			baseFlags:    "--foo --bar=1",
-			runtimeFlags: "--foo --baz",
-			want:         "--foo --bar=1 --baz",
+			baseFlags:    []string{"--foo", "--bar=1"},
+			runtimeFlags: []string{"--foo", "--baz"},
+			want:         []string{"--foo", "--bar=1", "--baz"},
 		},
 		{
 			name:         "merge load-extension flags",
-			baseFlags:    "--load-extension=/e1",
-			runtimeFlags: "--load-extension=/e2",
-			want:         "--load-extension=/e1,/e2",
+			baseFlags:    []string{"--load-extension=/e1"},
+			runtimeFlags: []string{"--load-extension=/e2"},
+			want:         []string{"--load-extension=/e1,/e2"},
 		},
 		{
 			name:         "merge disable-extensions-except flags",
-			baseFlags:    "--disable-extensions-except=/x1",
-			runtimeFlags: "--disable-extensions-except=/x2",
-			want:         "--disable-extensions-except=/x1,/x2",
+			baseFlags:    []string{"--disable-extensions-except=/x1"},
+			runtimeFlags: []string{"--disable-extensions-except=/x2"},
+			want:         []string{"--disable-extensions-except=/x1,/x2"},
 		},
 		{
 			name:         "runtime disable-extensions overrides all",
-			baseFlags:    "--load-extension=/e1 --disable-extensions-except=/x1",
-			runtimeFlags: "--disable-extensions",
-			want:         "--disable-extensions",
+			baseFlags:    []string{"--load-extension=/e1", "--disable-extensions-except=/x1"},
+			runtimeFlags: []string{"--disable-extensions"},
+			want:         []string{"--disable-extensions"},
 		},
 		{
 			name:         "base disable-extensions, runtime load-extension overrides",
-			baseFlags:    "--disable-extensions",
-			runtimeFlags: "--load-extension=/e1",
-			want:         "--load-extension=/e1",
+			baseFlags:    []string{"--disable-extensions"},
+			runtimeFlags: []string{"--load-extension=/e1"},
+			want:         []string{"--load-extension=/e1"},
 		},
 		{
 			name:         "base disable-extensions, no runtime load-extension keeps disable",
-			baseFlags:    "--disable-extensions --other=1",
-			runtimeFlags: "--foo",
-			want:         "--other=1 --foo --disable-extensions",
+			baseFlags:    []string{"--disable-extensions", "--other=1"},
+			runtimeFlags: []string{"--foo"},
+			want:         []string{"--other=1", "--foo", "--disable-extensions"},
 		},
 		{
 			name:         "complex merge with extensions and non-extensions",
-			baseFlags:    "--foo --load-extension=/e1 --disable-extensions-except=/x1",
-			runtimeFlags: "--bar --load-extension=/e2 --disable-extensions-except=/x2",
-			want:         "--foo --bar --load-extension=/e1,/e2 --disable-extensions-except=/x1,/x2",
+			baseFlags:    []string{"--foo", "--load-extension=/e1", "--disable-extensions-except=/x1"},
+			runtimeFlags: []string{"--bar", "--load-extension=/e2", "--disable-extensions-except=/x2"},
+			want:         []string{"--foo", "--bar", "--load-extension=/e1,/e2", "--disable-extensions-except=/x1,/x2"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := MergeFlags(parseFlags(tt.baseFlags), parseFlags(tt.runtimeFlags))
-			wantTokens := parseFlags(tt.want)
-			if !reflect.DeepEqual(got, wantTokens) {
-				t.Errorf("MergeFlags() mismatch:\n got: %#v\nwant: %#v", got, wantTokens)
+			got := MergeFlags(tt.baseFlags, tt.runtimeFlags)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("MergeFlags() mismatch:\n got: %#v\nwant: %#v", got, tt.want)
 			}
 		})
 	}

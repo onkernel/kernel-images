@@ -189,12 +189,16 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	updates, cancelSub := s.upstreamMgr.Subscribe()
 	defer cancelSub()
 
-	// Fire-and-forget supervisorctl restart in a background goroutine, since we want to return as soon as the new CDP URL is available
+	// Create a background context with timeout for supervisorctl to prevent goroutine leaks if it hangs.
+	// Using Background() instead of the request context allows supervisorctl to complete
+	// even if this function returns early (when DevTools URL arrives or timeout occurs).
 	// Still capture an error if it happens
+	cmdCtx, cancelCmd := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancelCmd()
 	errCh := make(chan error, 1)
 	log.Info("restarting chromium via supervisorctl")
 	go func() {
-		out, err := exec.Command("supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
+		out, err := exec.CommandContext(cmdCtx, "supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
 			log.Error("failed to restart chromium", "error", err, "out", string(out))
 			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)

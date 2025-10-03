@@ -22,7 +22,7 @@ type FlagsFile struct {
 func parseFlags(input string) []string {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return nil
+		return []string{}
 	}
 	return strings.Fields(input)
 }
