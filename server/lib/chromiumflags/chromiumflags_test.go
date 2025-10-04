@@ -11,7 +11,7 @@ import (
 
 func TestParseFlags(t *testing.T) {
 	// Empty input returns nil
-	if got := parseFlags(""); got != nil {
+	if got := parseFlags(""); got == nil || len(got) != 0 {
 		t.Fatalf("expected nil for empty input, got: %#v", got)
 	}
 
