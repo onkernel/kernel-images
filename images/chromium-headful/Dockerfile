@@ -95,7 +95,6 @@ RUN apt-get update && \
     # Userland apps
     sudo add-apt-repository ppa:mozillateam/ppa && \
     sudo apt-get install -y --no-install-recommends \
-    chromium-browser \
     libreoffice \
     x11-apps \
     xpdf \

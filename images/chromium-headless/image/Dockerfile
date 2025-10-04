@@ -57,25 +57,7 @@ RUN set -xe; \
 
 # install chromium and sqlite3 for debugging the cookies file
 RUN add-apt-repository -y ppa:xtradeb/apps
-RUN set -eux; \
-    echo "Architecture:"; dpkg --print-architecture; uname -m; \
-    echo "APT sources:"; cat /etc/apt/sources.list || true; \
-    echo "APT sources.d:"; ls -alh /etc/apt/sources.list.d/ || true; \
-    echo "PPA entry:"; sed -n '1,200p' /etc/apt/sources.list.d/*.list || true; \
-    echo "Update indexes"; apt-get update -y; \
-    echo "Policy for chromium:"; apt-cache policy chromium || true; \
-    echo "Madison for chromium:"; apt-cache madison chromium || true; \
-    echo "Search chromium packages:"; apt-cache search '^chromium' | sort || true
-RUN set -eux; \
-    echo "Inspect PPA Packages indexes:"; \
-    ls -alh /var/lib/apt/lists/*xtradeb*Packages* || true; \
-    for f in /var/lib/apt/lists/*xtradeb*Packages*; do \
-    echo "====== $f"; \
-    grep -nE '^Package: (chromium|ungoogled-chromium)$' -n -A3 "$f" || true; \
-    done; \
-    echo "Policy for ungoogled-chromium:"; apt-cache policy ungoogled-chromium || true
-RUN set -eux; \
-    apt-get update && apt-get install -y --no-install-recommends chromium sqlite3
+RUN apt update -y && apt install -y chromium sqlite3
 
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \
