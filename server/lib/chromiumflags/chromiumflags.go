@@ -203,7 +203,3 @@ func WriteFlagFile(path string, tokens []string) error {
 	data = append(data, '\n')
 	return os.WriteFile(path, data, 0o644)
 }
-
-// WriteFlagFileFromString splits a space-delimited flags string and writes
-// the structured JSON format via WriteFlagFile.
-// (Deprecated) WriteFlagFileFromString removed; callers should use WriteFlagFile.

@@ -132,6 +132,17 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	// Materialize uploads
 	extBase := "/home/kernel/extensions"
 
+	// Fail early if any destination already exists
+	for _, p := range items {
+		dest := filepath.Join(extBase, p.name)
+		if _, err := os.Stat(dest); err == nil {
+			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("extension name already exists: %s", p.name)}}, nil
+		} else if !os.IsNotExist(err) {
+			log.Error("failed to check extension dir", "error", err)
+			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to check extension dir"}}, nil
+		}
+	}
+
 	for _, p := range items {
 		if !p.zipReceived || p.name == "" {
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "each item must include zip_file and name"}}, nil
@@ -189,15 +200,13 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	updates, cancelSub := s.upstreamMgr.Subscribe()
 	defer cancelSub()
 
-	// Create a background context with timeout for supervisorctl to prevent goroutine leaks if it hangs.
-	// Using Background() instead of the request context allows supervisorctl to complete
-	// even if this function returns early (when DevTools URL arrives or timeout occurs).
-	// Still capture an error if it happens
-	cmdCtx, cancelCmd := context.WithTimeout(context.Background(), 1*time.Minute)
-	defer cancelCmd()
+	// Run supervisorctl restart with a new context to let it run beyond the lifetime of the http request.
+	// This lets us return as soon as the DevTools URL is updated.
 	errCh := make(chan error, 1)
 	log.Info("restarting chromium via supervisorctl")
 	go func() {
+		cmdCtx, cancelCmd := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
+		defer cancelCmd()
 		out, err := exec.CommandContext(cmdCtx, "supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
 		if err != nil {
 			log.Error("failed to restart chromium", "error", err, "out", string(out))
