@@ -70,9 +70,16 @@ func main() {
 	}
 	stz := scaletozero.NewUnikraftCloudController()
 
+	// DevTools WebSocket upstream manager: tail Chromium supervisord log
+	const chromiumLogPath = "/var/log/supervisord/chromium"
+	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
+	upstreamMgr.Start(ctx)
+
 	apiService, err := api.New(
 		recorder.NewFFmpegManager(),
 		recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams, stz),
+		upstreamMgr,
+		stz,
 	)
 	if err != nil {
 		slogger.Error("failed to create api service", "err", err)
@@ -102,11 +109,6 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: r,
 	}
-
-	// DevTools WebSocket proxy setup: tail Chromium supervisord log and start WS server on :9222 only after upstream is found
-	const chromiumLogPath = "/var/log/supervisord/chromium"
-	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
-	upstreamMgr.Start(ctx)
 
 	// wait up to 10 seconds for initial upstream; exit nonzero if not found
 	if _, err := upstreamMgr.WaitForInitial(10 * time.Second); err != nil {

@@ -1,0 +1,28 @@
+name: Test chromium-launcher
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "server/go.mod"
+          cache: true
+
+      - name: Run chromium-launcher unit tests
+        run: go test ./cmd/chromium-launcher -v
+        working-directory: server

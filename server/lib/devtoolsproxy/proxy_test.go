@@ -227,3 +227,37 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 		t.Fatalf("did not update upstream to port %d; got: %q", port2, mgr.Current())
 	}
 }
+
+func TestUpstreamManagerSubscriberGetsLatest(t *testing.T) {
+	logger := silentLogger()
+	mgr := NewUpstreamManager("/dev/null", logger)
+
+	updates, cancel := mgr.Subscribe()
+	defer cancel()
+
+	// Fill buffer with an older value, then immediately update to a newer value.
+	// The subscriber buffer size is 1, so the second send should replace the
+	// buffered value instead of being dropped.
+	mgr.setCurrent("ws://old")
+	mgr.setCurrent("ws://new")
+
+	select {
+	case v := <-updates:
+		if v != "ws://new" {
+			t.Fatalf("expected latest update 'ws://new', got %q", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for update")
+	}
+
+	// Subsequent updates should still be delivered normally.
+	mgr.setCurrent("ws://newer")
+	select {
+	case v := <-updates:
+		if v != "ws://newer" {
+			t.Fatalf("expected next update 'ws://newer', got %q", v)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for next update")
+	}
+}

@@ -33,6 +33,9 @@ type UpstreamManager struct {
 	startOnce  sync.Once
 	stopOnce   sync.Once
 	cancelTail context.CancelFunc
+
+	subsMu sync.RWMutex
+	subs   map[chan string]struct{}
 }
 
 func NewUpstreamManager(logFilePath string, logger *slog.Logger) *UpstreamManager {
@@ -84,7 +87,52 @@ func (u *UpstreamManager) setCurrent(url string) {
 	if url != "" && url != prev {
 		u.logger.Info("devtools upstream updated", slog.String("url", url))
 		u.currentURL.Store(url)
+		// Broadcast update to subscribers without blocking. If a subscriber's
+		// channel buffer (size 1) is full, replace the buffered value with the
+		// latest update to avoid dropping notifications entirely.
+		u.subsMu.RLock()
+		for ch := range u.subs {
+			select {
+			case ch <- url:
+				// sent successfully
+			default:
+				// channel is full; drop one stale value if present and try again
+				select {
+				case <-ch:
+				default:
+				}
+				select {
+				case ch <- url:
+				default:
+					// still full; give up to remain non-blocking
+				}
+			}
+		}
+		u.subsMu.RUnlock()
 	}
+}
+
+// Subscribe returns a channel that receives new upstream URLs as they are discovered.
+// The returned cancel function should be called to unsubscribe and release resources.
+func (u *UpstreamManager) Subscribe() (<-chan string, func()) {
+	// use channel size 1 to avoid setCurrent blocking/stalling on slow subscribers
+	// also provides "latest-wins" semantics: only one notification can sit in the channel
+	ch := make(chan string, 1)
+	u.subsMu.Lock()
+	if u.subs == nil {
+		u.subs = make(map[chan string]struct{})
+	}
+	u.subs[ch] = struct{}{}
+	u.subsMu.Unlock()
+	cancel := func() {
+		u.subsMu.Lock()
+		if _, ok := u.subs[ch]; ok {
+			delete(u.subs, ch)
+			close(ch)
+		}
+		u.subsMu.Unlock()
+	}
+	return ch, cancel
 }
 
 func (u *UpstreamManager) tailLoop(ctx context.Context) {

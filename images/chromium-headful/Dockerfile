@@ -10,8 +10,14 @@ COPY server/go.sum ./
 RUN go mod download
 
 COPY server/ .
+
+# Build kernel-images API
 RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
+
+# Build chromium launcher
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
 # webrtc client
 FROM node:22-bullseye-slim AS client
@@ -47,7 +53,7 @@ RUN set -eux; \
     make -j$(nproc); \
     make install;
 
-FROM ghcr.io/onkernel/neko/base:3.0.6-v1.0.1 AS neko
+FROM ghcr.io/onkernel/neko/base:3.0.8-v1.1.0 AS neko
 # ^--- now has event.SYSTEM_PONG with legacy support to keepalive
 FROM docker.io/ubuntu:22.04
 
@@ -89,7 +95,6 @@ RUN apt-get update && \
     # Userland apps
     sudo add-apt-repository ppa:mozillateam/ppa && \
     sudo apt-get install -y --no-install-recommends \
-    chromium-browser \
     libreoffice \
     x11-apps \
     xpdf \
@@ -170,14 +175,13 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
 COPY images/chromium-headful/image-chromium/ /
-COPY images/chromium-headful/start-chromium.sh /images/chromium-headful/start-chromium.sh
-RUN chmod +x /images/chromium-headful/start-chromium.sh
 COPY images/chromium-headful/wrapper.sh /wrapper.sh
 COPY images/chromium-headful/supervisord.conf /etc/supervisor/supervisord.conf
 COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/services/
 
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
+COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
 
 RUN useradd -m -s /bin/bash kernel
 
