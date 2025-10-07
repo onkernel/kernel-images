@@ -326,7 +326,7 @@ func (s *ApiService) getActiveNekoSessions(ctx context.Context) int {
 	}
 
 	// Query Neko sessions API
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/api/sessions", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:8080/api/sessions", nil)
 	if err != nil {
 		log.Debug("failed to create Neko API request", "error", err)
 		return 0
@@ -493,7 +493,7 @@ func (s *ApiService) getNekoToken(ctx context.Context) (string, error) {
 
 	// Call login endpoint
 	req, err := http.NewRequestWithContext(ctx, "POST",
-		"http://localhost:8080/api/login",
+		"http://127.0.0.1:8080/api/login",
 		strings.NewReader(string(loginBody)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create login request: %w", err)
@@ -572,7 +572,7 @@ func (s *ApiService) setResolutionViaNeko(ctx context.Context, width, height, re
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "POST",
-		"http://localhost:8080/api/room/screen",
+		"http://127.0.0.1:8080/api/room/screen",
 		strings.NewReader(string(body)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -602,7 +602,7 @@ func (s *ApiService) setResolutionViaNeko(ctx context.Context, width, height, re
 
 		// Retry the request with fresh token
 		req, err = http.NewRequestWithContext(ctx, "POST",
-			"http://localhost:8080/api/room/screen",
+			"http://127.0.0.1:8080/api/room/screen",
 			strings.NewReader(string(body)))
 		if err != nil {
 			return fmt.Errorf("failed to create retry request: %w", err)
