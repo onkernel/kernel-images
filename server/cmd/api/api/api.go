@@ -26,6 +26,10 @@ type ApiService struct {
 	// Process management
 	procMu sync.RWMutex
 	procs  map[string]*processHandle
+
+	// Neko authentication
+	nekoTokenMu sync.RWMutex
+	nekoToken   string
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)

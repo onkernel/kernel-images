@@ -1139,10 +1139,17 @@ components:
           type: integer
           minimum: 240
           description: Display height in pixels
+        refresh_rate:
+          type: integer
+          enum: [60, 30, 25]
+          description: Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
         require_idle:
           type: boolean
           description: If true, refuse to resize when live view or recording/replay is active.
           default: true
+        restart_chromium:
+          type: boolean
+          description: If true, restart Chromium after resolution change to ensure it adapts to new size. Default is false for headful, true for headless.
       additionalProperties: false
     DisplayConfig:
       type: object
@@ -1153,6 +1160,9 @@ components:
         height:
           type: integer
           description: Current display height in pixels
+        refresh_rate:
+          type: integer
+          description: Current display refresh rate in Hz (may be null if not detectable)
         live_view_sessions:
           type: integer
           description: Number of active Neko viewer sessions.
