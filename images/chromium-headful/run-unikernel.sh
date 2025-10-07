@@ -28,7 +28,26 @@ CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$chromium_flags_default}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
 FLAGS_DIR=".tmp/chromium"
-echo "$CHROMIUM_FLAGS" > "$FLAGS_DIR/flags"
+
+# Convert space-separated flags to JSON array format
+IFS=' ' read -ra FLAGS_ARRAY <<< "$CHROMIUM_FLAGS"
+FLAGS_JSON='{"flags":['
+FIRST=true
+for flag in "${FLAGS_ARRAY[@]}"; do
+  if [ -n "$flag" ]; then
+    if [ "$FIRST" = true ]; then
+      FLAGS_JSON+="\"$flag\""
+      FIRST=false
+    else
+      FLAGS_JSON+=",\"$flag\""
+    fi
+  fi
+done
+FLAGS_JSON+=']}'
+echo "$FLAGS_JSON" > "$FLAGS_DIR/flags"
+
+echo "flags file: $FLAGS_DIR/flags"
+cat "$FLAGS_DIR/flags"
 
 # Re-create the volume from scratch every run
 kraft cloud volume rm "$volume_name" || true
