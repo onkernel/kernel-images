@@ -113,8 +113,9 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 
 	// Return success with the new dimensions
 	return oapi.PatchDisplay200JSONResponse{
-		Width:  &width,
-		Height: &height,
+		Width:       &width,
+		Height:      &height,
+		RefreshRate: &refreshRate,
 	}, nil
 }
 
@@ -140,25 +141,31 @@ func (s *ApiService) detectDisplayMode(ctx context.Context) string {
 	return "xorg"
 }
 
+// restartChromium restarts the Chromium browser via supervisorctl
+func (s *ApiService) restartChromium(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	log.Info("restarting chromium after resolution change")
+
+	restartCmd := []string{"-lc", "supervisorctl restart chromium"}
+	restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd}
+
+	if restartResp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq}); err != nil {
+		log.Error("failed to restart chromium", "error", err)
+	} else if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
+		if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
+			log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
+		}
+	}
+}
+
 // setResolutionXorgViaNeko changes resolution for Xorg using Neko API
 func (s *ApiService) setResolutionXorgViaNeko(ctx context.Context, width, height, refreshRate int, restartChrome bool) error {
-	log := logger.FromContext(ctx)
-
 	if err := s.setResolutionViaNeko(ctx, width, height, refreshRate); err != nil {
 		return fmt.Errorf("failed to change resolution via Neko API: %w", err)
 	}
 
 	if restartChrome {
-		log.Info("restarting chromium after resolution change")
-		restartCmd := []string{"-lc", "supervisorctl restart chromium"}
-		restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd}
-		if restartResp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq}); err != nil {
-			log.Error("failed to restart chromium", "error", err)
-		} else if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
-			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
-				log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
-			}
-		}
+		s.restartChromium(ctx)
 	}
 
 	return nil
@@ -204,16 +211,7 @@ func (s *ApiService) setResolutionXorgViaXrandr(ctx context.Context, width, heig
 		log.Info("resolution updated via xrandr", "display", display, "width", width, "height", height)
 
 		if restartChrome {
-			log.Info("restarting chromium after resolution change")
-			restartCmd := []string{"-lc", "supervisorctl restart chromium"}
-			restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd}
-			if restartResp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq}); err != nil {
-				log.Error("failed to restart chromium", "error", err)
-			} else if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
-				if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
-					log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
-				}
-			}
+			s.restartChromium(ctx)
 		}
 		return nil
 	case oapi.ProcessExec400JSONResponse:
@@ -283,16 +281,7 @@ func (s *ApiService) setResolutionXvfb(ctx context.Context, width, height int, r
 	s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &waitReq})
 
 	if restartChrome {
-		log.Info("restarting chromium after Xvfb restart")
-		restartChromeCmd := []string{"-lc", "supervisorctl restart chromium"}
-		restartChromeReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartChromeCmd}
-		if chromeResp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartChromeReq}); err != nil {
-			log.Error("failed to restart chromium", "error", err)
-		} else if execResp, ok := chromeResp.(oapi.ProcessExec200JSONResponse); ok {
-			if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
-				log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
-			}
-		}
+		s.restartChromium(ctx)
 	}
 
 	log.Info("Xvfb resolution updated", "width", width, "height", height)
