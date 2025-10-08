@@ -218,6 +218,157 @@ func TestExtensionUploadAndActivation(t *testing.T) {
 	}
 }
 
+func TestScreenshotHeadless(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-screenshot-headless"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatalf("docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	env := map[string]string{}
+
+	// Start container
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	if err != nil {
+		t.Fatalf("failed to start container: %v", err)
+	}
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
+	defer cancel()
+
+	if err := waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh); err != nil {
+		_ = dumpContainerDiagnostics(ctx, name)
+		t.Fatalf("api not ready: %v", err)
+	}
+
+	client, err := apiClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Whole-screen screenshot
+	{
+		rsp, err := client.TakeScreenshotWithResponse(ctx, instanceoapi.TakeScreenshotJSONRequestBody{})
+		if err != nil {
+			t.Fatalf("screenshot request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for full screenshot: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+		if !isPNG(rsp.Body) {
+			t.Fatalf("response is not PNG (len=%d)", len(rsp.Body))
+		}
+	}
+
+	// Region screenshot (safe small region)
+	{
+		region := instanceoapi.ScreenshotRegion{X: 0, Y: 0, Width: 50, Height: 50}
+		req := instanceoapi.TakeScreenshotJSONRequestBody{Region: &region}
+		rsp, err := client.TakeScreenshotWithResponse(ctx, req)
+		if err != nil {
+			t.Fatalf("region screenshot request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for region screenshot: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+		if !isPNG(rsp.Body) {
+			t.Fatalf("region response is not PNG (len=%d)", len(rsp.Body))
+		}
+	}
+}
+
+func TestScreenshotHeadful(t *testing.T) {
+	image := headfulImage
+	name := containerName + "-screenshot-headful"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatalf("docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	env := map[string]string{
+		"WIDTH":  "1024",
+		"HEIGHT": "768",
+	}
+
+	// Start container
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	if err != nil {
+		t.Fatalf("failed to start container: %v", err)
+	}
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
+	defer cancel()
+
+	if err := waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh); err != nil {
+		_ = dumpContainerDiagnostics(ctx, name)
+		t.Fatalf("api not ready: %v", err)
+	}
+
+	client, err := apiClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Whole-screen screenshot
+	{
+		rsp, err := client.TakeScreenshotWithResponse(ctx, instanceoapi.TakeScreenshotJSONRequestBody{})
+		if err != nil {
+			t.Fatalf("screenshot request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for full screenshot: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+		if !isPNG(rsp.Body) {
+			t.Fatalf("response is not PNG (len=%d)", len(rsp.Body))
+		}
+	}
+
+	// Region screenshot
+	{
+		region := instanceoapi.ScreenshotRegion{X: 0, Y: 0, Width: 80, Height: 60}
+		req := instanceoapi.TakeScreenshotJSONRequestBody{Region: &region}
+		rsp, err := client.TakeScreenshotWithResponse(ctx, req)
+		if err != nil {
+			t.Fatalf("region screenshot request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for region screenshot: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+		if !isPNG(rsp.Body) {
+			t.Fatalf("region response is not PNG (len=%d)", len(rsp.Body))
+		}
+	}
+}
+
+// isPNG returns true if data starts with the PNG magic header
+func isPNG(data []byte) bool {
+	if len(data) < 8 {
+		return false
+	}
+	sig := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	for i := 0; i < 8; i++ {
+		if data[i] != sig[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func runChromiumUserDataSavingFlow(t *testing.T, image, containerName string) {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{

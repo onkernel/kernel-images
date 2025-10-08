@@ -2,8 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -142,4 +147,126 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 	}
 
 	return oapi.ClickMouse200Response{}, nil
+}
+
+// getScreenDimensions uses xdpyinfo to get the screen dimensions
+func getScreenDimensions(display string) (width, height int, err error) {
+	cmd := exec.Command("xdpyinfo")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
+
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("xdpyinfo command failed: %w", err)
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "dimensions:") {
+			// Parse line like "  dimensions:    1920x1080 pixels (508x285 millimeters)"
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				dims := strings.Split(parts[1], "x")
+				if len(dims) == 2 {
+					w, _ := strconv.Atoi(dims[0])
+					h, _ := strconv.Atoi(dims[1])
+					if w > 0 && h > 0 {
+						return w, h, nil
+					}
+				}
+			}
+		}
+	}
+	return 0, 0, fmt.Errorf("failed to parse xdpyinfo output")
+}
+
+func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreenshotRequestObject) (oapi.TakeScreenshotResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	var body oapi.ScreenshotRequest
+	if request.Body != nil {
+		body = *request.Body
+	}
+
+	// Determine display to use (align with default xdotool display)
+	display := ":1"
+
+	// Determine screen size
+	screenWidth, screenHeight, err := getScreenDimensions(display)
+	if err != nil {
+		log.Error("failed to get screen dimensions", "err", err)
+		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get screen dimensions"}}, nil
+	}
+
+	// Validate region if provided
+	if body.Region != nil {
+		r := body.Region
+		if r.X < 0 || r.Y < 0 || r.Width <= 0 || r.Height <= 0 {
+			return oapi.TakeScreenshot400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid region dimensions"}}, nil
+		}
+		if r.X+r.Width > screenWidth || r.Y+r.Height > screenHeight {
+			return oapi.TakeScreenshot400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "region exceeds screen bounds"}}, nil
+		}
+	}
+
+	// Build ffmpeg command
+	args := []string{
+		"-f", "x11grab",
+		"-video_size", fmt.Sprintf("%dx%d", screenWidth, screenHeight),
+		"-i", display,
+		"-vframes", "1",
+	}
+
+	// Add crop filter if region is specified
+	if body.Region != nil {
+		r := body.Region
+		cropFilter := fmt.Sprintf("crop=%d:%d:%d:%d", r.Width, r.Height, r.X, r.Y)
+		args = append(args, "-vf", cropFilter)
+	}
+
+	// Output as PNG to stdout
+	args = append(args, "-f", "image2pipe", "-vcodec", "png", "-")
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
+
+	log.Debug("executing ffmpeg command", "args", args, "display", display)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Error("failed to create stdout pipe", "err", err)
+		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Error("failed to create stderr pipe", "err", err)
+		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+	}
+
+	if err := cmd.Start(); err != nil {
+		log.Error("failed to start ffmpeg", "err", err)
+		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start ffmpeg"}}, nil
+	}
+
+	// Start a goroutine to drain stderr for logging to avoid blocking
+	go func() {
+		data, _ := io.ReadAll(stderr)
+		if len(data) > 0 {
+			// ffmpeg writes progress/info to stderr; include in debug logs
+			enc := base64.StdEncoding.EncodeToString(data)
+			log.Debug("ffmpeg stderr (base64)", "data_b64", enc)
+		}
+	}()
+
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		_, copyErr := io.Copy(pw, stdout)
+		if copyErr != nil {
+			log.Error("failed streaming ffmpeg output", "err", copyErr)
+		}
+		_ = cmd.Wait()
+	}()
+
+	return oapi.TakeScreenshot200ImagepngResponse{Body: pr, ContentLength: 0}, nil
 }

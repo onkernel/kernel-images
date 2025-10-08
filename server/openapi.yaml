@@ -310,6 +310,28 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/screenshot:
+    post:
+      summary: Capture a screenshot of the host computer
+      operationId: takeScreenshot
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScreenshotRequest"
+      responses:
+        "200":
+          description: Screenshot image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /logs/stream:
     get:
       summary: Stream logs over SSE
@@ -883,6 +905,33 @@ components:
           description: Modifier keys to hold during the move
           items:
             type: string
+      additionalProperties: false
+    ScreenshotRegion:
+      type: object
+      required:
+        - x
+        - y
+        - width
+        - height
+      properties:
+        x:
+          type: integer
+          description: X coordinate of the region's top-left corner
+        y:
+          type: integer
+          description: Y coordinate of the region's top-left corner
+        width:
+          type: integer
+          description: Width of the region in pixels
+        height:
+          type: integer
+          description: Height of the region in pixels
+      additionalProperties: false
+    ScreenshotRequest:
+      type: object
+      properties:
+        region:
+          $ref: "#/components/schemas/ScreenshotRegion"
       additionalProperties: false
     StartFsWatchRequest:
       type: object
