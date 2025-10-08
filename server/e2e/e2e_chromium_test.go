@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,141 @@ func TestChromiumHeadlessPersistence(t *testing.T) {
 	t.Skip("flaky. TODO(raf): fix")
 	ensurePlaywrightDeps(t)
 	runChromiumUserDataSavingFlow(t, headlessImage, containerName)
+}
+
+func TestDisplayResolutionChange(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-display"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatalf("docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	// Start with default resolution
+	env := map[string]string{
+		"WIDTH":  "1024",
+		"HEIGHT": "768",
+	}
+
+	// Start container
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	if err != nil {
+		t.Fatalf("failed to start container: %v", err)
+	}
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Minute)
+	defer cancel()
+
+	logger.Info("[setup]", "action", "waiting for API", "url", apiBaseURL+"/spec.yaml")
+	if err := waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh); err != nil {
+		_ = dumpContainerDiagnostics(ctx, name)
+		t.Fatalf("api not ready: %v", err)
+	}
+
+	client, err := apiClient()
+	if err != nil {
+		t.Fatalf("failed to create API client: %v", err)
+	}
+
+	// Get initial Xvfb resolution
+	logger.Info("[test]", "action", "getting initial Xvfb resolution")
+	initialWidth, initialHeight, err := getXvfbResolution(ctx)
+	if err != nil {
+		t.Fatalf("failed to get initial Xvfb resolution: %v", err)
+	}
+	logger.Info("[test]", "initial_resolution", fmt.Sprintf("%dx%d", initialWidth, initialHeight))
+	if initialWidth != 1024 || initialHeight != 768 {
+		t.Errorf("expected initial resolution 1024x768, got %dx%d", initialWidth, initialHeight)
+	}
+
+	// Test first resolution change: 1920x1080
+	logger.Info("[test]", "action", "changing resolution to 1920x1080")
+	width1 := 1920
+	height1 := 1080
+	req1 := instanceoapi.PatchDisplayJSONRequestBody{
+		Width:  &width1,
+		Height: &height1,
+	}
+	rsp1, err := client.PatchDisplayWithResponse(ctx, req1)
+	if err != nil {
+		t.Fatalf("PATCH /display request failed: %v", err)
+	}
+	if rsp1.StatusCode() != http.StatusOK {
+		t.Fatalf("unexpected status: %s body=%s", rsp1.Status(), string(rsp1.Body))
+	}
+	if rsp1.JSON200 == nil {
+		t.Fatalf("expected JSON200 response, got nil")
+	}
+	if rsp1.JSON200.Width == nil || *rsp1.JSON200.Width != width1 {
+		t.Errorf("expected width %d in response, got %v", width1, rsp1.JSON200.Width)
+	}
+	if rsp1.JSON200.Height == nil || *rsp1.JSON200.Height != height1 {
+		t.Errorf("expected height %d in response, got %v", height1, rsp1.JSON200.Height)
+	}
+
+	// Wait a bit for Xvfb to fully restart
+	logger.Info("[test]", "action", "waiting for Xvfb to stabilize")
+	time.Sleep(3 * time.Second)
+
+	// Verify new resolution via ps aux
+	logger.Info("[test]", "action", "verifying new Xvfb resolution")
+	newWidth1, newHeight1, err := getXvfbResolution(ctx)
+	if err != nil {
+		t.Fatalf("failed to get new Xvfb resolution: %v", err)
+	}
+	logger.Info("[test]", "new_resolution", fmt.Sprintf("%dx%d", newWidth1, newHeight1))
+	if newWidth1 != width1 || newHeight1 != height1 {
+		t.Errorf("expected Xvfb resolution %dx%d, got %dx%d", width1, height1, newWidth1, newHeight1)
+	}
+
+	// Test second resolution change: 1280x720
+	logger.Info("[test]", "action", "changing resolution to 1280x720")
+	width2 := 1280
+	height2 := 720
+	req2 := instanceoapi.PatchDisplayJSONRequestBody{
+		Width:  &width2,
+		Height: &height2,
+	}
+	rsp2, err := client.PatchDisplayWithResponse(ctx, req2)
+	if err != nil {
+		t.Fatalf("PATCH /display request failed: %v", err)
+	}
+	if rsp2.StatusCode() != http.StatusOK {
+		t.Fatalf("unexpected status: %s body=%s", rsp2.Status(), string(rsp2.Body))
+	}
+	if rsp2.JSON200 == nil {
+		t.Fatalf("expected JSON200 response, got nil")
+	}
+	if rsp2.JSON200.Width == nil || *rsp2.JSON200.Width != width2 {
+		t.Errorf("expected width %d in response, got %v", width2, rsp2.JSON200.Width)
+	}
+	if rsp2.JSON200.Height == nil || *rsp2.JSON200.Height != height2 {
+		t.Errorf("expected height %d in response, got %v", height2, rsp2.JSON200.Height)
+	}
+
+	// Wait a bit for Xvfb to fully restart
+	logger.Info("[test]", "action", "waiting for Xvfb to stabilize")
+	time.Sleep(3 * time.Second)
+
+	// Verify second resolution change via ps aux
+	logger.Info("[test]", "action", "verifying second Xvfb resolution")
+	newWidth2, newHeight2, err := getXvfbResolution(ctx)
+	if err != nil {
+		t.Fatalf("failed to get second Xvfb resolution: %v", err)
+	}
+	logger.Info("[test]", "final_resolution", fmt.Sprintf("%dx%d", newWidth2, newHeight2))
+	if newWidth2 != width2 || newHeight2 != height2 {
+		t.Errorf("expected Xvfb resolution %dx%d, got %dx%d", width2, height2, newWidth2, newHeight2)
+	}
+
+	logger.Info("[test]", "result", "all resolution changes verified successfully")
 }
 
 func TestExtensionUploadAndActivation(t *testing.T) {
@@ -414,7 +550,8 @@ func runContainer(ctx context.Context, image, name string, env map[string]string
 		"run",
 		"--name", name,
 		"--privileged",
-		"--network=host",
+		"-p", "10001:10001", // API server
+		"-p", "9222:9222",   // DevTools proxy
 		"--tmpfs", "/dev/shm:size=2g",
 	}
 	for k, v := range env {
@@ -1289,4 +1426,56 @@ func verifyCookieInContainerDB(ctx context.Context, cookieName string) error {
 
 	logger.Info("[container-cookie-verify]", "action", "cookie verified successfully", "cookieName", cookieName, "output", stdout)
 	return nil
+}
+
+// getXvfbResolution extracts the Xvfb resolution from the ps aux output
+// It looks for the Xvfb command line which contains "-screen 0 WIDTHxHEIGHTx24"
+func getXvfbResolution(ctx context.Context) (width, height int, err error) {
+	logger := logctx.FromContext(ctx)
+
+	// Get ps aux output
+	stdout, err := execCombinedOutput(ctx, "ps", []string{"aux"})
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to execute ps aux: %w, output: %s", err, stdout)
+	}
+
+	logger.Info("[xvfb-resolution]", "action", "parsing ps aux output")
+
+	// Look for Xvfb line
+	// Expected format: "root ... Xvfb :1 -screen 0 1920x1080x24 ..."
+	lines := strings.Split(stdout, "\n")
+	for _, line := range lines {
+		if !strings.Contains(line, "Xvfb") {
+			continue
+		}
+		logger.Info("[xvfb-resolution]", "line", line)
+
+		// Parse the screen parameter
+		// Look for pattern: "-screen 0 WIDTHxHEIGHTx24"
+		fields := strings.Fields(line)
+		for i, field := range fields {
+			if field == "-screen" && i+2 < len(fields) {
+				// Next field should be "0", and the one after should be the resolution
+				screenSpec := fields[i+2]
+				logger.Info("[xvfb-resolution]", "screen_spec", screenSpec)
+
+				// Parse WIDTHxHEIGHTx24
+				parts := strings.Split(screenSpec, "x")
+				if len(parts) >= 2 {
+					w, err := strconv.Atoi(parts[0])
+					if err != nil {
+						return 0, 0, fmt.Errorf("failed to parse width from %q: %w", screenSpec, err)
+					}
+					h, err := strconv.Atoi(parts[1])
+					if err != nil {
+						return 0, 0, fmt.Errorf("failed to parse height from %q: %w", screenSpec, err)
+					}
+					logger.Info("[xvfb-resolution]", "parsed", fmt.Sprintf("%dx%d", w, h))
+					return w, h, nil
+				}
+			}
+		}
+	}
+
+	return 0, 0, fmt.Errorf("Xvfb process not found in ps aux output")
 }
