@@ -219,10 +219,6 @@ func (s *ApiService) setResolutionXorgViaXrandr(ctx context.Context, width, heig
 			return fmt.Errorf("xrandr failed: %s", stderr)
 		}
 		log.Info("resolution updated via xrandr", "display", display, "width", width, "height", height)
-
-		if restartChrome {
-			s.restartChromium(ctx)
-		}
 		return nil
 	case oapi.ProcessExec400JSONResponse:
 		return fmt.Errorf("bad request: %s", r.Message)
