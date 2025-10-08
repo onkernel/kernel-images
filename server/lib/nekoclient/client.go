@@ -104,6 +104,7 @@ func (c *AuthClient) SessionsGet(ctx context.Context) ([]nekooapi.SessionData, e
 
 	// Handle 401 by clearing token and retrying once
 	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close() // Close the first response body before retrying
 		c.clearToken()
 		if err := c.ensureToken(ctx); err != nil {
 			return nil, err
@@ -160,6 +161,7 @@ func (c *AuthClient) ScreenConfigurationChange(ctx context.Context, config nekoo
 
 	// Handle 401 by clearing token and retrying once
 	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close() // Close the first response body before retrying
 		c.clearToken()
 		if err := c.ensureToken(ctx); err != nil {
 			return err
