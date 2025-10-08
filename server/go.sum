@@ -58,8 +58,8 @@ github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 h1:G7ERwszslrBzRxj//J
 github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037/go.mod h1:2bpvgLBZEtENV5scfDFEtB/5+1M4hkQhDQrccEJ/qGw=
 github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 h1:bQx3WeLcUWy+RletIKwUIt4x3t8n2SxavmoclizMb8c=
 github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90/go.mod h1:y5+oSEHCPT/DGrS++Wc/479ERge0zTFxaF8PbGKcg2o=
-github.com/onkernel/neko/server v0.0.0-20251008180819-e622f6212614 h1:iC/Y89xOyvp21MQOBwSjQpsccuBTSHj5NefXzWJkAsQ=
-github.com/onkernel/neko/server v0.0.0-20251008180819-e622f6212614/go.mod h1:0+zactiySvtKwfe5JFjyNrSuQLA+EEPZl5bcfcZf1RM=
+github.com/onkernel/neko/server v0.0.0-20251008185748-46e2fc7d3866 h1:Cix/sgZLCsavpiTFxDLPbUOXob50IekCg5mgh+i4D4Q=
+github.com/onkernel/neko/server v0.0.0-20251008185748-46e2fc7d3866/go.mod h1:0+zactiySvtKwfe5JFjyNrSuQLA+EEPZl5bcfcZf1RM=
 github.com/perimeterx/marshmallow v1.1.5 h1:a2LALqQ1BlHM8PZblsDdidgv1mWi1DgC2UmX50IvK2s=
 github.com/perimeterx/marshmallow v1.1.5/go.mod h1:dsXbUu8CRzfYP5a87xpp0xq9S3u0Vchtcl8we9tYaXw=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

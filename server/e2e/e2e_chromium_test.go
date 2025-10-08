@@ -551,7 +551,7 @@ func runContainer(ctx context.Context, image, name string, env map[string]string
 		"--name", name,
 		"--privileged",
 		"-p", "10001:10001", // API server
-		"-p", "9222:9222",   // DevTools proxy
+		"-p", "9222:9222", // DevTools proxy
 		"--tmpfs", "/dev/shm:size=2g",
 	}
 	for k, v := range env {

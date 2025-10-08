@@ -11,7 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/m1k1o/neko/server v0.0.0-20251008180819-e622f6212614
+	github.com/m1k1o/neko/server v0.0.0-20251008185748-46e2fc7d3866
 	github.com/nrednav/cuid2 v1.1.0
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/stretchr/testify v1.10.0
@@ -47,4 +47,4 @@ require (
 	modernc.org/sqlite v1.23.1 // indirect
 )
 
-replace github.com/m1k1o/neko/server => github.com/onkernel/neko/server v0.0.0-20251008180819-e622f6212614
+replace github.com/m1k1o/neko/server => github.com/onkernel/neko/server v0.0.0-20251008185748-46e2fc7d3866
