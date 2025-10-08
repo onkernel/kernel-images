@@ -518,7 +518,7 @@ func (s *ApiService) getNekoToken(ctx context.Context) (string, error) {
 	s.nekoToken = token
 	log.Info("successfully obtained Neko authentication token")
 
-	return s.nekoToken, nil
+	return token, nil
 }
 
 // clearNekoToken clears the cached token, forcing a new login on next request
