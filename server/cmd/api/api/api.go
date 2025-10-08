@@ -10,6 +10,7 @@ import (
 
 	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
+	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
@@ -29,13 +30,12 @@ type ApiService struct {
 	procMu sync.RWMutex
 	procs  map[string]*processHandle
 
-	// Neko authentication
-	nekoTokenMu sync.RWMutex
-	nekoToken   string
+	// Neko authenticated client
+	nekoAuthClient *nekoclient.AuthClient
 
 	// DevTools upstream manager (Chromium supervisord log tailer)
 	upstreamMgr *devtoolsproxy.UpstreamManager
-	stz scaletozero.Controller
+	stz         scaletozero.Controller
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -50,6 +50,16 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		return nil, fmt.Errorf("upstreamMgr cannot be nil")
 	}
 
+	// Initialize Neko authenticated client
+	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = "admin" // Default from neko.yaml
+	}
+	nekoAuthClient, err := nekoclient.NewAuthClient("http://127.0.0.1:8080", "admin", adminPassword)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create neko auth client: %w", err)
+	}
+
 	return &ApiService{
 		recordManager:     recordManager,
 		factory:           factory,
@@ -58,6 +68,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		procs:             make(map[string]*processHandle),
 		upstreamMgr:       upstreamMgr,
 		stz:               stz,
+		nekoAuthClient:    nekoAuthClient,
 	}, nil
 }
 

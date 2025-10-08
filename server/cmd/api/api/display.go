@@ -3,16 +3,14 @@ package api
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	nekooapi "github.com/m1k1o/neko/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 )
@@ -23,6 +21,10 @@ import (
 // or Xvfb (headless) and uses the appropriate method to change resolution.
 func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequestObject) (oapi.PatchDisplayResponseObject, error) {
 	log := logger.FromContext(ctx)
+
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
+
 	if req.Body == nil {
 		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "missing request body"}}, nil
 	}
@@ -52,7 +54,7 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid width/height"}}, nil
 	}
 
-	log.Info("resolution change requested", "width", width, "height", height, "refresh_rate", refreshRate)
+	log.Info(fmt.Sprintf("resolution change requested from %dx%d@%d to %dx%d@%d", currentWidth, currentHeight, currentRefreshRate, width, height, refreshRate))
 
 	// Parse requireIdle flag (default true)
 	requireIdle := true
@@ -64,10 +66,9 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 	if requireIdle {
 		live := s.getActiveNekoSessions(ctx)
 		isRecording := s.anyRecordingActive(ctx)
-		isReplaying := false // replay not currently implemented
-		resizableNow := (live == 0) && !isRecording && !isReplaying
+		resizableNow := (live == 0) && !isRecording
 
-		log.Info("checking if resize is safe", "live_sessions", live, "is_recording", isRecording, "is_replaying", isReplaying, "resizable", resizableNow)
+		log.Info("checking if resize is safe", "live_sessions", live, "is_recording", isRecording, "resizable", resizableNow)
 
 		if !resizableNow {
 			return oapi.PatchDisplay409JSONResponse{
@@ -92,10 +93,13 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 	if displayMode == "xorg" {
 		if s.isNekoEnabled() {
 			log.Info("using Neko API for Xorg resolution change")
-			err = s.setResolutionXorgViaNeko(ctx, width, height, refreshRate, restartChrome)
+			err = s.setResolutionViaNeko(ctx, width, height, refreshRate)
 		} else {
 			log.Info("using xrandr for Xorg resolution change (Neko disabled)")
 			err = s.setResolutionXorgViaXrandr(ctx, width, height, refreshRate, restartChrome)
+		}
+		if err == nil && restartChrome {
+			s.restartChromium(ctx)
 		}
 	} else {
 		log.Info("using Xvfb restart for resolution change")
@@ -141,34 +145,40 @@ func (s *ApiService) detectDisplayMode(ctx context.Context) string {
 	return "xorg"
 }
 
-// restartChromium restarts the Chromium browser via supervisorctl
+// restartChromium restarts the Chromium browser via supervisorctl and waits for DevTools to be ready
 func (s *ApiService) restartChromium(ctx context.Context) {
 	log := logger.FromContext(ctx)
-	log.Info("restarting chromium after resolution change")
+	start := time.Now()
 
-	restartCmd := []string{"-lc", "supervisorctl restart chromium"}
-	restartReq := oapi.ProcessExecRequest{Command: "bash", Args: &restartCmd}
+	// Begin listening for devtools URL updates, since we are about to restart Chromium
+	updates, cancelSub := s.upstreamMgr.Subscribe()
+	defer cancelSub()
 
-	if restartResp, err := s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &restartReq}); err != nil {
-		log.Error("failed to restart chromium", "error", err)
-	} else if execResp, ok := restartResp.(oapi.ProcessExec200JSONResponse); ok {
-		if execResp.ExitCode != nil && *execResp.ExitCode != 0 {
-			log.Error("chromium restart failed", "exit_code", *execResp.ExitCode)
+	// Run supervisorctl restart with a new context to let it run beyond the lifetime of the http request.
+	// This lets us return as soon as the DevTools URL is updated.
+	errCh := make(chan error, 1)
+	log.Info("restarting chromium via supervisorctl")
+	go func() {
+		cmdCtx, cancelCmd := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
+		defer cancelCmd()
+		out, err := exec.CommandContext(cmdCtx, "supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
+		if err != nil {
+			log.Error("failed to restart chromium", "error", err, "out", string(out))
+			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)
 		}
-	}
-}
+	}()
 
-// setResolutionXorgViaNeko changes resolution for Xorg using Neko API
-func (s *ApiService) setResolutionXorgViaNeko(ctx context.Context, width, height, refreshRate int, restartChrome bool) error {
-	if err := s.setResolutionViaNeko(ctx, width, height, refreshRate); err != nil {
-		return fmt.Errorf("failed to change resolution via Neko API: %w", err)
+	// Wait for either a new upstream, a restart error, or timeout
+	timeout := time.NewTimer(15 * time.Second)
+	defer timeout.Stop()
+	select {
+	case <-updates:
+		log.Info("chromium devtools ready after resolution change", "elapsed", time.Since(start).String())
+	case err := <-errCh:
+		log.Error("chromium restart failed", "error", err, "elapsed", time.Since(start).String())
+	case <-timeout.C:
+		log.Warn("chromium devtools not ready in time after resolution change", "elapsed", time.Since(start).String())
 	}
-
-	if restartChrome {
-		s.restartChromium(ctx)
-	}
-
-	return nil
 }
 
 // setResolutionXorgViaXrandr changes resolution for Xorg using xrandr (fallback when Neko is disabled)
@@ -302,64 +312,22 @@ func (s *ApiService) anyRecordingActive(ctx context.Context) bool {
 func (s *ApiService) getActiveNekoSessions(ctx context.Context) int {
 	log := logger.FromContext(ctx)
 
-	// Get authentication token
-	token, err := s.getNekoToken(ctx)
+	// Query sessions using authenticated client
+	sessions, err := s.nekoAuthClient.SessionsGet(ctx)
 	if err != nil {
-		log.Debug("failed to get Neko token", "error", err)
+		log.Debug("failed to query Neko sessions", "error", err)
 		return 0
 	}
 
-	// Create HTTP client with short timeout
-	client := &http.Client{
-		Timeout: 500 * time.Millisecond,
-	}
-
-	// Query Neko sessions API
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:8080/api/sessions", nil)
-	if err != nil {
-		log.Debug("failed to create Neko API request", "error", err)
-		return 0
-	}
-
-	// Add Bearer token authentication
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Debug("failed to query Neko API", "error", err)
-		return 0
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode == http.StatusUnauthorized {
-		log.Warn("Neko API returned 401, clearing cached token")
-		s.clearNekoToken()
-		return 0
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Warn("Neko API returned non-OK status", "status", resp.StatusCode)
-		return 0
-	}
-
-	// Parse response
-	var sessions []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		log.Error("failed to parse Neko API response", "error", err)
-		return 0
-	}
-
-	// Debug: log each session to understand what we're counting
+	// Count active sessions (connected and watching)
 	live := 0
 	for i, session := range sessions {
 		log.Info("neko session details", "index", i, "session", session)
-		if stRaw, ok := session["state"]; ok {
-			if st, ok := stRaw.(map[string]interface{}); ok {
-				connected, _ := st["is_connected"].(bool)
-				watching, _ := st["is_watching"].(bool)
-				if connected && watching {
-					live++
-				}
+		if session.State != nil {
+			connected := session.State.IsConnected != nil && *session.State.IsConnected
+			watching := session.State.IsWatching != nil && *session.State.IsWatching
+			if connected && watching {
+				live++
 			}
 		}
 	}
@@ -435,180 +403,25 @@ func (s *ApiService) isNekoEnabled() bool {
 	return os.Getenv("ENABLE_WEBRTC") == "true"
 }
 
-// getNekoToken obtains a bearer token from Neko API for authentication.
-// It caches the token and reuses it for subsequent requests.
-func (s *ApiService) getNekoToken(ctx context.Context) (string, error) {
-	log := logger.FromContext(ctx)
-
-	// Check if we have a cached token
-	s.nekoTokenMu.RLock()
-	cachedToken := s.nekoToken
-	s.nekoTokenMu.RUnlock()
-
-	if cachedToken != "" {
-		return cachedToken, nil
-	}
-
-	// Need to obtain a new token
-	s.nekoTokenMu.Lock()
-	defer s.nekoTokenMu.Unlock()
-
-	// Double-check in case another goroutine just obtained the token
-	if s.nekoToken != "" {
-		return s.nekoToken, nil
-	}
-
-	// Get admin credentials
-	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
-	if adminPassword == "" {
-		adminPassword = "admin" // Default from neko.yaml
-	}
-
-	// Prepare login request
-	loginReq := map[string]string{
-		"username": "admin",
-		"password": adminPassword,
-	}
-
-	loginBody, err := json.Marshal(loginReq)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal login request: %w", err)
-	}
-
-	// Create HTTP client
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	// Call login endpoint
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		"http://127.0.0.1:8080/api/login",
-		strings.NewReader(string(loginBody)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create login request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to call login API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("login API returned status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	// Parse response to get token
-	var loginResp map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		return "", fmt.Errorf("failed to parse login response: %w", err)
-	}
-
-	log.Debug("neko login response", "response", loginResp)
-
-	token, ok := loginResp["token"].(string)
-	if !ok || token == "" {
-		return "", fmt.Errorf("login response did not contain a token")
-	}
-
-	// Cache the token
-	s.nekoToken = token
-	log.Info("successfully obtained Neko authentication token")
-
-	return token, nil
-}
-
-// clearNekoToken clears the cached token, forcing a new login on next request
-func (s *ApiService) clearNekoToken() {
-	s.nekoTokenMu.Lock()
-	defer s.nekoTokenMu.Unlock()
-	s.nekoToken = ""
-}
-
 // setResolutionViaNeko delegates resolution change to Neko API
 func (s *ApiService) setResolutionViaNeko(ctx context.Context, width, height, refreshRate int) error {
 	log := logger.FromContext(ctx)
-
-	// Get authentication token
-	token, err := s.getNekoToken(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get Neko token: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
 
 	// Use default refresh rate if not specified
 	if refreshRate <= 0 {
 		refreshRate = 60
 	}
 
-	// Prepare request body for Neko's screen API
-	screenConfig := map[string]interface{}{
-		"width":  width,
-		"height": height,
-		"rate":   refreshRate,
+	// Prepare screen configuration
+	screenConfig := nekooapi.ScreenConfiguration{
+		Width:  &width,
+		Height: &height,
+		Rate:   &refreshRate,
 	}
 
-	body, err := json.Marshal(screenConfig)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST",
-		"http://127.0.0.1:8080/api/room/screen",
-		strings.NewReader(string(body)))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	// Add Bearer token authentication
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-	// Execute request
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to call Neko API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle 401 by clearing token and retrying once
-	if resp.StatusCode == http.StatusUnauthorized {
-		log.Warn("Neko API returned 401, clearing cached token and retrying")
-		s.clearNekoToken()
-
-		// Get fresh token
-		token, err = s.getNekoToken(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get fresh Neko token: %w", err)
-		}
-
-		// Retry the request with fresh token
-		req, err = http.NewRequestWithContext(ctx, "POST",
-			"http://127.0.0.1:8080/api/room/screen",
-			strings.NewReader(string(body)))
-		if err != nil {
-			return fmt.Errorf("failed to create retry request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-		resp, err = client.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to retry Neko API call: %w", err)
-		}
-		defer resp.Body.Close()
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Neko API returned status %d: %s", resp.StatusCode, string(respBody))
+	// Change screen configuration using authenticated client
+	if err := s.nekoAuthClient.ScreenConfigurationChange(ctx, screenConfig); err != nil {
+		return fmt.Errorf("failed to change screen configuration: %w", err)
 	}
 
 	log.Info("successfully changed resolution via Neko API", "width", width, "height", height, "refresh_rate", refreshRate)

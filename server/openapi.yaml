@@ -1202,18 +1202,6 @@ components:
         refresh_rate:
           type: integer
           description: Current display refresh rate in Hz (may be null if not detectable)
-        live_view_sessions:
-          type: integer
-          description: Number of active Neko viewer sessions.
-        is_recording:
-          type: boolean
-          description: Whether recording is currently active
-        is_replaying:
-          type: boolean
-          description: Whether replay is currently active
-        resizable_now:
-          type: boolean
-          description: True when no blockers are present for resizing
       additionalProperties: false
     LogEvent:
       type: object
