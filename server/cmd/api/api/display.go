@@ -350,7 +350,8 @@ func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int, int) {
 	display := s.resolveDisplayFromEnv()
 
 	// Use xrandr to get current resolution
-	cmd := exec.CommandContext(ctx, "bash", "-lc", "xrandr | grep -E '\\*' | awk '{print $1}'")
+	// Note: Using bash -c (not -lc) to avoid login shell overriding DISPLAY env var
+	cmd := exec.CommandContext(ctx, "bash", "-c", "xrandr | grep -E '\\*' | awk '{print $1}'")
 	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
 
 	out, err := cmd.Output()

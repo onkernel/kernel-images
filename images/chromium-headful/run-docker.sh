@@ -23,8 +23,14 @@ rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
 FLAGS_FILE="$(pwd)/.tmp/chromium/flags"
 
-# Convert space-separated flags to JSON array format
-IFS=' ' read -ra FLAGS_ARRAY <<< "$CHROMIUM_FLAGS"
+# Convert space-separated flags to JSON array format, handling quoted strings
+# Use eval to properly parse quoted strings (respects shell quoting)
+if [ -n "$CHROMIUM_FLAGS" ]; then
+  eval "FLAGS_ARRAY=($CHROMIUM_FLAGS)"
+else
+  FLAGS_ARRAY=()
+fi
+
 FLAGS_JSON='{"flags":['
 FIRST=true
 for flag in "${FLAGS_ARRAY[@]}"; do
