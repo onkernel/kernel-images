@@ -2,9 +2,7 @@ package nekoclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sync"
 
@@ -14,7 +12,7 @@ import (
 // AuthClient wraps the Neko OpenAPI client and handles authentication automatically.
 // It manages token caching and refresh on 401 responses.
 type AuthClient struct {
-	client   *nekooapi.Client
+	client   *nekooapi.ClientWithResponses
 	tokenMu  sync.Mutex
 	token    string
 	username string
@@ -23,7 +21,7 @@ type AuthClient struct {
 
 // NewAuthClient creates a new authenticated Neko client.
 func NewAuthClient(baseURL, username, password string) (*AuthClient, error) {
-	client, err := nekooapi.NewClient(baseURL)
+	client, err := nekooapi.NewClientWithResponses(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create neko client: %w", err)
 	}
@@ -49,27 +47,20 @@ func (c *AuthClient) ensureToken(ctx context.Context) error {
 		Password: &c.password,
 	}
 
-	resp, err := c.client.Login(ctx, loginReq)
+	resp, err := c.client.LoginWithResponse(ctx, loginReq)
 	if err != nil {
 		return fmt.Errorf("failed to call login API: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("login API returned status %d: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("login API returned status %d: %s", resp.StatusCode(), string(resp.Body))
 	}
 
-	var loginResp nekooapi.SessionLoginResponse
-	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		return fmt.Errorf("failed to parse login response: %w", err)
-	}
-
-	if loginResp.Token == nil || *loginResp.Token == "" {
+	if resp.JSON200 == nil || resp.JSON200.Token == nil || *resp.JSON200.Token == "" {
 		return fmt.Errorf("login response did not contain a token")
 	}
 
-	c.token = *loginResp.Token
+	c.token = *resp.JSON200.Token
 	return nil
 }
 
@@ -96,44 +87,34 @@ func (c *AuthClient) SessionsGet(ctx context.Context) ([]nekooapi.SessionData, e
 	}
 
 	// Make the request
-	resp, err := c.client.SessionsGet(ctx, addAuth)
+	resp, err := c.client.SessionsGetWithResponse(ctx, addAuth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query sessions: %w", err)
 	}
-	defer resp.Body.Close()
 
 	// Handle 401 by clearing token and retrying once
-	if resp.StatusCode == http.StatusUnauthorized {
-		resp.Body.Close() // Close the first response body before retrying
+	if resp.StatusCode() == http.StatusUnauthorized {
 		c.clearToken()
 		if err := c.ensureToken(ctx); err != nil {
 			return nil, err
 		}
 
 		// Retry with fresh token
-		addAuthRetry := func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-			return nil
-		}
-
-		resp, err = c.client.SessionsGet(ctx, addAuthRetry)
+		resp, err = c.client.SessionsGetWithResponse(ctx, addAuth)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retry sessions query: %w", err)
 		}
-		defer resp.Body.Close()
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("sessions API returned status %d: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("sessions API returned status %d: %s", resp.StatusCode(), string(resp.Body))
 	}
 
-	var sessions []nekooapi.SessionData
-	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		return nil, fmt.Errorf("failed to parse sessions response: %w", err)
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("sessions response did not contain expected data")
 	}
 
-	return sessions, nil
+	return *resp.JSON200, nil
 }
 
 // ScreenConfigurationChange changes the screen resolution via Neko API.
@@ -153,36 +134,27 @@ func (c *AuthClient) ScreenConfigurationChange(ctx context.Context, config nekoo
 	}
 
 	// Make the request
-	resp, err := c.client.ScreenConfigurationChange(ctx, config, addAuth)
+	resp, err := c.client.ScreenConfigurationChangeWithResponse(ctx, config, addAuth)
 	if err != nil {
 		return fmt.Errorf("failed to change screen configuration: %w", err)
 	}
-	defer resp.Body.Close()
 
 	// Handle 401 by clearing token and retrying once
-	if resp.StatusCode == http.StatusUnauthorized {
-		resp.Body.Close() // Close the first response body before retrying
+	if resp.StatusCode() == http.StatusUnauthorized {
 		c.clearToken()
 		if err := c.ensureToken(ctx); err != nil {
 			return err
 		}
 
 		// Retry with fresh token
-		addAuthRetry := func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
-			return nil
-		}
-
-		resp, err = c.client.ScreenConfigurationChange(ctx, config, addAuthRetry)
+		resp, err = c.client.ScreenConfigurationChangeWithResponse(ctx, config, addAuth)
 		if err != nil {
 			return fmt.Errorf("failed to retry screen configuration change: %w", err)
 		}
-		defer resp.Body.Close()
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("screen configuration API returned status %d: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode() != http.StatusOK && resp.StatusCode() != http.StatusNoContent {
+		return fmt.Errorf("screen configuration API returned status %d: %s", resp.StatusCode(), string(resp.Body))
 	}
 
 	return nil
