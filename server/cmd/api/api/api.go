@@ -40,7 +40,7 @@ type ApiService struct {
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
 
-func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory, upstreamMgr *devtoolsproxy.UpstreamManager, stz scaletozero.Controller) (*ApiService, error) {
+func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory, upstreamMgr *devtoolsproxy.UpstreamManager, stz scaletozero.Controller, nekoAuthClient *nekoclient.AuthClient) (*ApiService, error) {
 	switch {
 	case recordManager == nil:
 		return nil, fmt.Errorf("recordManager cannot be nil")
@@ -48,16 +48,8 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		return nil, fmt.Errorf("factory cannot be nil")
 	case upstreamMgr == nil:
 		return nil, fmt.Errorf("upstreamMgr cannot be nil")
-	}
-
-	// Initialize Neko authenticated client
-	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
-	if adminPassword == "" {
-		adminPassword = "admin" // Default from neko.yaml
-	}
-	nekoAuthClient, err := nekoclient.NewAuthClient("http://127.0.0.1:8080", "admin", adminPassword)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create neko auth client: %w", err)
+	case nekoAuthClient == nil:
+		return nil, fmt.Errorf("nekoAuthClient cannot be nil")
 	}
 
 	return &ApiService{

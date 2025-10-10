@@ -1180,7 +1180,7 @@ components:
           description: Display height in pixels
         refresh_rate:
           type: integer
-          enum: [60, 30, 25]
+          enum: [60, 30, 25, 10]
           description: Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
         require_idle:
           type: boolean
