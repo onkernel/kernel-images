@@ -10,6 +10,7 @@ import (
 
 	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
+	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
@@ -29,15 +30,17 @@ type ApiService struct {
 	procMu sync.RWMutex
 	procs  map[string]*processHandle
 
+	// Neko authenticated client
+	nekoAuthClient *nekoclient.AuthClient
+
 	// DevTools upstream manager (Chromium supervisord log tailer)
 	upstreamMgr *devtoolsproxy.UpstreamManager
-
-	stz scaletozero.Controller
+	stz         scaletozero.Controller
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
 
-func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory, upstreamMgr *devtoolsproxy.UpstreamManager, stz scaletozero.Controller) (*ApiService, error) {
+func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFactory, upstreamMgr *devtoolsproxy.UpstreamManager, stz scaletozero.Controller, nekoAuthClient *nekoclient.AuthClient) (*ApiService, error) {
 	switch {
 	case recordManager == nil:
 		return nil, fmt.Errorf("recordManager cannot be nil")
@@ -45,6 +48,8 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		return nil, fmt.Errorf("factory cannot be nil")
 	case upstreamMgr == nil:
 		return nil, fmt.Errorf("upstreamMgr cannot be nil")
+	case nekoAuthClient == nil:
+		return nil, fmt.Errorf("nekoAuthClient cannot be nil")
 	}
 
 	return &ApiService{
@@ -55,6 +60,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		procs:             make(map[string]*processHandle),
 		upstreamMgr:       upstreamMgr,
 		stz:               stz,
+		nekoAuthClient:    nekoAuthClient,
 	}, nil
 }
 

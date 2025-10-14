@@ -759,6 +759,29 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /display:
+    patch:
+      summary: Update display configuration
+      operationId: patchDisplay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDisplayRequest"
+      responses:
+        "200":
+          description: Updated display configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayConfig"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /chromium/upload-extensions-and-restart:
     post:
@@ -849,14 +872,12 @@ components:
         isRecording:
           type: boolean
         started_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording started
         finished_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording finished
     ClickMouseRequest:
       type: object
@@ -1074,9 +1095,8 @@ components:
             type: string
           default: []
         cwd:
-          type: string
+          type: [string, "null"]
           description: Working directory (absolute path) to run the command in.
-          nullable: true
           pattern: "^/.*"
         env:
           type: object
@@ -1085,17 +1105,15 @@ components:
             type: string
           default: {}
         as_user:
-          type: string
+          type: [string, "null"]
           description: Run the process as this user.
-          nullable: true
         as_root:
           type: boolean
           description: Run the process with root privileges.
           default: false
         timeout_sec:
-          type: integer
+          type: [integer, "null"]
           description: Maximum execution time in seconds.
-          nullable: true
       additionalProperties: false
     ProcessExecResult:
       type: object
@@ -1142,8 +1160,7 @@ components:
           enum: [running, exited]
           description: Process state.
         exit_code:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Exit code if the process has exited.
         cpu_pct:
           type: number
@@ -1198,6 +1215,42 @@ components:
         exit_code:
           type: integer
           description: Exit code when the event is "exit".
+      additionalProperties: false
+    PatchDisplayRequest:
+      type: object
+      properties:
+        width:
+          type: integer
+          minimum: 320
+          description: Display width in pixels
+        height:
+          type: integer
+          minimum: 240
+          description: Display height in pixels
+        refresh_rate:
+          type: integer
+          enum: [60, 30, 25, 10]
+          description: Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+        require_idle:
+          type: boolean
+          description: If true, refuse to resize when live view or recording/replay is active.
+          default: true
+        restart_chromium:
+          type: boolean
+          description: If true, restart Chromium after resolution change to ensure it adapts to new size. Default is false for headful, true for headless.
+      additionalProperties: false
+    DisplayConfig:
+      type: object
+      properties:
+        width:
+          type: integer
+          description: Current display width in pixels
+        height:
+          type: integer
+          description: Current display height in pixels
+        refresh_rate:
+          type: integer
+          description: Current display refresh rate in Hz (may be null if not detectable)
       additionalProperties: false
     LogEvent:
       type: object

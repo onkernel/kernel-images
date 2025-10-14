@@ -49,6 +49,14 @@ const (
 	WRITE  FileSystemEventType = "WRITE"
 )
 
+// Defines values for PatchDisplayRequestRefreshRate.
+const (
+	N10 PatchDisplayRequestRefreshRate = 10
+	N25 PatchDisplayRequestRefreshRate = 25
+	N30 PatchDisplayRequestRefreshRate = 30
+	N60 PatchDisplayRequestRefreshRate = 60
+)
+
 // Defines values for ProcessKillRequestSignal.
 const (
 	HUP  ProcessKillRequestSignal = "HUP"
@@ -126,6 +134,18 @@ type DeletePathRequest struct {
 type DeleteRecordingRequest struct {
 	// Id Identifier of the recording to delete. Alphanumeric or hyphen.
 	Id *string `json:"id,omitempty"`
+}
+
+// DisplayConfig defines model for DisplayConfig.
+type DisplayConfig struct {
+	// Height Current display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// RefreshRate Current display refresh rate in Hz (may be null if not detectable)
+	RefreshRate *int `json:"refresh_rate,omitempty"`
+
+	// Width Current display width in pixels
+	Width *int `json:"width,omitempty"`
 }
 
 // Error defines model for Error.
@@ -210,6 +230,27 @@ type OkResponse struct {
 	// Ok Indicates success.
 	Ok bool `json:"ok"`
 }
+
+// PatchDisplayRequest defines model for PatchDisplayRequest.
+type PatchDisplayRequest struct {
+	// Height Display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// RefreshRate Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+	RefreshRate *PatchDisplayRequestRefreshRate `json:"refresh_rate,omitempty"`
+
+	// RequireIdle If true, refuse to resize when live view or recording/replay is active.
+	RequireIdle *bool `json:"require_idle,omitempty"`
+
+	// RestartChromium If true, restart Chromium after resolution change to ensure it adapts to new size. Default is false for headful, true for headless.
+	RestartChromium *bool `json:"restart_chromium,omitempty"`
+
+	// Width Display width in pixels
+	Width *int `json:"width,omitempty"`
+}
+
+// PatchDisplayRequestRefreshRate Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+type PatchDisplayRequestRefreshRate int
 
 // ProcessExecRequest Request to execute a command synchronously.
 type ProcessExecRequest struct {
@@ -510,6 +551,9 @@ type MoveMouseJSONRequestBody = MoveMouseRequest
 // TakeScreenshotJSONRequestBody defines body for TakeScreenshot for application/json ContentType.
 type TakeScreenshotJSONRequestBody = ScreenshotRequest
 
+// PatchDisplayJSONRequestBody defines body for PatchDisplay for application/json ContentType.
+type PatchDisplayJSONRequestBody = PatchDisplayRequest
+
 // CreateDirectoryJSONRequestBody defines body for CreateDirectory for application/json ContentType.
 type CreateDirectoryJSONRequestBody = CreateDirectoryRequest
 
@@ -645,6 +689,11 @@ type ClientInterface interface {
 	TakeScreenshotWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TakeScreenshot(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchDisplayWithBody request with any body
+	PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDirectoryWithBody request with any body
 	CreateDirectoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -828,6 +877,30 @@ func (c *Client) TakeScreenshotWithBody(ctx context.Context, contentType string,
 
 func (c *Client) TakeScreenshot(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTakeScreenshotRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1458,6 +1531,46 @@ func NewTakeScreenshotRequestWithBody(server string, contentType string, body io
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPatchDisplayRequest calls the generic PatchDisplay builder with application/json body
+func NewPatchDisplayRequest(server string, body PatchDisplayJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchDisplayRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPatchDisplayRequestWithBody generates requests for PatchDisplay with any type of body
+func NewPatchDisplayRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/display")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -2668,6 +2781,11 @@ type ClientWithResponsesInterface interface {
 
 	TakeScreenshotWithResponse(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*TakeScreenshotResponse, error)
 
+	// PatchDisplayWithBodyWithResponse request with any body
+	PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
+
+	PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
+
 	// CreateDirectoryWithBodyWithResponse request with any body
 	CreateDirectoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDirectoryResponse, error)
 
@@ -2862,6 +2980,31 @@ func (r TakeScreenshotResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TakeScreenshotResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchDisplayResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DisplayConfig
+	JSON400      *BadRequestError
+	JSON409      *ConflictError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchDisplayResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchDisplayResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3579,6 +3722,23 @@ func (c *ClientWithResponses) TakeScreenshotWithResponse(ctx context.Context, bo
 	return ParseTakeScreenshotResponse(rsp)
 }
 
+// PatchDisplayWithBodyWithResponse request with arbitrary body returning *PatchDisplayResponse
+func (c *ClientWithResponses) PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplayWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDisplayResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplay(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDisplayResponse(rsp)
+}
+
 // CreateDirectoryWithBodyWithResponse request with arbitrary body returning *CreateDirectoryResponse
 func (c *ClientWithResponses) CreateDirectoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDirectoryResponse, error) {
 	rsp, err := c.CreateDirectoryWithBody(ctx, contentType, body, reqEditors...)
@@ -4045,6 +4205,53 @@ func ParseTakeScreenshotResponse(rsp *http.Response) (*TakeScreenshotResponse, e
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchDisplayResponse parses an HTTP response from a PatchDisplayWithResponse call
+func ParsePatchDisplayResponse(rsp *http.Response) (*PatchDisplayResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchDisplayResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DisplayConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ConflictError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -5152,6 +5359,9 @@ type ServerInterface interface {
 	// Capture a screenshot of the host computer
 	// (POST /computer/screenshot)
 	TakeScreenshot(w http.ResponseWriter, r *http.Request)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(w http.ResponseWriter, r *http.Request)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(w http.ResponseWriter, r *http.Request)
@@ -5260,6 +5470,12 @@ func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
 // Capture a screenshot of the host computer
 // (POST /computer/screenshot)
 func (_ Unimplemented) TakeScreenshot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update display configuration
+// (PATCH /display)
+func (_ Unimplemented) PatchDisplay(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5481,6 +5697,20 @@ func (siw *ServerInterfaceWrapper) TakeScreenshot(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TakeScreenshot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchDisplay operation middleware
+func (siw *ServerInterfaceWrapper) PatchDisplay(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchDisplay(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6225,6 +6455,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/screenshot", wrapper.TakeScreenshot)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/display", wrapper.PatchDisplay)
+	})
+	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/create_directory", wrapper.CreateDirectory)
 	})
 	r.Group(func(r chi.Router) {
@@ -6458,6 +6691,50 @@ func (response TakeScreenshot400JSONResponse) VisitTakeScreenshotResponse(w http
 type TakeScreenshot500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response TakeScreenshot500JSONResponse) VisitTakeScreenshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplayRequestObject struct {
+	Body *PatchDisplayJSONRequestBody
+}
+
+type PatchDisplayResponseObject interface {
+	VisitPatchDisplayResponse(w http.ResponseWriter) error
+}
+
+type PatchDisplay200JSONResponse DisplayConfig
+
+func (response PatchDisplay200JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response PatchDisplay400JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay409JSONResponse struct{ ConflictErrorJSONResponse }
+
+func (response PatchDisplay409JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response PatchDisplay500JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -7744,6 +8021,9 @@ type StrictServerInterface interface {
 	// Capture a screenshot of the host computer
 	// (POST /computer/screenshot)
 	TakeScreenshot(ctx context.Context, request TakeScreenshotRequestObject) (TakeScreenshotResponseObject, error)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(ctx context.Context, request PatchDisplayRequestObject) (PatchDisplayResponseObject, error)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(ctx context.Context, request CreateDirectoryRequestObject) (CreateDirectoryResponseObject, error)
@@ -7973,6 +8253,37 @@ func (sh *strictHandler) TakeScreenshot(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TakeScreenshotResponseObject); ok {
 		if err := validResponse.VisitTakeScreenshotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchDisplay operation middleware
+func (sh *strictHandler) PatchDisplay(w http.ResponseWriter, r *http.Request) {
+	var request PatchDisplayRequestObject
+
+	var body PatchDisplayJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchDisplay(ctx, request.(PatchDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchDisplayResponseObject); ok {
+		if err := validResponse.VisitPatchDisplayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8764,89 +9075,94 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"gnAAAA==",
+	"H4sIAAAAAAAC/+w9eW/ctpdfhdD+gE1250ritKj/c2OnNZI0gSdBfpvaO6ClpxnWEqmS1Iwngb/74pHU",
+	"NaLmsh3HxQIFmowk8vFdfHe+BaFIM8GBaxUcfgskqExwBeYvv9LoDP7OQekTKYXEn0LBNXCNf6RZlrCQ",
+	"aib48C8lOP6mwhmkFP/0LwlxcBj8x7Baf2ifqqFd7ebmphdEoELJMlwkOMQNidsxuOkFrwSPExZ+r92L",
+	"7XDrU65Bcpp8p62L7cgY5BwkcS/2gj+Efi1yHn0nOP4Qmpj9AnzmXsfVXiUsvHoncgUFfRCAKGL4IU0+",
+	"SJGB1Az5JqaJgl6Q1X76FlzmWlsImxuaJYl9SrQgDBFBQ00WTM+CXgA8T4PDP4MEYh30AsmmM/x/yqIo",
+	"gaAXXNLwKugFsZALKqPgohfoZQbBYaC0ZHyKKAwR9In9eXX7j8sMiIiJeYfQ0Pxc7RqJBf41zwK3jHeD",
+	"mUiiyRUsle94EYsZSIKP8Xz4Loly/JToGdiNg17ANKTm+9bq7gcqJV3i33meTsxXbruY5okODp+1SJmn",
+	"lyDxcJqlYDaXkAHVjX3d6oj2KRiOu26f4t8kFEJGjFNtsFUuQDKhmMNZe6Vle6X/2Welm14g4e+cSYiQ",
+	"KNcBLl0RQlz+BVZoX0mgGo6ZhFALudyPU1MReRjlfWY/J1GxOsEXyRMRapoQS64egcF0QH5++fLpgBxb",
+	"yhjE//zy5SDoBRnVKObBYfC/f476P198e9E7uPlX4GGpjOpZG4ijSyWSXEMNCHwRdwjN0Vc2GQ7+q734",
+	"CjbNTj5kHkMCGj5QPdsPjxuOUAAemW3uHvAzCA2jTfeDnkVt2E8j4NqKs2NdWWxSOwk5SrIZ5XkKkoVE",
+	"SDJbZjPgq/Sn/a9H/S+j/i/9i//+l/ew7YMxlSV0idcUm+54nhkYzdk606tcSuCaRHZtYt8jjJOMXUOi",
+	"vIItIZagZhNJNWxe0r1N8G1c+Pev5ElKl+QSCM+ThLCYcKFJBBpCTS8TeOrddMEiH0Ot7mZeWwu/D7Xl",
+	"9bqiC0ApOgWPXl5hxuJFHz++Zgmc8li0l2dqEjHZPtPnGegZSMNiRk6YIrQS+kF1qEshEqAct0lFNEFN",
+	"317uLVUatRWLnbVgboSBvTZTqoPDIKIa+uZrjzLya0Q8ltWBl0wr8gRVX4+cB5FcXMs+/nceIPufB325",
+	"6Ms+/ncePB34duDUB/evVAHBR4W4xbilkF5MbK078bH3O8W+wuRyqcFzj4/ZV8O75vGAjEhcA4OBGmy+",
+	"tswZHXSNzXoFH9Ro6JDexU7jpdKQnsydIdgmjDIvkHBG+RQI4ItGAe3MfjSOIdQQbc+H+9Ky3Gpfou7G",
+	"JX570KCU4LNBzQx8dXZy9PEk6AWfz07N/49P3p6YP5yd/HH07sRjFa4Q3zztdd9Zb5nShm6eM6Lhh2dr",
+	"Y4xxK8Ao0sB1wYilLbnOBSi1ksfEfCumHbx1RBIxNXstSSxFanmk8kPaTFZToStaSUyJe0g0XGs/ldB0",
+	"1TTNPKY7S8FsX0G0oIpkUkR5aLloG/XWocjrW/sI9k7M4Rbu0G1chlTMYSePYZNFr4VZ0xrjuVRCEi32",
+	"sui3XWlrix7RvL8JGoHSk02mNCiNwKMMFVfDJku0FygZblpYiVyGsPWaKygpN+jVTuHD0PurMxey2Yic",
+	"JqC/ATcW6vs3pAj6tKVXXDWcTC1zaIcuIhR+UETlYQhK+a6FldOJK+9ZPlAdzpyVu6dcdZi5x93mbco4",
+	"S1HPPz8Y7W7sHncauQNyGhORMq0h6pFcoQs+AzJj0xkoTeicsgStXfsJ2hPWozDs41Spu4B+GvVejHrP",
+	"X/aejS78IBrUTliUwGZ6xcT8jCDnCmxcAM0RspgBJwmbA5kzWOBVU/o3QwnmmGgAhJrNwX/3S9SYUk/C",
+	"mRQpQ9i/de9uXiWv3KuExhpk7fyF8aIFAa5yCYRpQiOaWZeaw4Ig1KWjjbAZnjC4nAGN4jzpmd3KX5IO",
+	"9uz0Lo47vYqSbV48H23nY3yQAsXj5BrCbZm7CYz7ymDkGkJUMpSEIk0pj4hacsQ6F7lKlm1BpnLajBf9",
+	"edEOf9qVqJzmKdoKg51uGaomUgjd2MR/jJxbz8biw0T6CH5KMsnmLIEpdBCJqkmuwGOxri5JUdaYQqmT",
+	"uBT6mShrhUS0Y4T27B6D0CDayKmQRM0gSUqUo+Tk3Gu3hAvPWp+FvMJLvDLgntC6AfvUrWivT7cJ474D",
+	"bL6hgM+72ctDzpJm31pB4RM+Z1Jw5Akyp5IhIEYGFehScTnU17BRcT6aUiLXEwWhx96h1yhIjqUL7xRl",
+	"TUEoeKTWELDLoCjIebFJDJU98m5SiB+hQU7rQlcSrDxHWwijXBpDY5KqLk7D8xevIQ5SliSshoi28odr",
+	"pieh10V3RyX4CsFX/CsoHYGUk8ufDvx+208HfeD4eUTsq+Qyj2MrWW3LSEdI6i0XE7nuXmyNEn3DkmQ/",
+	"JTpmU04Ty71Whle4t0kyZV5vKLXg48nZu2D9unXv0b3+5vTt26AXnP7xMegFv3/6sNlpdHuvYeJxRhe8",
+	"jockeR8Hh3+ud/08F9HNRWvRPUTjtOaP0kukLSUKV4OoG8OZL9T6flzq8tNjP9e65xPf5zaL1qcKUQgR",
+	"YVXk1qOvSjcxz1nk52kqNUQTqv1uqHETrflUv4XcZzt4op101lTnakdqFJFRZT62CquTCmGWT7LQc74T",
+	"pVlKNUTk1YdPJDfuegYyBK7ptK5QuMk3bdBIJ4UmIixu4GpGrZqy6Nqk7ntBCmlXrK6CGO1apDxJIcXr",
+	"1kJfhvE6lKHXzv9Q0VQ3YkMy5xzJZ48NkV+suwkbMb6fIjummqK6WUhmPe8V1uMRlWg+ZLkn9BdRTbfS",
+	"0VF9l8FGt7Vc92LjmW919SI4Lu2icLn2CfENDbyLSarsqHmBuNcHwU62/FhLoFUcdpdraHxCMrpMBEU2",
+	"zSQo1FB8WlJQ5DrLNRqdCYshXIaJi+Oq21KzjNtVzIKn8N7m4A8Dvm2C1AqYoih4U+VbqYZSkdrFmSLn",
+	"5sPzoEtkEX7PLWAjMPZxER02KAhnOb+qA2xNkaCwhbYUYptjBOnP7sSMMzXb7tqoEonFV12XxkZXxt6H",
+	"7Z9VmRGtPa85VztcchW07qM9gV1RHubyrcPpUyLjUAJwNRP6DKbMlpTcQYDodxsYKvO6U2d/r8mCdoQM",
+	"PptQwS4LbVlxYdf6T/S8sn4CMUqL5CBvU3uxw5remG2BhV6B2E0k2yeoJ0tCr7NqW4zhFdkxmDzLB5Ap",
+	"U4oJrvaDaSpF7klK/AELYh65XJckvzXs112Tqp7qkp8ODp7uVkwiFtwXNEFYzSMTJing/dQB7zYJuMVM",
+	"KGMdFrglVBrT5BJcNC/at9BjTUJ0jDrotfpMdXinpSplHZGxf3B1L2IkhLlUbA6bI19lYtWtR8pvk+UW",
+	"UfPOHIDBwC0LXmJJU/DHuM+qy6l4CTVanCGDzkFKFoEiylYuOgw8RYrZyE5w+HxUi5c+86krrw9YlFx5",
+	"vLfaDQSG1e6o7MYAfeziL6d8bAMv3UGrCo560MbFazZgZy1CUnptEv3sK5zyd792Q2CywsqVJ7z7dUuK",
+	"PBuNRg2ibBnDHmuR3ZbRhAwB19ksL6dpChGjGpIlUVpkJlQsck2mkoYQ5wlRs1xHYsEH5OOMKZKaTIxx",
+	"Ehg3wXEp8wxdwTmLQBhk+UPLu9R7WQlGgO6t2At/Ys6q1EyjBRW8AckhIacpnYIiRx9Og14wB6kssKPB",
+	"s8HIaPsMOM1YcBi8GIwGL1zVgUH9sMjLDPMMPY8+XGvgRlP3KY/6LidjVKJQHivpk/mMCG6uilRIIOUS",
+	"5CvLCJXhjM1B9fB3U8erZ5CSnCPShjORwvDKHGNYbT08z0ejFyFeQOZP0DvnCjSROTeR4GqHOKFThZSt",
+	"DmJ+8mST5owSlWcg50wJGfUI5RFZUKbPOS6bGHKWbx/D/KMQCToaCVMa0KM/D0xlQcI4oAsiLo04ReQS",
+	"Yjy3BJ1LbjSQS3ue88Bg3ymPqMTXSXnUIx6dORxb1Q5K/yqi5Uphd5onmmVU6iFa1X10WZq13U2JqlDp",
+	"89SUsWqrd5B3LfkNTkw6D9V+LdfTXN5f0PNaJEhTYzZoQbKEhjbvX5FrN6qviMxR/wvtfx31fxlM+hff",
+	"nvWev3zpt26+smyCct0G8UvFkASxS5mhF0XIMhpeQVRxQAX1kzRXqD7CJI+ApJSzGJQe/KUEf1r3cy4Z",
+	"p3K50XopwXOVUb77u5lKW1mgRt0Lr56oXkYny2Zhqx6O56NnPl+75AbLChD1Klw4YQInNaVwMEUk0Mhk",
+	"+w5Goy6DvNx+uNo/ctMLXm7zXbP5wnQi5GmK2PaqoJKaNSZ/QhUqJPXUHGFVPZg1zd65Bjm0HQKpyG0R",
+	"RaH7mrJcdUCsld39mzLaLRZbkXfU1VRhuxnQHEeehehByTZmaZ5Qk7E2eG50XBBh4z0zodABtVRZoVEq",
+	"5rCJRGVR1j1RqFX0dTsCuQopPNnDEuddUbOV1uFyIWWVQYhGUFQLH6htKKZKh7ybYh/pFVSO+z2RrR1/",
+	"uHGEa9OptiFDQ2uY2XhZtdPmC6CVQK8AIGbRByX2K5rpXKIgVgQq7FsPOV1dvXOTw1mbhvWqrXuioK8w",
+	"bHvZuxMQms0XHiJ/yiKTdCoaEULzpvMKb0Pxg9Evm79rtkrezUWL5+k6DrJGrIa27WhSVrQYNsl9t2ez",
+	"Neu+rlB/A9i+ZlIVAbLnjApbP86T5GHNIHtSQk0dXIX+gi62F2kLuthmqfumS7uXbN+bsyKJPWJ0O8k6",
+	"2PxdswP3LmhnsVHvpFilW+HPrCHZa+tT/NjUMuHsfwChDD1KGokFRx8EpWvylZk41hS0L26qc8kVoeTL",
+	"6QcbqKu5obbIz5BLFfdvZWs1mldW6O/2P2byC8uM2yxpChqkMqU/W/eMFr4xekjFoUzNJ373dw5GHVjv",
+	"vwjCN3mgVw9JbArqX+x0OTu83srsQqwXZywDeIax6gh+jHzpiFVXIYQWjOaOXPIrMt6kCCY6Rm1yVNkL",
+	"tC0vbWy3+hFYaDelV/VDtRnJqLFas9UjZJnfQDfaxYryvBb1SrZJmNLmIlKdfFN1re2nhB4np1Sn9rBK",
+	"ZZ8g/lyI8pHxiokZG8rbLEqbN0wLWpd9UvRs3WMQ5i5sExP0qOz5R0gncwLTpWOi8OuEWQKNSqvSK8tn",
+	"QCNnU24nymazwpTA9X8UaRahBt2visJuZUMY1Y+nuzPX74GYBelb2aBm3FPBHAqsop/UKjc6pbtdQHNf",
+	"UbvOSp19Jb62FMlttOYREnIM2tMKXiPd0BT1qBnLSgrbJE93XvcoScSiyAWZnCbjU7uFzUUm4C4EFxSW",
+	"kAqnA+yogUFH7rMwD+4s2VlaJB3Zyn16fmtl1M6g3a4LuFCou+YEXT5wfWPv2qSgxcKd5QMNlcpU4GNX",
+	"dZ4UYezstbo4FL772lIHasoajLzZ5i5b1cC0qpz3VqLE11PuEw7rvt+ZaOzK+lG9wK1Wr1E6zVpsJwf1",
+	"FPwt8uPr5GFPxv7CsoqtawT8xzA5rZfdrLBoye+LInHjT8LVCyjv6zL31GhuT9OtQVhpAcHdvP1hnzj7",
+	"OwdfYWElEwuHjq1qtVbqPE1xpyuieOyMZg9TjzQhrmw5r2qy2PBbgfIbi/MEbD3pKr+JrGK3FW/DeBDO",
+	"ZXAOREnHdU7EZp/B0x5TEEpk2eMn1NhUSOKJTJWTxwtcJdLQNhR1+oS2vem1OrGvfUdarfp3Gq61hdbr",
+	"2G0K7NXnZfny8+OTWpdQZdS6hivT3UAjc+pvwb/74/FJ/5WFrf/RO0bqHUSMmq4oXBCXN21HdjnyZFWJ",
+	"PQ3q2Cl6klqqztOUdPMY2dQguoVlo1aoU7slx6JVvj4d9hlf2SZycVwzfWgrinF/0YteZ2F7XHZ7dDZ6",
+	"NMaI/nRw0AWm6Y7oAGtte4gVvm1u/FvGVfZ0S4rOzEd/jRr/Em/OInNfJRUTMVXDCrH+WLuYunbTDj28",
+	"whB2/NRazi0UTTGSsCyX9rY/+reJRZKIRYPzVqYPtZtaVskseLIkBZiExcXoLKaIA22NYHbfKrvsUzu7",
+	"f7fqhYlrmw0e7EYrx/NtvMqQsX7o28t3MyDQRMxB4tZWQBzKh3BtJ8j4/ZjaXIv7qkPzTM74vmVo7ek1",
+	"HiaoRslI984DViqdrB9V1SSwmRaykcJmQsn9krgxWeVhaFyfw+KTdDtY5QejLV1D3G/VyJab4RVLko2E",
+	"foMvbeN21IbBrLvxNkx62d4W2oug9aFF35mlalMiPaz0/s2jzIOgKimnLhW3cjfHqXKIjtfAao7a+d5M",
+	"d8+qxB7Kp0Xck0dZ0FKbdmOP1036iG1xrZi3/jHqpjFb6IGusNqoH98/91MfvfNofbpK+dhZROv5UOR6",
+	"k6tXIU/keq3P90D66Ba+i2dw0kYvZmUkEpoZqzOR/j9Edw8huhpXi1yvuGTVaOAqzO/Xriv/Hsu9Fq23",
+	"ZhN0d3p1zbj4B5SrZxLmzBjgxcSC+gCEFv1cNXGnPirKjeskXBtpLQOc5byEKtM2IJ9nwKvB2CZzbgdV",
+	"lDOyXQSp/Lwr6GnUlz/kuWniwmYlZxA2TLODW9eQ1ean2DB1Q1WVT/uv3eiv/tHaEVwiriakteeGDchv",
+	"OZWUa4DIjd45e/3qxYsXvwzWR8saoIxt7nIvSIqxl3sCgqA8Hz1fJ6IMdRJLEjNXS4qpBKV6JEuAKiBa",
+	"LgmdUsZJQrWZZFVD9xlouewfxdo3EGmcT6e2OWBBmV4dQ1wb/CCXVgiqQ6wb5vIYb4Cyw8B2BSsji8D1",
+	"dholYfYe6CwaLwbn2cqwW9igW/1TJ40xfe3Kqpa8FjMzZAnlnVVV0ySpL9tEW2v4iqdM476vUf8oKe8t",
+	"+mydiBaDAR9f36vBQNkdXem1AXnPk6WpKqt0XQaSnB6TkHLUbxKmTGmQEBGKS9h/ZqtFZZGtI3JtwNK9",
+	"0dgzxGl3Q8mVTTzsWAktsub1Yw7yfwEAAP//o/4I7tZ2AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
