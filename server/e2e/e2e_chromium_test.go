@@ -491,6 +491,88 @@ func TestScreenshotHeadful(t *testing.T) {
 	}
 }
 
+func TestInputEndpointsSmoke(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-input-smoke"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Fatalf("docker not available: %v", err)
+	}
+
+	_ = stopContainer(baseCtx, name)
+
+	env := map[string]string{}
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	if err != nil {
+		t.Fatalf("failed to start container: %v", err)
+	}
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
+	defer cancel()
+
+	if err := waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh); err != nil {
+		_ = dumpContainerDiagnostics(ctx, name)
+		t.Fatalf("api not ready: %v", err)
+	}
+
+	client, err := apiClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Determine a safe center coordinate based on reported resolution
+	w, h, err := getXvfbResolution(ctx)
+	if err != nil {
+		t.Fatalf("failed to get resolution: %v", err)
+	}
+	cx := w / 2
+	cy := h / 2
+
+	// press_key: tap Return
+	{
+		keys := []string{"Return"}
+		req := instanceoapi.PressKeyJSONRequestBody{Keys: keys}
+		rsp, err := client.PressKeyWithResponse(ctx, req)
+		if err != nil {
+			t.Fatalf("press_key request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for press_key: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+	}
+
+	// scroll: small vertical and horizontal ticks at center
+	{
+		dx := 2
+		dy := -3
+		req := instanceoapi.ScrollJSONRequestBody{X: cx, Y: cy, DeltaX: &dx, DeltaY: &dy}
+		rsp, err := client.ScrollWithResponse(ctx, req)
+		if err != nil {
+			t.Fatalf("scroll request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for scroll: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+	}
+
+	// drag_mouse: simple short drag path
+	{
+		path := [][]int{{cx - 10, cy - 10}, {cx + 10, cy + 10}}
+		req := instanceoapi.DragMouseJSONRequestBody{Path: path}
+		rsp, err := client.DragMouseWithResponse(ctx, req)
+		if err != nil {
+			t.Fatalf("drag_mouse request error: %v", err)
+		}
+		if rsp.StatusCode() != http.StatusOK {
+			t.Fatalf("unexpected status for drag_mouse: %s body=%s", rsp.Status(), string(rsp.Body))
+		}
+	}
+}
+
 // isPNG returns true if data starts with the PNG magic header
 func isPNG(data []byte) bool {
 	if len(data) < 8 {

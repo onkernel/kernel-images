@@ -349,6 +349,70 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/press_key:
+    post:
+      summary: Press one or more keys on the host computer
+      description: |
+        Presses the specified keys for an optional duration. Keys should be key symbols
+        supported by xdotool. For a comprehensive list of key symbols, see
+        the X11 keysym definitions at https://cgit.freedesktop.org/xorg/proto/x11proto/plain/keysymdef.h
+        The server honors millisecond-level durations using fractional sleeps under the hood.
+      operationId: pressKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PressKeyRequest"
+      responses:
+        "200":
+          description: Keys pressed successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/scroll:
+    post:
+      summary: Scroll the mouse wheel at a position on the host computer
+      description: |
+        Scroll vertically and/or horizontally at the given coordinates, optionally while holding modifier keys.
+        The scroll amounts are in logical ticks (not pixels) and application behavior may vary; tuning may be required.
+        When both horizontal and vertical deltas are provided, the server applies them sequentially (vertical then horizontal)
+        and batches wheel events using `xdotool click --repeat N --delay 0 <button>`.
+      operationId: scroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScrollRequest"
+      responses:
+        "200":
+          description: Scroll performed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/drag_mouse:
+    post:
+      summary: Drag the mouse along a path
+      description: |
+        Press and hold a mouse button, optionally wait for a short delay, then move along the given path and release.
+        The path is a list of [x, y] coordinate pairs.
+      operationId: dragMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DragMouseRequest"
+      responses:
+        "200":
+          description: Drag performed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /logs/stream:
     get:
       summary: Stream logs over SSE
@@ -1012,6 +1076,85 @@ components:
           description: Delay in milliseconds between keystrokes
           minimum: 0
           default: 0
+      additionalProperties: false
+    PressKeyRequest:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: |
+            List of key symbols to press. Each item should be a key symbol supported by xdotool
+            (see X11 keysym definitions). Examples include "Return", "Shift", "Ctrl", "Alt", "F5".
+          items:
+            type: string
+        duration:
+          type: integer
+          description: Duration to hold the keys down in milliseconds. If omitted or 0, keys are tapped.
+          minimum: 0
+          default: 0
+        hold_keys:
+          type: array
+          description: Optional modifier keys to hold during the key press sequence.
+          items:
+            type: string
+      additionalProperties: false
+    ScrollRequest:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          description: X coordinate at which to perform the scroll
+        y:
+          type: integer
+          description: Y coordinate at which to perform the scroll
+        delta_x:
+          type: integer
+          description: Horizontal scroll amount. Positive scrolls right, negative scrolls left.
+          default: 0
+        delta_y:
+          type: integer
+          description: Vertical scroll amount. Positive scrolls down, negative scrolls up.
+          default: 0
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the scroll
+          items:
+            type: string
+      additionalProperties: false
+    DragMouseRequest:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: array
+          description: Ordered list of [x, y] coordinate pairs to move through while dragging. Must contain at least 2 points.
+          minItems: 2
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: integer
+        button:
+          type: string
+          description: Mouse button to drag with
+          enum: [left, middle, right]
+        delay:
+          type: integer
+          description: Delay in milliseconds between button down and starting to move along the path.
+          minimum: 0
+          default: 0
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the drag
+          items:
+            type: string
       additionalProperties: false
     StartFsWatchRequest:
       type: object
