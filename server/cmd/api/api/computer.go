@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
@@ -17,15 +16,24 @@ import (
 func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseRequestObject) (oapi.MoveMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
 
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
+
 	// Validate request body
 	if request.Body == nil {
 		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body is required"}}, nil
 	}
 	body := *request.Body
 
-	// Ensure non-negative coordinates
+	// Get current resolution for bounds validation
+	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+
+	// Ensure non-negative coordinates and within screen bounds
 	if body.X < 0 || body.Y < 0 {
 		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "coordinates must be non-negative"}}, nil
+	}
+	if body.X >= screenWidth || body.Y >= screenHeight {
+		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth, screenHeight)}}, nil
 	}
 
 	// Build xdotool arguments
@@ -62,15 +70,24 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequestObject) (oapi.ClickMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
 
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
+
 	// Validate request body
 	if request.Body == nil {
 		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body is required"}}, nil
 	}
 	body := *request.Body
 
-	// Ensure non-negative coordinates
+	// Get current resolution for bounds validation
+	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+
+	// Ensure non-negative coordinates and within screen bounds
 	if body.X < 0 || body.Y < 0 {
 		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "coordinates must be non-negative"}}, nil
+	}
+	if body.X >= screenWidth || body.Y >= screenHeight {
+		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth, screenHeight)}}, nil
 	}
 
 	// Map button enum to xdotool button code. Default to left button.
@@ -149,53 +166,22 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 	return oapi.ClickMouse200Response{}, nil
 }
 
-// getScreenDimensions uses xdpyinfo to get the screen dimensions
-func getScreenDimensions(display string) (width, height int, err error) {
-	cmd := exec.Command("xdpyinfo")
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
-
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, 0, fmt.Errorf("xdpyinfo command failed: %w", err)
-	}
-
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "dimensions:") {
-			// Parse line like "  dimensions:    1920x1080 pixels (508x285 millimeters)"
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				dims := strings.Split(parts[1], "x")
-				if len(dims) == 2 {
-					w, _ := strconv.Atoi(dims[0])
-					h, _ := strconv.Atoi(dims[1])
-					if w > 0 && h > 0 {
-						return w, h, nil
-					}
-				}
-			}
-		}
-	}
-	return 0, 0, fmt.Errorf("failed to parse xdpyinfo output")
-}
-
 func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreenshotRequestObject) (oapi.TakeScreenshotResponseObject, error) {
 	log := logger.FromContext(ctx)
+
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
 
 	var body oapi.ScreenshotRequest
 	if request.Body != nil {
 		body = *request.Body
 	}
 
+	// Get current resolution for bounds validation
+	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+
 	// Determine display to use (align with default xdotool display)
 	display := ":1"
-
-	// Determine screen size
-	screenWidth, screenHeight, err := getScreenDimensions(display)
-	if err != nil {
-		log.Error("failed to get screen dimensions", "err", err)
-		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get screen dimensions"}}, nil
-	}
 
 	// Validate region if provided
 	if body.Region != nil {
