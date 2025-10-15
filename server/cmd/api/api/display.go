@@ -34,7 +34,11 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 	}
 
 	// Get current resolution with refresh rate
-	currentWidth, currentHeight, currentRefreshRate := s.getCurrentResolution(ctx)
+	currentWidth, currentHeight, currentRefreshRate, err := s.getCurrentResolution(ctx)
+	if err != nil {
+		log.Error("failed to get current resolution", "error", err)
+		return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get current display resolution"}}, nil
+	}
 	width := currentWidth
 	height := currentHeight
 	refreshRate := currentRefreshRate
@@ -88,7 +92,6 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 	}
 
 	// Route to appropriate resolution change handler
-	var err error
 	if displayMode == "xorg" {
 		if s.isNekoEnabled() {
 			log.Info("using Neko API for Xorg resolution change")
@@ -312,7 +315,7 @@ func (s *ApiService) resolveDisplayFromEnv() string {
 }
 
 // getCurrentResolution returns the current display resolution and refresh rate by querying xrandr
-func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int, int) {
+func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int, int, error) {
 	log := logger.FromContext(ctx)
 	display := s.resolveDisplayFromEnv()
 
@@ -324,21 +327,20 @@ func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int, int) {
 	out, err := cmd.Output()
 	if err != nil {
 		log.Error("failed to get current resolution", "error", err)
-		// Return default resolution on error
-		return 1024, 768, 60
+		return 0, 0, 0, fmt.Errorf("failed to execute xrandr command: %w", err)
 	}
 
 	resStr := strings.TrimSpace(string(out))
 	parts := strings.Split(resStr, "x")
 	if len(parts) != 2 {
 		log.Error("unexpected xrandr output format", "output", resStr)
-		return 1024, 768, 60
+		return 0, 0, 0, fmt.Errorf("unexpected xrandr output format: %s", resStr)
 	}
 
 	width, err := strconv.Atoi(parts[0])
 	if err != nil {
 		log.Error("failed to parse width", "error", err, "value", parts[0])
-		return 1024, 768, 60
+		return 0, 0, 0, fmt.Errorf("failed to parse width '%s': %w", parts[0], err)
 	}
 
 	// Parse height and refresh rate (e.g., "1080_60.00" -> height=1080, rate=60)
@@ -356,10 +358,10 @@ func (s *ApiService) getCurrentResolution(ctx context.Context) (int, int, int) {
 	height, err := strconv.Atoi(heightStr)
 	if err != nil {
 		log.Error("failed to parse height", "error", err, "value", heightStr)
-		return 1024, 768, 60
+		return 0, 0, 0, fmt.Errorf("failed to parse height '%s': %w", heightStr, err)
 	}
 
-	return width, height, refreshRate
+	return width, height, refreshRate, nil
 }
 
 // isNekoEnabled checks if Neko service is enabled

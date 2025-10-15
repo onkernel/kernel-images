@@ -26,7 +26,11 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 	body := *request.Body
 
 	// Get current resolution for bounds validation
-	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+	screenWidth, screenHeight, _, err := s.getCurrentResolution(ctx)
+	if err != nil {
+		log.Error("failed to get current resolution", "error", err)
+		return oapi.MoveMouse500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get current display resolution"}}, nil
+	}
 
 	// Ensure non-negative coordinates and within screen bounds
 	if body.X < 0 || body.Y < 0 {
@@ -80,7 +84,11 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 	body := *request.Body
 
 	// Get current resolution for bounds validation
-	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+	screenWidth, screenHeight, _, err := s.getCurrentResolution(ctx)
+	if err != nil {
+		log.Error("failed to get current resolution", "error", err)
+		return oapi.ClickMouse500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get current display resolution"}}, nil
+	}
 
 	// Ensure non-negative coordinates and within screen bounds
 	if body.X < 0 || body.Y < 0 {
@@ -178,7 +186,11 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 	}
 
 	// Get current resolution for bounds validation
-	screenWidth, screenHeight, _ := s.getCurrentResolution(ctx)
+	screenWidth, screenHeight, _, err := s.getCurrentResolution(ctx)
+	if err != nil {
+		log.Error("failed to get current resolution", "error", err)
+		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get current display resolution"}}, nil
+	}
 
 	// Determine display to use (align with default xdotool display)
 	display := ":1"
