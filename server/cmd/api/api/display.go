@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	nekooapi "github.com/m1k1o/neko/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -99,7 +98,9 @@ func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequ
 			err = s.setResolutionXorgViaXrandr(ctx, width, height, refreshRate, restartChrome)
 		}
 		if err == nil && restartChrome {
-			s.restartChromium(ctx)
+			if restartErr := s.restartChromiumAndWait(ctx, "resolution change"); restartErr != nil {
+				log.Error("failed to restart chromium after resolution change", "error", restartErr)
+			}
 		}
 	} else {
 		log.Info("using Xvfb restart for resolution change")
@@ -143,42 +144,6 @@ func (s *ApiService) detectDisplayMode(ctx context.Context) string {
 	}
 	log.Info("detected Xorg display (headful mode)")
 	return "xorg"
-}
-
-// restartChromium restarts the Chromium browser via supervisorctl and waits for DevTools to be ready
-func (s *ApiService) restartChromium(ctx context.Context) {
-	log := logger.FromContext(ctx)
-	start := time.Now()
-
-	// Begin listening for devtools URL updates, since we are about to restart Chromium
-	updates, cancelSub := s.upstreamMgr.Subscribe()
-	defer cancelSub()
-
-	// Run supervisorctl restart with a new context to let it run beyond the lifetime of the http request.
-	// This lets us return as soon as the DevTools URL is updated.
-	errCh := make(chan error, 1)
-	log.Info("restarting chromium via supervisorctl")
-	go func() {
-		cmdCtx, cancelCmd := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
-		defer cancelCmd()
-		out, err := exec.CommandContext(cmdCtx, "supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
-		if err != nil {
-			log.Error("failed to restart chromium", "error", err, "out", string(out))
-			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)
-		}
-	}()
-
-	// Wait for either a new upstream, a restart error, or timeout
-	timeout := time.NewTimer(15 * time.Second)
-	defer timeout.Stop()
-	select {
-	case <-updates:
-		log.Info("chromium devtools ready after resolution change", "elapsed", time.Since(start).String())
-	case err := <-errCh:
-		log.Error("chromium restart failed", "error", err, "elapsed", time.Since(start).String())
-	case <-timeout.C:
-		log.Warn("chromium devtools not ready in time after resolution change", "elapsed", time.Since(start).String())
-	}
 }
 
 // setResolutionXorgViaXrandr changes resolution for Xorg using xrandr (fallback when Neko is disabled)
@@ -287,7 +252,9 @@ func (s *ApiService) setResolutionXvfb(ctx context.Context, width, height int, r
 	s.ProcessExec(ctx, oapi.ProcessExecRequestObject{Body: &waitReq})
 
 	if restartChrome {
-		s.restartChromium(ctx)
+		if restartErr := s.restartChromiumAndWait(ctx, "xvfb resolution change"); restartErr != nil {
+			log.Error("failed to restart chromium after xvfb resolution change", "error", restartErr)
+		}
 	}
 
 	log.Info("Xvfb resolution updated", "width", width, "height", height)

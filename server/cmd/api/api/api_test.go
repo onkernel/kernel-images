@@ -302,3 +302,36 @@ func newMockNekoClient(t *testing.T) *nekoclient.AuthClient {
 	require.NoError(t, err)
 	return client
 }
+
+func TestApiService_PatchChromiumFlags(t *testing.T) {
+	ctx := context.Background()
+	mgr := recorder.NewFFmpegManager()
+	svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
+	require.NoError(t, err)
+
+	// Test with valid flags
+	flags := []string{"--kiosk", "--start-maximized"}
+	body := &oapi.PatchChromiumFlagsJSONRequestBody{
+		Flags: flags,
+	}
+
+	req := oapi.PatchChromiumFlagsRequestObject{
+		Body: body,
+	}
+
+	// This will fail to write to /chromium/flags in most test environments
+	// but we're mainly testing that the handler accepts valid input
+	resp, err := svc.PatchChromiumFlags(ctx, req)
+	require.NoError(t, err)
+
+	// We expect either success or an error about creating the directory
+	// depending on the test environment
+	switch resp.(type) {
+	case oapi.PatchChromiumFlags200Response:
+		// Success in environments where /chromium is writable
+	case oapi.PatchChromiumFlags500JSONResponse:
+		// Expected in most test environments where /chromium doesn't exist
+	default:
+		t.Fatalf("unexpected response type: %T", resp)
+	}
+}
