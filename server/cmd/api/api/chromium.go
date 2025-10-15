@@ -169,32 +169,70 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		paths = append(paths, filepath.Join(extBase, p.name))
 	}
 
-	// Read existing runtime flags from /chromium/flags (if any)
-	const flagsPath = "/chromium/flags"
-	existingTokens, err := chromiumflags.ReadOptionalFlagFile(flagsPath)
-	if err != nil {
-		log.Error("failed to read existing flags", "error", err)
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read existing flags"}}, nil
-	}
-
 	// Create new flags for the uploaded extensions
 	newTokens := []string{
 		fmt.Sprintf("--disable-extensions-except=%s", strings.Join(paths, ",")),
 		fmt.Sprintf("--load-extension=%s", strings.Join(paths, ",")),
 	}
 
-	// Merge existing flags with new extension flags using token-aware API
+	// Merge and write flags
+	if _, err := s.mergeAndWriteChromiumFlags(ctx, newTokens); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()},
+		}, nil
+	}
+
+	// Restart Chromium and wait for DevTools to be ready
+	if err := s.restartChromiumAndWait(ctx, "extension upload"); err != nil {
+		return oapi.UploadExtensionsAndRestart500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()},
+		}, nil
+	}
+
+	log.Info("devtools ready", "elapsed", time.Since(start).String())
+	return oapi.UploadExtensionsAndRestart201Response{}, nil
+}
+
+// mergeAndWriteChromiumFlags reads existing flags, merges them with new flags,
+// and writes the result back to /chromium/flags. Returns the merged tokens or an error.
+func (s *ApiService) mergeAndWriteChromiumFlags(ctx context.Context, newTokens []string) ([]string, error) {
+	log := logger.FromContext(ctx)
+
+	const flagsPath = "/chromium/flags"
+
+	// Read existing runtime flags from /chromium/flags (if any)
+	existingTokens, err := chromiumflags.ReadOptionalFlagFile(flagsPath)
+	if err != nil {
+		log.Error("failed to read existing flags", "error", err)
+		return nil, fmt.Errorf("failed to read existing flags: %w", err)
+	}
+
+	log.Info("merging flags", "existing", existingTokens, "new", newTokens)
+
+	// Merge existing flags with new flags using token-aware API
 	mergedTokens := chromiumflags.MergeFlags(existingTokens, newTokens)
 
+	// Ensure the chromium directory exists
 	if err := os.MkdirAll("/chromium", 0o755); err != nil {
 		log.Error("failed to create chromium dir", "error", err)
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create chromium dir"}}, nil
+		return nil, fmt.Errorf("failed to create chromium dir: %w", err)
 	}
+
 	// Write flags file with merged flags
 	if err := chromiumflags.WriteFlagFile(flagsPath, mergedTokens); err != nil {
-		log.Error("failed to write overlay flags", "error", err)
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write overlay flags"}}, nil
+		log.Error("failed to write flags", "error", err)
+		return nil, fmt.Errorf("failed to write flags: %w", err)
 	}
+
+	log.Info("flags written", "merged", mergedTokens)
+	return mergedTokens, nil
+}
+
+// restartChromiumAndWait restarts Chromium via supervisorctl and waits for DevTools to be ready.
+// Returns an error if the restart fails or times out.
+func (s *ApiService) restartChromiumAndWait(ctx context.Context, operation string) error {
+	log := logger.FromContext(ctx)
+	start := time.Now()
 
 	// Begin listening for devtools URL updates, since we are about to restart Chromium
 	updates, cancelSub := s.upstreamMgr.Subscribe()
@@ -203,7 +241,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	// Run supervisorctl restart with a new context to let it run beyond the lifetime of the http request.
 	// This lets us return as soon as the DevTools URL is updated.
 	errCh := make(chan error, 1)
-	log.Info("restarting chromium via supervisorctl")
+	log.Info("restarting chromium via supervisorctl", "operation", operation)
 	go func() {
 		cmdCtx, cancelCmd := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
 		defer cancelCmd()
@@ -219,13 +257,13 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	defer timeout.Stop()
 	select {
 	case <-updates:
-		log.Info("devtools ready", "elapsed", time.Since(start).String())
-		return oapi.UploadExtensionsAndRestart201Response{}, nil
+		log.Info("devtools ready", "operation", operation, "elapsed", time.Since(start).String())
+		return nil
 	case err := <-errCh:
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()}}, nil
+		return err
 	case <-timeout.C:
-		log.Info("devtools not ready in time", "elapsed", time.Since(start).String())
-		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
+		log.Info("devtools not ready in time", "operation", operation, "elapsed", time.Since(start).String())
+		return fmt.Errorf("devtools not ready in time")
 	}
 }
 
@@ -259,61 +297,20 @@ func (s *ApiService) PatchChromiumFlags(ctx context.Context, request oapi.PatchC
 		}
 	}
 
-	// Read existing runtime flags from /chromium/flags (if any)
-	const flagsPath = "/chromium/flags"
-	existingTokens, err := chromiumflags.ReadOptionalFlagFile(flagsPath)
-	if err != nil {
-		log.Error("failed to read existing flags", "error", err)
-		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to read existing flags"}}, nil
+	// Merge and write flags
+	if _, err := s.mergeAndWriteChromiumFlags(ctx, request.Body.Flags); err != nil {
+		return oapi.PatchChromiumFlags500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()},
+		}, nil
 	}
 
-	log.Info("merging flags", "existing", existingTokens, "new", request.Body.Flags)
-
-	// Merge existing flags with new flags using token-aware API
-	mergedTokens := chromiumflags.MergeFlags(existingTokens, request.Body.Flags)
-
-	if err := os.MkdirAll("/chromium", 0o755); err != nil {
-		log.Error("failed to create chromium dir", "error", err)
-		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to create chromium dir"}}, nil
+	// Restart Chromium and wait for DevTools to be ready
+	if err := s.restartChromiumAndWait(ctx, "flags update"); err != nil {
+		return oapi.PatchChromiumFlags500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()},
+		}, nil
 	}
 
-	// Write flags file with merged flags
-	if err := chromiumflags.WriteFlagFile(flagsPath, mergedTokens); err != nil {
-		log.Error("failed to write flags", "error", err)
-		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to write flags"}}, nil
-	}
-
-	log.Info("flags written", "merged", mergedTokens)
-
-	// Begin listening for devtools URL updates, since we are about to restart Chromium
-	updates, cancelSub := s.upstreamMgr.Subscribe()
-	defer cancelSub()
-
-	// Run supervisorctl restart with a new context to let it run beyond the lifetime of the http request.
-	// This lets us return as soon as the DevTools URL is updated.
-	errCh := make(chan error, 1)
-	log.Info("restarting chromium via supervisorctl")
-	go func() {
-		cmdCtx, cancelCmd := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Minute)
-		defer cancelCmd()
-		out, err := exec.CommandContext(cmdCtx, "supervisorctl", "-c", "/etc/supervisor/supervisord.conf", "restart", "chromium").CombinedOutput()
-		if err != nil {
-			log.Error("failed to restart chromium", "error", err, "out", string(out))
-			errCh <- fmt.Errorf("supervisorctl restart failed: %w", err)
-		}
-	}()
-
-	// Wait for either a new upstream, a restart error, or timeout
-	timeout := time.NewTimer(15 * time.Second)
-	defer timeout.Stop()
-	select {
-	case <-updates:
-		log.Info("devtools ready after flags update", "elapsed", time.Since(start).String())
-		return oapi.PatchChromiumFlags200Response{}, nil
-	case err := <-errCh:
-		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: err.Error()}}, nil
-	case <-timeout.C:
-		log.Info("devtools not ready in time after flags update", "elapsed", time.Since(start).String())
-		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "devtools not ready in time"}}, nil
-	}
+	log.Info("devtools ready after flags update", "elapsed", time.Since(start).String())
+	return oapi.PatchChromiumFlags200Response{}, nil
 }
