@@ -192,8 +192,8 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get current display resolution"}}, nil
 	}
 
-	// Determine display to use (align with default xdotool display)
-	display := ":1"
+	// Determine display to use (align with other functions)
+	display := s.resolveDisplayFromEnv()
 
 	// Validate region if provided
 	if body.Region != nil {
@@ -258,12 +258,21 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 
 	pr, pw := io.Pipe()
 	go func() {
-		defer pw.Close()
 		_, copyErr := io.Copy(pw, stdout)
+		waitErr := cmd.Wait()
+		var closeErr error
 		if copyErr != nil {
+			closeErr = fmt.Errorf("streaming ffmpeg output: %w", copyErr)
 			log.Error("failed streaming ffmpeg output", "err", copyErr)
+		} else if waitErr != nil {
+			closeErr = fmt.Errorf("ffmpeg exited with error: %w", waitErr)
+			log.Error("ffmpeg exited with error", "err", waitErr)
 		}
-		_ = cmd.Wait()
+		if closeErr != nil {
+			_ = pw.CloseWithError(closeErr)
+			return
+		}
+		_ = pw.Close()
 	}()
 
 	return oapi.TakeScreenshot200ImagepngResponse{Body: pr, ContentLength: 0}, nil
