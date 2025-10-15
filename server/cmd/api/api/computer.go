@@ -37,7 +37,7 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "coordinates must be non-negative"}}, nil
 	}
 	if body.X >= screenWidth || body.Y >= screenHeight {
-		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth, screenHeight)}}, nil
+		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth-1, screenHeight-1)}}, nil
 	}
 
 	// Build xdotool arguments
@@ -95,7 +95,7 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "coordinates must be non-negative"}}, nil
 	}
 	if body.X >= screenWidth || body.Y >= screenHeight {
-		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth, screenHeight)}}, nil
+		return oapi.ClickMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: fmt.Sprintf("coordinates exceed screen bounds (max: %dx%d)", screenWidth-1, screenHeight-1)}}, nil
 	}
 
 	// Map button enum to xdotool button code. Default to left button.
