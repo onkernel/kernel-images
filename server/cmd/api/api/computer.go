@@ -277,3 +277,39 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 
 	return oapi.TakeScreenshot200ImagepngResponse{Body: pr, ContentLength: 0}, nil
 }
+
+func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestObject) (oapi.TypeTextResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	s.stz.Disable(ctx)
+	defer s.stz.Enable(ctx)
+
+	// Validate request body
+	if request.Body == nil {
+		return oapi.TypeText400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body is required"}}, nil
+	}
+	body := *request.Body
+
+	// Validate delay if provided
+	if body.Delay != nil && *body.Delay < 0 {
+		return oapi.TypeText400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "delay must be >= 0 milliseconds"}}, nil
+	}
+
+	// Build xdotool arguments
+	args := []string{"type"}
+	if body.Delay != nil {
+		args = append(args, "--delay", strconv.Itoa(*body.Delay))
+	}
+	// Use "--" to terminate options and pass raw text
+	args = append(args, "--", body.Text)
+
+	log.Info("executing xdotool", "args", args)
+
+	output, err := defaultXdoTool.Run(ctx, args...)
+	if err != nil {
+		log.Error("xdotool command failed", "err", err, "output", string(output))
+		return oapi.TypeText500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to type text"}}, nil
+	}
+
+	return oapi.TypeText200Response{}, nil
+}
