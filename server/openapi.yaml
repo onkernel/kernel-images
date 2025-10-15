@@ -799,6 +799,34 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+
+  /chromium/flags:
+    patch:
+      summary: Update Chromium launch flags and restart
+      description: |
+        Merge new flags with existing ones, update /chromium/flags, restart Chromium via supervisord,
+        and wait until the Chromium DevTools "listening" log line is observed before returning success.
+      operationId: patchChromiumFlags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flags:
+                  type: array
+                  items:
+                    type: string
+                  description: Chromium flags to merge (e.g., ["--kiosk", "--disable-gpu"])
+              required: [flags]
+      responses:
+        "200":
+          description: Flags updated and Chromium restarted successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
