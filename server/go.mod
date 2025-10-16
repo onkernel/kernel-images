@@ -14,8 +14,9 @@ require (
 	github.com/m1k1o/neko/server v0.0.0-20251008185748-46e2fc7d3866
 	github.com/nrednav/cuid2 v1.1.0
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/stretchr/testify v1.10.0
-	golang.org/x/sync v0.15.0
+	github.com/samber/lo v1.52.0
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/sync v0.17.0
 )
 
 require (
@@ -38,6 +39,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.25.7 // indirect

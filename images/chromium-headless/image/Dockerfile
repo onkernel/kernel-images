@@ -52,6 +52,7 @@ RUN set -xe; \
     dbus-x11 \
     xvfb \
     x11-utils \
+    xdotool \
     software-properties-common \
     supervisor;
 
