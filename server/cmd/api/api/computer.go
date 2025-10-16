@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -669,10 +670,44 @@ func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseReques
 		time.Sleep(time.Duration(*body.Delay) * time.Millisecond)
 	}
 
-	// Phase 2: move along path (excluding first point)
+	// Phase 2: move along path (excluding first point) using fixed-count relative steps
+	// Insert a small delay between each relative move to smooth the drag
 	args2 := []string{}
+	// Determine per-segment steps and per-step delay from request (with defaults)
+	stepsPerSegment := 10
+	if body.StepsPerSegment != nil && *body.StepsPerSegment >= 1 {
+		stepsPerSegment = *body.StepsPerSegment
+	}
+	stepDelayMs := 50
+	if body.StepDelayMs != nil && *body.StepDelayMs >= 0 {
+		stepDelayMs = *body.StepDelayMs
+	}
+	stepDelaySeconds := fmt.Sprintf("%.3f", float64(stepDelayMs)/1000.0)
+
+	// Precompute total number of relative steps so we can avoid a trailing sleep
+	totalSteps := 0
+	prev := start
 	for _, pt := range body.Path[1:] {
-		args2 = append(args2, "mousemove", "--sync", strconv.Itoa(pt[0]), strconv.Itoa(pt[1]))
+		x0, y0 := prev[0], prev[1]
+		x1, y1 := pt[0], pt[1]
+		totalSteps += len(generateRelativeSteps(x1-x0, y1-y0, stepsPerSegment))
+		prev = pt
+	}
+
+	prev = start
+	stepIndex := 0
+	for _, pt := range body.Path[1:] {
+		x0, y0 := prev[0], prev[1]
+		x1, y1 := pt[0], pt[1]
+		for _, step := range generateRelativeSteps(x1-x0, y1-y0, stepsPerSegment) {
+			args2 = append(args2, "mousemove_relative", strconv.Itoa(step[0]), strconv.Itoa(step[1]))
+			// add a tiny delay between moves, but not after the last step
+			if stepIndex < totalSteps-1 && stepDelayMs > 0 {
+				args2 = append(args2, "sleep", stepDelaySeconds)
+			}
+			stepIndex++
+		}
+		prev = pt
 	}
 	if len(args2) > 0 {
 		log.Info("executing xdotool (drag move)", "args", args2)
@@ -708,4 +743,38 @@ func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseReques
 	}
 
 	return oapi.DragMouse200Response{}, nil
+}
+
+// generateRelativeSteps produces a sequence of relative steps that approximate a
+// straight line from (0,0) to (dx,dy) using at most the provided number of
+// steps. Each returned element is a pair {stepX, stepY}. The steps are
+// distributed so that the cumulative sum equals exactly (dx, dy). If dx and dy
+// are both zero, no steps are returned. If the requested step count is less
+// than the distance, the per-step movement will be greater than one pixel.
+func generateRelativeSteps(dx, dy, steps int) [][2]int {
+	if steps <= 0 {
+		return nil
+	}
+	if dx == 0 && dy == 0 {
+		return nil
+	}
+
+	out := make([][2]int, 0, steps)
+
+	// Use cumulative rounding to distribute integers across the requested
+	// number of steps while preserving the exact totals.
+	prevCX := 0
+	prevCY := 0
+	for i := 1; i <= steps; i++ {
+		// Target cumulative positions after i steps
+		cx := int(math.Round(float64(i*dx) / float64(steps)))
+		cy := int(math.Round(float64(i*dy) / float64(steps)))
+		sx := cx - prevCX
+		sy := cy - prevCY
+		prevCX = cx
+		prevCY = cy
+		out = append(out, [2]int{sx, sy})
+	}
+
+	return out
 }

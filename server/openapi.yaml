@@ -1087,6 +1087,7 @@ components:
           description: |
             List of key symbols to press. Each item should be a key symbol supported by xdotool
             (see X11 keysym definitions). Examples include "Return", "Shift", "Ctrl", "Alt", "F5".
+            Items in this list could also be combinations, e.g. "Ctrl+t" or "Ctrl+Shift+Tab".
           items:
             type: string
         duration:
@@ -1150,6 +1151,16 @@ components:
           description: Delay in milliseconds between button down and starting to move along the path.
           minimum: 0
           default: 0
+        steps_per_segment:
+          type: integer
+          description: Number of relative move steps per segment in the path. Minimum 1.
+          minimum: 1
+          default: 10
+        step_delay_ms:
+          type: integer
+          description: Delay in milliseconds between relative steps while dragging (not the initial delay).
+          minimum: 0
+          default: 50
         hold_keys:
           type: array
           description: Modifier keys to hold during the drag
