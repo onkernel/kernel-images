@@ -416,14 +416,17 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 		log.Info("executing xdotool (keydown phase)", "args", argsDown)
 		if output, err := defaultXdoTool.Run(ctx, argsDown...); err != nil {
 			log.Error("xdotool keydown failed", "err", err, "output", string(output))
-			// Best-effort release any modifiers
+			// Best-effort release any keys that may be down (primary and modifiers)
+			argsUp := []string{}
+			for _, key := range body.Keys {
+				argsUp = append(argsUp, "keyup", key)
+			}
 			if body.HoldKeys != nil {
-				argsUp := []string{}
 				for _, key := range *body.HoldKeys {
 					argsUp = append(argsUp, "keyup", key)
 				}
-				_, _ = defaultXdoTool.Run(ctx, argsUp...)
 			}
+			_, _ = defaultXdoTool.Run(ctx, argsUp...)
 			return oapi.PressKey500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
 				Message: fmt.Sprintf("failed to press keys (keydown). out=%s", string(output))},
 			}, nil
