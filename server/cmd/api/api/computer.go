@@ -20,6 +20,10 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
 
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+
 	// Validate request body
 	if request.Body == nil {
 		return oapi.MoveMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
@@ -87,6 +91,10 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
+
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
 
 	// Validate request body
 	if request.Body == nil {
@@ -205,6 +213,10 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
 
+	// serialize input operations to avoid race with other input/screen actions
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+
 	var body oapi.ScreenshotRequest
 	if request.Body != nil {
 		body = *request.Body
@@ -321,6 +333,10 @@ func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestO
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
 
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+
 	// Validate request body
 	if request.Body == nil {
 		return oapi.TypeText400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
@@ -362,6 +378,10 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
+
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
 
 	if request.Body == nil {
 		return oapi.PressKey400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
@@ -466,6 +486,10 @@ func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObjec
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
 
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+
 	if request.Body == nil {
 		return oapi.Scroll400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
 			Message: "request body is required"},
@@ -550,6 +574,10 @@ func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseReques
 
 	s.stz.Disable(ctx)
 	defer s.stz.Enable(ctx)
+
+	// serialize input operations to avoid overlapping xdotool commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
 
 	if request.Body == nil {
 		return oapi.DragMouse400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{

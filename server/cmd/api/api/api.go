@@ -36,6 +36,9 @@ type ApiService struct {
 	// DevTools upstream manager (Chromium supervisord log tailer)
 	upstreamMgr *devtoolsproxy.UpstreamManager
 	stz         scaletozero.Controller
+
+	// inputMu serializes input-related operations (mouse, keyboard, screenshot)
+	inputMu sync.Mutex
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
