@@ -25,7 +25,7 @@ docker rm cnt-"$app_name" || true
 docker create --platform linux/amd64 --name cnt-"$app_name" "$IMAGE" /bin/sh
 docker cp cnt-"$app_name":/ ./.rootfs
 rm -f initrd || true
-mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
+mkfs.erofs --all-root -d2 -E noinline_data,fragments -b 4096 -C 131072 -x 0 -z lz4 initrd ./.rootfs
 
 kraft pkg \
   --name  $UKC_INDEX/$IMAGE \
