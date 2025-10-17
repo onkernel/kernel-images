@@ -700,7 +700,13 @@ func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseReques
 		x0, y0 := prev[0], prev[1]
 		x1, y1 := pt[0], pt[1]
 		for _, step := range generateRelativeSteps(x1-x0, y1-y0, stepsPerSegment) {
-			args2 = append(args2, "mousemove_relative", strconv.Itoa(step[0]), strconv.Itoa(step[1]))
+			xStr := strconv.Itoa(step[0])
+			yStr := strconv.Itoa(step[1])
+			if step[0] < 0 || step[1] < 0 {
+				args2 = append(args2, "mousemove_relative", "--", xStr, yStr)
+			} else {
+				args2 = append(args2, "mousemove_relative", xStr, yStr)
+			}
 			// add a tiny delay between moves, but not after the last step
 			if stepIndex < totalSteps-1 && stepDelayMs > 0 {
 				args2 = append(args2, "sleep", stepDelaySeconds)
