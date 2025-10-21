@@ -69,7 +69,7 @@ func main() {
 		slogger.Error("invalid default recording parameters", "err", err)
 		os.Exit(1)
 	}
-	stz := scaletozero.NewUnikraftCloudController()
+	stz := scaletozero.NewDebouncedController(scaletozero.NewUnikraftCloudController())
 
 	// DevTools WebSocket upstream manager: tail Chromium supervisord log
 	const chromiumLogPath = "/var/log/supervisord/chromium"
