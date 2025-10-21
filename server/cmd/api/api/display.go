@@ -21,8 +21,11 @@ import (
 func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequestObject) (oapi.PatchDisplayResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
+	if err := s.stz.Disable(ctx); err != nil {
+		logger.FromContext(ctx).Error("failed to disable scale-to-zero", "error", err)
+		return oapi.PatchDisplay500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
+	}
+	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	if req.Body == nil {
 		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "missing request body"}}, nil

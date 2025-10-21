@@ -28,8 +28,11 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	start := time.Now()
 	log.Info("upload extensions: begin")
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
+	if err := s.stz.Disable(ctx); err != nil {
+		log.Error("failed to disable scale-to-zero", "error", err)
+		return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
+	}
+	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	if request.Body == nil {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
@@ -275,8 +278,11 @@ func (s *ApiService) PatchChromiumFlags(ctx context.Context, request oapi.PatchC
 	start := time.Now()
 	log.Info("patch chromium flags: begin")
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
+	if err := s.stz.Disable(ctx); err != nil {
+		log.Error("failed to disable scale-to-zero", "error", err)
+		return oapi.PatchChromiumFlags500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
+	}
+	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	if request.Body == nil {
 		return oapi.PatchChromiumFlags400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
