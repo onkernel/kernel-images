@@ -125,3 +125,45 @@ func (m *mockScaleToZeroer) Enable(ctx context.Context) error {
 	m.enableCalls++
 	return m.enableErr
 }
+func TestUnikraftCloudControllerNoFileNoError(t *testing.T) {
+	t.Parallel()
+	p := filepath.Join(t.TempDir(), "scale_to_zero_disable")
+	c := &unikraftCloudController{path: p}
+
+	require.NoError(t, c.Disable(t.Context()))
+	require.NoError(t, c.Enable(t.Context()))
+
+	_, err := os.Stat(p)
+	assert.True(t, os.IsNotExist(err), "should not create the file on no-op")
+}
+
+func TestUnikraftCloudControllerWritesPlusAndMinus(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "scale_to_zero_disable")
+	require.NoError(t, os.WriteFile(p, []byte{}, 0o600))
+	c := &unikraftCloudController{path: p}
+
+	require.NoError(t, c.Disable(t.Context()))
+	b, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("+"), b)
+
+	require.NoError(t, c.Enable(t.Context()))
+	b, err = os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("-"), b)
+}
+
+func TestUnikraftCloudControllerTruncatesExistingContent(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "scale_to_zero_disable")
+	require.NoError(t, os.WriteFile(p, []byte("abc123"), 0o600))
+	c := &unikraftCloudController{path: p}
+
+	require.NoError(t, c.Disable(t.Context()))
+	b, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("+"), b)
+}
