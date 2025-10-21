@@ -84,3 +84,53 @@ func (o *Oncer) Enable(ctx context.Context) error {
 	o.enableOnce.Do(func() { o.enableErr = o.ctrl.Enable(ctx) })
 	return o.enableErr
 }
+
+type DebouncedController struct {
+	ctrl        Controller
+	mu          sync.Mutex
+	disabled    bool
+	activeCount int
+}
+
+func NewDebouncedController(ctrl Controller) Controller {
+	return &DebouncedController{ctrl: ctrl}
+}
+
+func (c *DebouncedController) Disable(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.activeCount++
+	if c.disabled {
+		return nil
+	}
+
+	if err := c.ctrl.Disable(ctx); err != nil {
+		c.activeCount--
+		return err
+	}
+
+	c.disabled = true
+	return nil
+}
+
+func (c *DebouncedController) Enable(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.activeCount > 0 {
+		c.activeCount--
+	}
+
+	// nothing to do
+	if c.activeCount > 0 || !c.disabled {
+		return nil
+	}
+
+	if err := c.ctrl.Enable(ctx); err != nil {
+		return err
+	}
+
+	c.disabled = false
+	return nil
+}
