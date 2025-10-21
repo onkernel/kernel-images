@@ -102,6 +102,9 @@ func main() {
 	strictHandler := oapi.NewStrictHandler(apiService, nil)
 	oapi.HandlerFromMux(strictHandler, r)
 
+	// Add custom Playwright execution endpoint
+	r.Post("/playwright/execute", apiService.ExecutePlaywrightCode)
+
 	// endpoints to expose the spec
 	r.Get("/spec.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.oai.openapi")

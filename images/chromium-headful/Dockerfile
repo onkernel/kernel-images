@@ -161,6 +161,16 @@ RUN set -eux; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium sqlite3
 
+# Install Node.js 20.x
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    apt-get install -y nodejs; \
+    rm -rf /var/lib/apt/lists/*
+
+# Install TypeScript and Playwright globally
+RUN npm install -g typescript tsx playwright && \
+    npx playwright install-deps chromium
+
 # setup desktop env & app
 ENV DISPLAY_NUM=1
 ENV HEIGHT=768
@@ -182,6 +192,9 @@ COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/service
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
 COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
+
+# Copy the Playwright executor runtime
+COPY server/runtime/playwright-executor.ts /usr/local/lib/playwright-executor.ts
 
 RUN useradd -m -s /bin/bash kernel
 
