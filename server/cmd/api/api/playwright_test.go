@@ -32,7 +32,7 @@ func TestExecutePlaywrightRequest_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := &oapi.ExecutePlaywrightCodeRequest{
+			body := &oapi.ExecutePlaywrightRequest{
 				Code: tt.code,
 			}
 			resp, err := svc.ExecutePlaywrightCode(ctx, oapi.ExecutePlaywrightCodeRequestObject{Body: body})
