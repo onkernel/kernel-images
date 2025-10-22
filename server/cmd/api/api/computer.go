@@ -18,12 +18,6 @@ import (
 func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseRequestObject) (oapi.MoveMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.MoveMouse500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -92,12 +86,6 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 
 func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequestObject) (oapi.ClickMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.ClickMouse500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
@@ -217,12 +205,6 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreenshotRequestObject) (oapi.TakeScreenshotResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.TakeScreenshot500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
-
 	// serialize input operations to avoid race with other input/screen actions
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -340,12 +322,6 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestObject) (oapi.TypeTextResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.TypeText500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -388,12 +364,6 @@ func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestO
 
 func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestObject) (oapi.PressKeyResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.PressKey500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
@@ -502,12 +472,6 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObject) (oapi.ScrollResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.Scroll500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -593,12 +557,6 @@ func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObjec
 
 func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseRequestObject) (oapi.DragMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	if err := s.stz.Disable(ctx); err != nil {
-		log.Error("failed to disable scale-to-zero", "error", err)
-		return oapi.DragMouse500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to disable scale-to-zero"}}, nil
-	}
-	defer s.stz.Enable(context.WithoutCancel(ctx))
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()

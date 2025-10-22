@@ -198,12 +198,7 @@ func (u *UpstreamManager) runTailOnce(ctx context.Context) {
 // If logCDPMessages is true, all CDP messages will be logged with their direction.
 func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool, ctrl scaletozero.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := ctrl.Disable(context.WithoutCancel(r.Context())); err != nil {
-			logger.Error("failed to disable scale-to-zero", "error", err)
-			http.Error(w, "failed to disable scale-to-zero", http.StatusInternalServerError)
-			return
-		}
-		defer ctrl.Enable(context.WithoutCancel(r.Context()))
+		// scale-to-zero handled by middleware
 
 		upstreamCurrent := mgr.Current()
 		if upstreamCurrent == "" {
