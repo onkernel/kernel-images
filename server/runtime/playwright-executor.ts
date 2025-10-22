@@ -1,5 +1,5 @@
-const { chromium } = require('playwright');
-const { readFileSync } = require('fs');
+import { chromium } from 'playwright';
+import { readFileSync } from 'fs';
 
 async function main() {
   const codeFilePath = process.argv[2];
@@ -24,7 +24,7 @@ async function main() {
   let result;
 
   try {
-    browser = await chromium.connectOverCDP('http://localhost:9222');
+    browser = await chromium.connectOverCDP('ws://localhost:9222');
     const contexts = browser.contexts();
     const context = contexts.length > 0 ? contexts[0] : await browser.newContext();
     const pages = context.pages();
