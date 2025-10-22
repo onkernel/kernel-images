@@ -287,6 +287,32 @@ class CDPClient {
     }
   }
 
+  async navigateAndVerifyTitleContains(url: string, substring: string, timeout: number = 45000): Promise<void> {
+    if (!this.page) throw new Error('Not connected to browser');
+
+    try {
+      console.log(`[cdp] action: navigate-and-verify-title, url: ${url}, contains: ${substring}`);
+      this.page.setDefaultTimeout(timeout);
+      await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+
+      // Give content scripts a small window to run
+      await this.page.waitForTimeout(1500);
+
+      const title = await this.page.title();
+      console.log(`[cdp] page title: ${title}`);
+      if (!title.includes(substring)) {
+        const screenshotPath = `title-verify-fail.png`;
+        await this.captureScreenshot({ filename: screenshotPath });
+        throw new Error(`Expected page title to include "${substring}", got: ${title}`);
+      }
+      console.log('[cdp] title verification successful');
+    } catch (error) {
+      const screenshotPath = `title-verify-error.png`;
+      await this.captureScreenshot({ filename: screenshotPath }).catch(console.error);
+      throw error;
+    }
+  }
+
   async disconnect(): Promise<void> {
     // Note: We don't close the browser since it's an existing instance
     // We just disconnect from it
@@ -385,6 +411,18 @@ async function main(): Promise<void> {
           label: options.label,
           timeout: options.timeout ? parseInt(options.timeout, 10) : undefined,
         });
+        break;
+      }
+
+      case 'verify-title-contains': {
+        if (!options.url || !options.substr) {
+          throw new Error('Missing required options: --url, --substr');
+        }
+        await client.navigateAndVerifyTitleContains(
+          options.url,
+          options.substr,
+          options.timeout ? parseInt(options.timeout, 10) : undefined,
+        );
         break;
       }
 

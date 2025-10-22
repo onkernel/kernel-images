@@ -310,6 +310,109 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/screenshot:
+    post:
+      summary: Capture a screenshot of the host computer
+      operationId: takeScreenshot
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScreenshotRequest"
+      responses:
+        "200":
+          description: Screenshot image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/type:
+    post:
+      summary: Type text on the host computer
+      operationId: typeText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TypeTextRequest"
+      responses:
+        "200":
+          description: Text typed successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/press_key:
+    post:
+      summary: Press one or more keys on the host computer
+      description: |
+        Presses the specified keys for an optional duration. Keys should be key symbols
+        supported by xdotool. For a comprehensive list of key symbols, see
+        the X11 keysym definitions at https://cgit.freedesktop.org/xorg/proto/x11proto/plain/keysymdef.h
+        The server honors millisecond-level durations using fractional sleeps under the hood.
+      operationId: pressKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PressKeyRequest"
+      responses:
+        "200":
+          description: Keys pressed successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/scroll:
+    post:
+      summary: Scroll the mouse wheel at a position on the host computer
+      description: |
+        Scroll vertically and/or horizontally at the given coordinates, optionally while holding modifier keys.
+        The scroll amounts are in logical ticks (not pixels) and application behavior may vary; tuning may be required.
+        When both horizontal and vertical deltas are provided, the server applies them sequentially (vertical then horizontal)
+        and batches wheel events using `xdotool click --repeat N --delay 0 <button>`.
+      operationId: scroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScrollRequest"
+      responses:
+        "200":
+          description: Scroll performed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /computer/drag_mouse:
+    post:
+      summary: Drag the mouse along a path
+      description: |
+        Press and hold a mouse button, optionally wait for a short delay, then move along the given path and release.
+        The path is a list of [x, y] coordinate pairs.
+      operationId: dragMouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DragMouseRequest"
+      responses:
+        "200":
+          description: Drag performed
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /logs/stream:
     get:
       summary: Stream logs over SSE
@@ -737,6 +840,96 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /display:
+    patch:
+      summary: Update display configuration
+      operationId: patchDisplay
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDisplayRequest"
+      responses:
+        "200":
+          description: Updated display configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisplayConfig"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /chromium/upload-extensions-and-restart:
+    post:
+      summary: Upload one or more unpacked extensions (as zips) and restart Chromium
+      description: |
+        Upload one or more extension zip archives, extract them under /home/kernel/extensions/<name>,
+        set runtime extension flags in /chromium/flags, restart Chromium via supervisord, and wait
+        until the Chromium DevTools "listening" log line is observed before returning success.
+      operationId: uploadExtensionsAndRestart
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                extensions:
+                  type: array
+                  description: List of extensions to upload and activate
+                  items:
+                    type: object
+                    properties:
+                      zip_file:
+                        type: string
+                        format: binary
+                        description: Zip archive containing an unpacked Chromium extension (must include manifest.json)
+                      name:
+                        type: string
+                        description: Folder name to place the extension under /home/kernel/extensions/<name>
+                        pattern: "^[A-Za-z0-9._-]{1,255}$"
+                    required: [zip_file, name]
+              required: [extensions]
+      responses:
+        "201":
+          description: Extensions uploaded, Chromium restarted, and DevTools is ready
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /chromium/flags:
+    patch:
+      summary: Update Chromium launch flags and restart
+      description: |
+        Merge new flags with existing ones, update /chromium/flags, restart Chromium via supervisord,
+        and wait until the Chromium DevTools "listening" log line is observed before returning success.
+      operationId: patchChromiumFlags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flags:
+                  type: array
+                  items:
+                    type: string
+                  description: Chromium flags to merge (e.g., ["--kiosk", "--disable-gpu"])
+              required: [flags]
+      responses:
+        "200":
+          description: Flags updated and Chromium restarted successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -788,14 +981,12 @@ components:
         isRecording:
           type: boolean
         started_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording started
         finished_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
           description: Timestamp when recording finished
     ClickMouseRequest:
       type: object
@@ -842,6 +1033,137 @@ components:
         hold_keys:
           type: array
           description: Modifier keys to hold during the move
+          items:
+            type: string
+      additionalProperties: false
+    ScreenshotRegion:
+      type: object
+      required:
+        - x
+        - y
+        - width
+        - height
+      properties:
+        x:
+          type: integer
+          description: X coordinate of the region's top-left corner
+        y:
+          type: integer
+          description: Y coordinate of the region's top-left corner
+        width:
+          type: integer
+          description: Width of the region in pixels
+        height:
+          type: integer
+          description: Height of the region in pixels
+      additionalProperties: false
+    ScreenshotRequest:
+      type: object
+      properties:
+        region:
+          $ref: "#/components/schemas/ScreenshotRegion"
+      additionalProperties: false
+    TypeTextRequest:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: Text to type on the host computer
+        delay:
+          type: integer
+          description: Delay in milliseconds between keystrokes
+          minimum: 0
+          default: 0
+      additionalProperties: false
+    PressKeyRequest:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: |
+            List of key symbols to press. Each item should be a key symbol supported by xdotool
+            (see X11 keysym definitions). Examples include "Return", "Shift", "Ctrl", "Alt", "F5".
+            Items in this list could also be combinations, e.g. "Ctrl+t" or "Ctrl+Shift+Tab".
+          items:
+            type: string
+        duration:
+          type: integer
+          description: Duration to hold the keys down in milliseconds. If omitted or 0, keys are tapped.
+          minimum: 0
+          default: 0
+        hold_keys:
+          type: array
+          description: Optional modifier keys to hold during the key press sequence.
+          items:
+            type: string
+      additionalProperties: false
+    ScrollRequest:
+      type: object
+      required:
+        - x
+        - y
+      properties:
+        x:
+          type: integer
+          description: X coordinate at which to perform the scroll
+        y:
+          type: integer
+          description: Y coordinate at which to perform the scroll
+        delta_x:
+          type: integer
+          description: Horizontal scroll amount. Positive scrolls right, negative scrolls left.
+          default: 0
+        delta_y:
+          type: integer
+          description: Vertical scroll amount. Positive scrolls down, negative scrolls up.
+          default: 0
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the scroll
+          items:
+            type: string
+      additionalProperties: false
+    DragMouseRequest:
+      type: object
+      required:
+        - path
+      properties:
+        path:
+          type: array
+          description: Ordered list of [x, y] coordinate pairs to move through while dragging. Must contain at least 2 points.
+          minItems: 2
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: integer
+        button:
+          type: string
+          description: Mouse button to drag with
+          enum: [left, middle, right]
+        delay:
+          type: integer
+          description: Delay in milliseconds between button down and starting to move along the path.
+          minimum: 0
+          default: 0
+        steps_per_segment:
+          type: integer
+          description: Number of relative move steps per segment in the path. Minimum 1.
+          minimum: 1
+          default: 10
+        step_delay_ms:
+          type: integer
+          description: Delay in milliseconds between relative steps while dragging (not the initial delay).
+          minimum: 0
+          default: 50
+        hold_keys:
+          type: array
+          description: Modifier keys to hold during the drag
           items:
             type: string
       additionalProperties: false
@@ -986,9 +1308,8 @@ components:
             type: string
           default: []
         cwd:
-          type: string
+          type: [string, "null"]
           description: Working directory (absolute path) to run the command in.
-          nullable: true
           pattern: "^/.*"
         env:
           type: object
@@ -997,17 +1318,15 @@ components:
             type: string
           default: {}
         as_user:
-          type: string
+          type: [string, "null"]
           description: Run the process as this user.
-          nullable: true
         as_root:
           type: boolean
           description: Run the process with root privileges.
           default: false
         timeout_sec:
-          type: integer
+          type: [integer, "null"]
           description: Maximum execution time in seconds.
-          nullable: true
       additionalProperties: false
     ProcessExecResult:
       type: object
@@ -1054,8 +1373,7 @@ components:
           enum: [running, exited]
           description: Process state.
         exit_code:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
           description: Exit code if the process has exited.
         cpu_pct:
           type: number
@@ -1110,6 +1428,42 @@ components:
         exit_code:
           type: integer
           description: Exit code when the event is "exit".
+      additionalProperties: false
+    PatchDisplayRequest:
+      type: object
+      properties:
+        width:
+          type: integer
+          minimum: 320
+          description: Display width in pixels
+        height:
+          type: integer
+          minimum: 240
+          description: Display height in pixels
+        refresh_rate:
+          type: integer
+          enum: [60, 30, 25, 10]
+          description: Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+        require_idle:
+          type: boolean
+          description: If true, refuse to resize when live view or recording/replay is active.
+          default: true
+        restart_chromium:
+          type: boolean
+          description: If true, restart Chromium after resolution change to ensure it adapts to new size. Default is false for headful, true for headless.
+      additionalProperties: false
+    DisplayConfig:
+      type: object
+      properties:
+        width:
+          type: integer
+          description: Current display width in pixels
+        height:
+          type: integer
+          description: Current display height in pixels
+        refresh_rate:
+          type: integer
+          description: Current display refresh rate in Hz (may be null if not detectable)
       additionalProperties: false
     LogEvent:
       type: object

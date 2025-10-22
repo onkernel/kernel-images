@@ -22,7 +22,29 @@ CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
 FLAGS_FILE="$(pwd)/.tmp/chromium/flags"
-echo "$CHROMIUM_FLAGS" > "$FLAGS_FILE"
+
+# Convert space-separated flags to JSON array format, handling quoted strings
+# Use eval to properly parse quoted strings (respects shell quoting)
+if [ -n "$CHROMIUM_FLAGS" ]; then
+  eval "FLAGS_ARRAY=($CHROMIUM_FLAGS)"
+else
+  FLAGS_ARRAY=()
+fi
+
+FLAGS_JSON='{"flags":['
+FIRST=true
+for flag in "${FLAGS_ARRAY[@]}"; do
+  if [ -n "$flag" ]; then
+    if [ "$FIRST" = true ]; then
+      FLAGS_JSON+="\"$flag\""
+      FIRST=false
+    else
+      FLAGS_JSON+=",\"$flag\""
+    fi
+  fi
+done
+FLAGS_JSON+=']}'
+echo "$FLAGS_JSON" > "$FLAGS_FILE"
 
 echo "flags file: $FLAGS_FILE"
 cat "$FLAGS_FILE"

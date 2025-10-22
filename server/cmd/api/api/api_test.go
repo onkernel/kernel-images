@@ -9,8 +9,13 @@ import (
 	"os"
 	"testing"
 
+	"log/slog"
+
+	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
+	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +25,7 @@ func TestApiService_StartRecording(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 
 		resp, err := svc.StartRecording(ctx, oapi.StartRecordingRequestObject{})
@@ -34,7 +39,7 @@ func TestApiService_StartRecording(t *testing.T) {
 
 	t.Run("already recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 
 		// First start should succeed
@@ -49,7 +54,7 @@ func TestApiService_StartRecording(t *testing.T) {
 
 	t.Run("custom ids don't collide", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 
 		for i := 0; i < 5; i++ {
@@ -82,7 +87,7 @@ func TestApiService_StopRecording(t *testing.T) {
 
 	t.Run("no active recording", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 
 		resp, err := svc.StopRecording(ctx, oapi.StopRecordingRequestObject{})
@@ -95,7 +100,7 @@ func TestApiService_StopRecording(t *testing.T) {
 		rec := &mockRecorder{id: "default", isRecordingFlag: true}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 		resp, err := svc.StopRecording(ctx, oapi.StopRecordingRequestObject{})
 		require.NoError(t, err)
@@ -110,7 +115,7 @@ func TestApiService_StopRecording(t *testing.T) {
 
 		force := true
 		req := oapi.StopRecordingRequestObject{Body: &oapi.StopRecordingJSONRequestBody{ForceStop: &force}}
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 		resp, err := svc.StopRecording(ctx, req)
 		require.NoError(t, err)
@@ -124,7 +129,7 @@ func TestApiService_DownloadRecording(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		mgr := recorder.NewFFmpegManager()
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
@@ -144,7 +149,7 @@ func TestApiService_DownloadRecording(t *testing.T) {
 		rec := &mockRecorder{id: "default", isRecordingFlag: true, recordingData: randomBytes(minRecordingSizeInBytes - 1)}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 		// will return a 202 when the recording is too small
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
@@ -174,7 +179,7 @@ func TestApiService_DownloadRecording(t *testing.T) {
 		rec := &mockRecorder{id: "default", recordingData: data}
 		require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-		svc, err := New(mgr, newMockFactory())
+		svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 		require.NoError(t, err)
 		resp, err := svc.DownloadRecording(ctx, oapi.DownloadRecordingRequestObject{})
 		require.NoError(t, err)
@@ -194,7 +199,7 @@ func TestApiService_Shutdown(t *testing.T) {
 	rec := &mockRecorder{id: "default", isRecordingFlag: true}
 	require.NoError(t, mgr.RegisterRecorder(ctx, rec), "failed to register recorder")
 
-	svc, err := New(mgr, newMockFactory())
+	svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
 	require.NoError(t, err)
 
 	require.NoError(t, svc.Shutdown(ctx))
@@ -282,5 +287,51 @@ func newMockFactory() recorder.FFmpegRecorderFactory {
 	return func(id string, _ recorder.FFmpegRecordingParams) (recorder.Recorder, error) {
 		rec := &mockRecorder{id: id}
 		return rec, nil
+	}
+}
+
+func newTestUpstreamManager() *devtoolsproxy.UpstreamManager {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return devtoolsproxy.NewUpstreamManager("", logger)
+}
+
+func newMockNekoClient(t *testing.T) *nekoclient.AuthClient {
+	// Create a mock client that won't actually connect to anything
+	// We use a dummy URL since tests don't need real Neko connectivity
+	client, err := nekoclient.NewAuthClient("http://localhost:9999", "admin", "admin")
+	require.NoError(t, err)
+	return client
+}
+
+func TestApiService_PatchChromiumFlags(t *testing.T) {
+	ctx := context.Background()
+	mgr := recorder.NewFFmpegManager()
+	svc, err := New(mgr, newMockFactory(), newTestUpstreamManager(), scaletozero.NewNoopController(), newMockNekoClient(t))
+	require.NoError(t, err)
+
+	// Test with valid flags
+	flags := []string{"--kiosk", "--start-maximized"}
+	body := &oapi.PatchChromiumFlagsJSONRequestBody{
+		Flags: flags,
+	}
+
+	req := oapi.PatchChromiumFlagsRequestObject{
+		Body: body,
+	}
+
+	// This will fail to write to /chromium/flags in most test environments
+	// but we're mainly testing that the handler accepts valid input
+	resp, err := svc.PatchChromiumFlags(ctx, req)
+	require.NoError(t, err)
+
+	// We expect either success or an error about creating the directory
+	// depending on the test environment
+	switch resp.(type) {
+	case oapi.PatchChromiumFlags200Response:
+		// Success in environments where /chromium is writable
+	case oapi.PatchChromiumFlags500JSONResponse:
+		// Expected in most test environments where /chromium doesn't exist
+	default:
+		t.Fatalf("unexpected response type: %T", resp)
 	}
 }

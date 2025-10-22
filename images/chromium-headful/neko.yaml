@@ -47,3 +47,6 @@ chat:
 
 filetransfer:
   enabled: false
+
+scaletozero:
+  enabled: true

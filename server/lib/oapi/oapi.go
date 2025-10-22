@@ -27,11 +27,11 @@ import (
 
 // Defines values for ClickMouseRequestButton.
 const (
-	Back    ClickMouseRequestButton = "back"
-	Forward ClickMouseRequestButton = "forward"
-	Left    ClickMouseRequestButton = "left"
-	Middle  ClickMouseRequestButton = "middle"
-	Right   ClickMouseRequestButton = "right"
+	ClickMouseRequestButtonBack    ClickMouseRequestButton = "back"
+	ClickMouseRequestButtonForward ClickMouseRequestButton = "forward"
+	ClickMouseRequestButtonLeft    ClickMouseRequestButton = "left"
+	ClickMouseRequestButtonMiddle  ClickMouseRequestButton = "middle"
+	ClickMouseRequestButtonRight   ClickMouseRequestButton = "right"
 )
 
 // Defines values for ClickMouseRequestClickType.
@@ -41,12 +41,27 @@ const (
 	Up    ClickMouseRequestClickType = "up"
 )
 
+// Defines values for DragMouseRequestButton.
+const (
+	DragMouseRequestButtonLeft   DragMouseRequestButton = "left"
+	DragMouseRequestButtonMiddle DragMouseRequestButton = "middle"
+	DragMouseRequestButtonRight  DragMouseRequestButton = "right"
+)
+
 // Defines values for FileSystemEventType.
 const (
 	CREATE FileSystemEventType = "CREATE"
 	DELETE FileSystemEventType = "DELETE"
 	RENAME FileSystemEventType = "RENAME"
 	WRITE  FileSystemEventType = "WRITE"
+)
+
+// Defines values for PatchDisplayRequestRefreshRate.
+const (
+	N10 PatchDisplayRequestRefreshRate = 10
+	N25 PatchDisplayRequestRefreshRate = 25
+	N30 PatchDisplayRequestRefreshRate = 30
+	N60 PatchDisplayRequestRefreshRate = 60
 )
 
 // Defines values for ProcessKillRequestSignal.
@@ -127,6 +142,42 @@ type DeleteRecordingRequest struct {
 	// Id Identifier of the recording to delete. Alphanumeric or hyphen.
 	Id *string `json:"id,omitempty"`
 }
+
+// DisplayConfig defines model for DisplayConfig.
+type DisplayConfig struct {
+	// Height Current display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// RefreshRate Current display refresh rate in Hz (may be null if not detectable)
+	RefreshRate *int `json:"refresh_rate,omitempty"`
+
+	// Width Current display width in pixels
+	Width *int `json:"width,omitempty"`
+}
+
+// DragMouseRequest defines model for DragMouseRequest.
+type DragMouseRequest struct {
+	// Button Mouse button to drag with
+	Button *DragMouseRequestButton `json:"button,omitempty"`
+
+	// Delay Delay in milliseconds between button down and starting to move along the path.
+	Delay *int `json:"delay,omitempty"`
+
+	// HoldKeys Modifier keys to hold during the drag
+	HoldKeys *[]string `json:"hold_keys,omitempty"`
+
+	// Path Ordered list of [x, y] coordinate pairs to move through while dragging. Must contain at least 2 points.
+	Path [][]int `json:"path"`
+
+	// StepDelayMs Delay in milliseconds between relative steps while dragging (not the initial delay).
+	StepDelayMs *int `json:"step_delay_ms,omitempty"`
+
+	// StepsPerSegment Number of relative move steps per segment in the path. Minimum 1.
+	StepsPerSegment *int `json:"steps_per_segment,omitempty"`
+}
+
+// DragMouseRequestButton Mouse button to drag with
+type DragMouseRequestButton string
 
 // Error defines model for Error.
 type Error struct {
@@ -209,6 +260,40 @@ type MovePathRequest struct {
 type OkResponse struct {
 	// Ok Indicates success.
 	Ok bool `json:"ok"`
+}
+
+// PatchDisplayRequest defines model for PatchDisplayRequest.
+type PatchDisplayRequest struct {
+	// Height Display height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// RefreshRate Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+	RefreshRate *PatchDisplayRequestRefreshRate `json:"refresh_rate,omitempty"`
+
+	// RequireIdle If true, refuse to resize when live view or recording/replay is active.
+	RequireIdle *bool `json:"require_idle,omitempty"`
+
+	// RestartChromium If true, restart Chromium after resolution change to ensure it adapts to new size. Default is false for headful, true for headless.
+	RestartChromium *bool `json:"restart_chromium,omitempty"`
+
+	// Width Display width in pixels
+	Width *int `json:"width,omitempty"`
+}
+
+// PatchDisplayRequestRefreshRate Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
+type PatchDisplayRequestRefreshRate int
+
+// PressKeyRequest defines model for PressKeyRequest.
+type PressKeyRequest struct {
+	// Duration Duration to hold the keys down in milliseconds. If omitted or 0, keys are tapped.
+	Duration *int `json:"duration,omitempty"`
+
+	// HoldKeys Optional modifier keys to hold during the key press sequence.
+	HoldKeys *[]string `json:"hold_keys,omitempty"`
+
+	// Keys List of key symbols to press. Each item should be a key symbol supported by xdotool
+	// (see X11 keysym definitions). Examples include "Return", "Shift", "Ctrl", "Alt", "F5".
+	Keys []string `json:"keys"`
 }
 
 // ProcessExecRequest Request to execute a command synchronously.
@@ -336,6 +421,44 @@ type RecorderInfo struct {
 	StartedAt *time.Time `json:"started_at"`
 }
 
+// ScreenshotRegion defines model for ScreenshotRegion.
+type ScreenshotRegion struct {
+	// Height Height of the region in pixels
+	Height int `json:"height"`
+
+	// Width Width of the region in pixels
+	Width int `json:"width"`
+
+	// X X coordinate of the region's top-left corner
+	X int `json:"x"`
+
+	// Y Y coordinate of the region's top-left corner
+	Y int `json:"y"`
+}
+
+// ScreenshotRequest defines model for ScreenshotRequest.
+type ScreenshotRequest struct {
+	Region *ScreenshotRegion `json:"region,omitempty"`
+}
+
+// ScrollRequest defines model for ScrollRequest.
+type ScrollRequest struct {
+	// DeltaX Horizontal scroll amount. Positive scrolls right, negative scrolls left.
+	DeltaX *int `json:"delta_x,omitempty"`
+
+	// DeltaY Vertical scroll amount. Positive scrolls down, negative scrolls up.
+	DeltaY *int `json:"delta_y,omitempty"`
+
+	// HoldKeys Modifier keys to hold during the scroll
+	HoldKeys *[]string `json:"hold_keys,omitempty"`
+
+	// X X coordinate at which to perform the scroll
+	X int `json:"x"`
+
+	// Y Y coordinate at which to perform the scroll
+	Y int `json:"y"`
+}
+
 // SetFilePermissionsRequest defines model for SetFilePermissionsRequest.
 type SetFilePermissionsRequest struct {
 	// Group New group name or GID.
@@ -384,6 +507,15 @@ type StopRecordingRequest struct {
 	Id *string `json:"id,omitempty"`
 }
 
+// TypeTextRequest defines model for TypeTextRequest.
+type TypeTextRequest struct {
+	// Delay Delay in milliseconds between keystrokes
+	Delay *int `json:"delay,omitempty"`
+
+	// Text Text to type on the host computer
+	Text string `json:"text"`
+}
+
 // BadRequestError defines model for BadRequestError.
 type BadRequestError = Error
 
@@ -395,6 +527,24 @@ type InternalError = Error
 
 // NotFoundError defines model for NotFoundError.
 type NotFoundError = Error
+
+// PatchChromiumFlagsJSONBody defines parameters for PatchChromiumFlags.
+type PatchChromiumFlagsJSONBody struct {
+	// Flags Chromium flags to merge (e.g., ["--kiosk", "--disable-gpu"])
+	Flags []string `json:"flags"`
+}
+
+// UploadExtensionsAndRestartMultipartBody defines parameters for UploadExtensionsAndRestart.
+type UploadExtensionsAndRestartMultipartBody struct {
+	// Extensions List of extensions to upload and activate
+	Extensions []struct {
+		// Name Folder name to place the extension under /home/kernel/extensions/<name>
+		Name string `json:"name"`
+
+		// ZipFile Zip archive containing an unpacked Chromium extension (must include manifest.json)
+		ZipFile openapi_types.File `json:"zip_file"`
+	} `json:"extensions"`
+}
 
 // DownloadDirZipParams defines parameters for DownloadDirZip.
 type DownloadDirZipParams struct {
@@ -466,11 +616,35 @@ type DownloadRecordingParams struct {
 	Id *string `form:"id,omitempty" json:"id,omitempty"`
 }
 
+// PatchChromiumFlagsJSONRequestBody defines body for PatchChromiumFlags for application/json ContentType.
+type PatchChromiumFlagsJSONRequestBody PatchChromiumFlagsJSONBody
+
+// UploadExtensionsAndRestartMultipartRequestBody defines body for UploadExtensionsAndRestart for multipart/form-data ContentType.
+type UploadExtensionsAndRestartMultipartRequestBody UploadExtensionsAndRestartMultipartBody
+
 // ClickMouseJSONRequestBody defines body for ClickMouse for application/json ContentType.
 type ClickMouseJSONRequestBody = ClickMouseRequest
 
+// DragMouseJSONRequestBody defines body for DragMouse for application/json ContentType.
+type DragMouseJSONRequestBody = DragMouseRequest
+
 // MoveMouseJSONRequestBody defines body for MoveMouse for application/json ContentType.
 type MoveMouseJSONRequestBody = MoveMouseRequest
+
+// PressKeyJSONRequestBody defines body for PressKey for application/json ContentType.
+type PressKeyJSONRequestBody = PressKeyRequest
+
+// TakeScreenshotJSONRequestBody defines body for TakeScreenshot for application/json ContentType.
+type TakeScreenshotJSONRequestBody = ScreenshotRequest
+
+// ScrollJSONRequestBody defines body for Scroll for application/json ContentType.
+type ScrollJSONRequestBody = ScrollRequest
+
+// TypeTextJSONRequestBody defines body for TypeText for application/json ContentType.
+type TypeTextJSONRequestBody = TypeTextRequest
+
+// PatchDisplayJSONRequestBody defines body for PatchDisplay for application/json ContentType.
+type PatchDisplayJSONRequestBody = PatchDisplayRequest
 
 // CreateDirectoryJSONRequestBody defines body for CreateDirectory for application/json ContentType.
 type CreateDirectoryJSONRequestBody = CreateDirectoryRequest
@@ -590,15 +764,53 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// PatchChromiumFlagsWithBody request with any body
+	PatchChromiumFlagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchChromiumFlags(ctx context.Context, body PatchChromiumFlagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UploadExtensionsAndRestartWithBody request with any body
+	UploadExtensionsAndRestartWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ClickMouseWithBody request with any body
 	ClickMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ClickMouse(ctx context.Context, body ClickMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DragMouseWithBody request with any body
+	DragMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	DragMouse(ctx context.Context, body DragMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// MoveMouseWithBody request with any body
 	MoveMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PressKeyWithBody request with any body
+	PressKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PressKey(ctx context.Context, body PressKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TakeScreenshotWithBody request with any body
+	TakeScreenshotWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TakeScreenshot(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ScrollWithBody request with any body
+	ScrollWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	Scroll(ctx context.Context, body ScrollJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TypeTextWithBody request with any body
+	TypeTextWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	TypeText(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchDisplayWithBody request with any body
+	PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateDirectoryWithBody request with any body
 	CreateDirectoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -708,6 +920,42 @@ type ClientInterface interface {
 	StopRecording(ctx context.Context, body StopRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+func (c *Client) PatchChromiumFlagsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchChromiumFlagsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchChromiumFlags(ctx context.Context, body PatchChromiumFlagsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchChromiumFlagsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UploadExtensionsAndRestartWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadExtensionsAndRestartRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ClickMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewClickMouseRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -732,6 +980,30 @@ func (c *Client) ClickMouse(ctx context.Context, body ClickMouseJSONRequestBody,
 	return c.Client.Do(req)
 }
 
+func (c *Client) DragMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDragMouseRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DragMouse(ctx context.Context, body DragMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDragMouseRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) MoveMouseWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMoveMouseRequestWithBody(c.Server, contentType, body)
 	if err != nil {
@@ -746,6 +1018,126 @@ func (c *Client) MoveMouseWithBody(ctx context.Context, contentType string, body
 
 func (c *Client) MoveMouse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMoveMouseRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PressKeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPressKeyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PressKey(ctx context.Context, body PressKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPressKeyRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TakeScreenshotWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTakeScreenshotRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TakeScreenshot(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTakeScreenshotRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ScrollWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewScrollRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) Scroll(ctx context.Context, body ScrollJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewScrollRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TypeTextWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTypeTextRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TypeText(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTypeTextRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchDisplay(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchDisplayRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1236,6 +1628,75 @@ func (c *Client) StopRecording(ctx context.Context, body StopRecordingJSONReques
 	return c.Client.Do(req)
 }
 
+// NewPatchChromiumFlagsRequest calls the generic PatchChromiumFlags builder with application/json body
+func NewPatchChromiumFlagsRequest(server string, body PatchChromiumFlagsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchChromiumFlagsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPatchChromiumFlagsRequestWithBody generates requests for PatchChromiumFlags with any type of body
+func NewPatchChromiumFlagsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/chromium/flags")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUploadExtensionsAndRestartRequestWithBody generates requests for UploadExtensionsAndRestart with any type of body
+func NewUploadExtensionsAndRestartRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/chromium/upload-extensions-and-restart")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewClickMouseRequest calls the generic ClickMouse builder with application/json body
 func NewClickMouseRequest(server string, body ClickMouseJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -1257,6 +1718,46 @@ func NewClickMouseRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	operationPath := fmt.Sprintf("/computer/click_mouse")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDragMouseRequest calls the generic DragMouse builder with application/json body
+func NewDragMouseRequest(server string, body DragMouseJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDragMouseRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewDragMouseRequestWithBody generates requests for DragMouse with any type of body
+func NewDragMouseRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/drag_mouse")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1307,6 +1808,206 @@ func NewMoveMouseRequestWithBody(server string, contentType string, body io.Read
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPressKeyRequest calls the generic PressKey builder with application/json body
+func NewPressKeyRequest(server string, body PressKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPressKeyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPressKeyRequestWithBody generates requests for PressKey with any type of body
+func NewPressKeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/press_key")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTakeScreenshotRequest calls the generic TakeScreenshot builder with application/json body
+func NewTakeScreenshotRequest(server string, body TakeScreenshotJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTakeScreenshotRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewTakeScreenshotRequestWithBody generates requests for TakeScreenshot with any type of body
+func NewTakeScreenshotRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/screenshot")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewScrollRequest calls the generic Scroll builder with application/json body
+func NewScrollRequest(server string, body ScrollJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewScrollRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewScrollRequestWithBody generates requests for Scroll with any type of body
+func NewScrollRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/scroll")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewTypeTextRequest calls the generic TypeText builder with application/json body
+func NewTypeTextRequest(server string, body TypeTextJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewTypeTextRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewTypeTextRequestWithBody generates requests for TypeText with any type of body
+func NewTypeTextRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/computer/type")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPatchDisplayRequest calls the generic PatchDisplay builder with application/json body
+func NewPatchDisplayRequest(server string, body PatchDisplayJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchDisplayRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPatchDisplayRequestWithBody generates requests for PatchDisplay with any type of body
+func NewPatchDisplayRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/display")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -2499,15 +3200,53 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// PatchChromiumFlagsWithBodyWithResponse request with any body
+	PatchChromiumFlagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchChromiumFlagsResponse, error)
+
+	PatchChromiumFlagsWithResponse(ctx context.Context, body PatchChromiumFlagsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchChromiumFlagsResponse, error)
+
+	// UploadExtensionsAndRestartWithBodyWithResponse request with any body
+	UploadExtensionsAndRestartWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadExtensionsAndRestartResponse, error)
+
 	// ClickMouseWithBodyWithResponse request with any body
 	ClickMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ClickMouseResponse, error)
 
 	ClickMouseWithResponse(ctx context.Context, body ClickMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*ClickMouseResponse, error)
 
+	// DragMouseWithBodyWithResponse request with any body
+	DragMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DragMouseResponse, error)
+
+	DragMouseWithResponse(ctx context.Context, body DragMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*DragMouseResponse, error)
+
 	// MoveMouseWithBodyWithResponse request with any body
 	MoveMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
 
 	MoveMouseWithResponse(ctx context.Context, body MoveMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error)
+
+	// PressKeyWithBodyWithResponse request with any body
+	PressKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PressKeyResponse, error)
+
+	PressKeyWithResponse(ctx context.Context, body PressKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*PressKeyResponse, error)
+
+	// TakeScreenshotWithBodyWithResponse request with any body
+	TakeScreenshotWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TakeScreenshotResponse, error)
+
+	TakeScreenshotWithResponse(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*TakeScreenshotResponse, error)
+
+	// ScrollWithBodyWithResponse request with any body
+	ScrollWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ScrollResponse, error)
+
+	ScrollWithResponse(ctx context.Context, body ScrollJSONRequestBody, reqEditors ...RequestEditorFn) (*ScrollResponse, error)
+
+	// TypeTextWithBodyWithResponse request with any body
+	TypeTextWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TypeTextResponse, error)
+
+	TypeTextWithResponse(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*TypeTextResponse, error)
+
+	// PatchDisplayWithBodyWithResponse request with any body
+	PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
+
+	PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
 
 	// CreateDirectoryWithBodyWithResponse request with any body
 	CreateDirectoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateDirectoryResponse, error)
@@ -2617,6 +3356,52 @@ type ClientWithResponsesInterface interface {
 	StopRecordingWithResponse(ctx context.Context, body StopRecordingJSONRequestBody, reqEditors ...RequestEditorFn) (*StopRecordingResponse, error)
 }
 
+type PatchChromiumFlagsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchChromiumFlagsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchChromiumFlagsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UploadExtensionsAndRestartResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r UploadExtensionsAndRestartResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UploadExtensionsAndRestartResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ClickMouseResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2640,6 +3425,29 @@ func (r ClickMouseResponse) StatusCode() int {
 	return 0
 }
 
+type DragMouseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DragMouseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DragMouseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type MoveMouseResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2657,6 +3465,123 @@ func (r MoveMouseResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r MoveMouseResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PressKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r PressKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PressKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TakeScreenshotResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r TakeScreenshotResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TakeScreenshotResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ScrollResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r ScrollResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ScrollResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TypeTextResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r TypeTextResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TypeTextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchDisplayResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DisplayConfig
+	JSON400      *BadRequestError
+	JSON409      *ConflictError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchDisplayResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchDisplayResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -3314,6 +4239,32 @@ func (r StopRecordingResponse) StatusCode() int {
 	return 0
 }
 
+// PatchChromiumFlagsWithBodyWithResponse request with arbitrary body returning *PatchChromiumFlagsResponse
+func (c *ClientWithResponses) PatchChromiumFlagsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchChromiumFlagsResponse, error) {
+	rsp, err := c.PatchChromiumFlagsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchChromiumFlagsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchChromiumFlagsWithResponse(ctx context.Context, body PatchChromiumFlagsJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchChromiumFlagsResponse, error) {
+	rsp, err := c.PatchChromiumFlags(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchChromiumFlagsResponse(rsp)
+}
+
+// UploadExtensionsAndRestartWithBodyWithResponse request with arbitrary body returning *UploadExtensionsAndRestartResponse
+func (c *ClientWithResponses) UploadExtensionsAndRestartWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadExtensionsAndRestartResponse, error) {
+	rsp, err := c.UploadExtensionsAndRestartWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUploadExtensionsAndRestartResponse(rsp)
+}
+
 // ClickMouseWithBodyWithResponse request with arbitrary body returning *ClickMouseResponse
 func (c *ClientWithResponses) ClickMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ClickMouseResponse, error) {
 	rsp, err := c.ClickMouseWithBody(ctx, contentType, body, reqEditors...)
@@ -3331,6 +4282,23 @@ func (c *ClientWithResponses) ClickMouseWithResponse(ctx context.Context, body C
 	return ParseClickMouseResponse(rsp)
 }
 
+// DragMouseWithBodyWithResponse request with arbitrary body returning *DragMouseResponse
+func (c *ClientWithResponses) DragMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DragMouseResponse, error) {
+	rsp, err := c.DragMouseWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDragMouseResponse(rsp)
+}
+
+func (c *ClientWithResponses) DragMouseWithResponse(ctx context.Context, body DragMouseJSONRequestBody, reqEditors ...RequestEditorFn) (*DragMouseResponse, error) {
+	rsp, err := c.DragMouse(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDragMouseResponse(rsp)
+}
+
 // MoveMouseWithBodyWithResponse request with arbitrary body returning *MoveMouseResponse
 func (c *ClientWithResponses) MoveMouseWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*MoveMouseResponse, error) {
 	rsp, err := c.MoveMouseWithBody(ctx, contentType, body, reqEditors...)
@@ -3346,6 +4314,91 @@ func (c *ClientWithResponses) MoveMouseWithResponse(ctx context.Context, body Mo
 		return nil, err
 	}
 	return ParseMoveMouseResponse(rsp)
+}
+
+// PressKeyWithBodyWithResponse request with arbitrary body returning *PressKeyResponse
+func (c *ClientWithResponses) PressKeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PressKeyResponse, error) {
+	rsp, err := c.PressKeyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePressKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) PressKeyWithResponse(ctx context.Context, body PressKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*PressKeyResponse, error) {
+	rsp, err := c.PressKey(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePressKeyResponse(rsp)
+}
+
+// TakeScreenshotWithBodyWithResponse request with arbitrary body returning *TakeScreenshotResponse
+func (c *ClientWithResponses) TakeScreenshotWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TakeScreenshotResponse, error) {
+	rsp, err := c.TakeScreenshotWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTakeScreenshotResponse(rsp)
+}
+
+func (c *ClientWithResponses) TakeScreenshotWithResponse(ctx context.Context, body TakeScreenshotJSONRequestBody, reqEditors ...RequestEditorFn) (*TakeScreenshotResponse, error) {
+	rsp, err := c.TakeScreenshot(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTakeScreenshotResponse(rsp)
+}
+
+// ScrollWithBodyWithResponse request with arbitrary body returning *ScrollResponse
+func (c *ClientWithResponses) ScrollWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ScrollResponse, error) {
+	rsp, err := c.ScrollWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScrollResponse(rsp)
+}
+
+func (c *ClientWithResponses) ScrollWithResponse(ctx context.Context, body ScrollJSONRequestBody, reqEditors ...RequestEditorFn) (*ScrollResponse, error) {
+	rsp, err := c.Scroll(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScrollResponse(rsp)
+}
+
+// TypeTextWithBodyWithResponse request with arbitrary body returning *TypeTextResponse
+func (c *ClientWithResponses) TypeTextWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TypeTextResponse, error) {
+	rsp, err := c.TypeTextWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTypeTextResponse(rsp)
+}
+
+func (c *ClientWithResponses) TypeTextWithResponse(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*TypeTextResponse, error) {
+	rsp, err := c.TypeText(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTypeTextResponse(rsp)
+}
+
+// PatchDisplayWithBodyWithResponse request with arbitrary body returning *PatchDisplayResponse
+func (c *ClientWithResponses) PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplayWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDisplayResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchDisplayWithResponse(ctx context.Context, body PatchDisplayJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
+	rsp, err := c.PatchDisplay(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchDisplayResponse(rsp)
 }
 
 // CreateDirectoryWithBodyWithResponse request with arbitrary body returning *CreateDirectoryResponse
@@ -3695,6 +4748,72 @@ func (c *ClientWithResponses) StopRecordingWithResponse(ctx context.Context, bod
 	return ParseStopRecordingResponse(rsp)
 }
 
+// ParsePatchChromiumFlagsResponse parses an HTTP response from a PatchChromiumFlagsWithResponse call
+func ParsePatchChromiumFlagsResponse(rsp *http.Response) (*PatchChromiumFlagsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchChromiumFlagsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUploadExtensionsAndRestartResponse parses an HTTP response from a UploadExtensionsAndRestartWithResponse call
+func ParseUploadExtensionsAndRestartResponse(rsp *http.Response) (*UploadExtensionsAndRestartResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UploadExtensionsAndRestartResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseClickMouseResponse parses an HTTP response from a ClickMouseWithResponse call
 func ParseClickMouseResponse(rsp *http.Response) (*ClickMouseResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -3704,6 +4823,39 @@ func ParseClickMouseResponse(rsp *http.Response) (*ClickMouseResponse, error) {
 	}
 
 	response := &ClickMouseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDragMouseResponse parses an HTTP response from a DragMouseWithResponse call
+func ParseDragMouseResponse(rsp *http.Response) (*DragMouseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DragMouseResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3748,6 +4900,185 @@ func ParseMoveMouseResponse(rsp *http.Response) (*MoveMouseResponse, error) {
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePressKeyResponse parses an HTTP response from a PressKeyWithResponse call
+func ParsePressKeyResponse(rsp *http.Response) (*PressKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PressKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTakeScreenshotResponse parses an HTTP response from a TakeScreenshotWithResponse call
+func ParseTakeScreenshotResponse(rsp *http.Response) (*TakeScreenshotResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TakeScreenshotResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseScrollResponse parses an HTTP response from a ScrollWithResponse call
+func ParseScrollResponse(rsp *http.Response) (*ScrollResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ScrollResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTypeTextResponse parses an HTTP response from a TypeTextWithResponse call
+func ParseTypeTextResponse(rsp *http.Response) (*TypeTextResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TypeTextResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchDisplayResponse parses an HTTP response from a PatchDisplayWithResponse call
+func ParsePatchDisplayResponse(rsp *http.Response) (*PatchDisplayResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchDisplayResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DisplayConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ConflictError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalError
@@ -4843,12 +6174,36 @@ func ParseStopRecordingResponse(rsp *http.Response) (*StopRecordingResponse, err
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Update Chromium launch flags and restart
+	// (PATCH /chromium/flags)
+	PatchChromiumFlags(w http.ResponseWriter, r *http.Request)
+	// Upload one or more unpacked extensions (as zips) and restart Chromium
+	// (POST /chromium/upload-extensions-and-restart)
+	UploadExtensionsAndRestart(w http.ResponseWriter, r *http.Request)
 	// Simulate a mouse click action on the host computer
 	// (POST /computer/click_mouse)
 	ClickMouse(w http.ResponseWriter, r *http.Request)
+	// Drag the mouse along a path
+	// (POST /computer/drag_mouse)
+	DragMouse(w http.ResponseWriter, r *http.Request)
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(w http.ResponseWriter, r *http.Request)
+	// Press one or more keys on the host computer
+	// (POST /computer/press_key)
+	PressKey(w http.ResponseWriter, r *http.Request)
+	// Capture a screenshot of the host computer
+	// (POST /computer/screenshot)
+	TakeScreenshot(w http.ResponseWriter, r *http.Request)
+	// Scroll the mouse wheel at a position on the host computer
+	// (POST /computer/scroll)
+	Scroll(w http.ResponseWriter, r *http.Request)
+	// Type text on the host computer
+	// (POST /computer/type)
+	TypeText(w http.ResponseWriter, r *http.Request)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(w http.ResponseWriter, r *http.Request)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(w http.ResponseWriter, r *http.Request)
@@ -4936,15 +6291,63 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// Update Chromium launch flags and restart
+// (PATCH /chromium/flags)
+func (_ Unimplemented) PatchChromiumFlags(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Upload one or more unpacked extensions (as zips) and restart Chromium
+// (POST /chromium/upload-extensions-and-restart)
+func (_ Unimplemented) UploadExtensionsAndRestart(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Simulate a mouse click action on the host computer
 // (POST /computer/click_mouse)
 func (_ Unimplemented) ClickMouse(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// Drag the mouse along a path
+// (POST /computer/drag_mouse)
+func (_ Unimplemented) DragMouse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Move the mouse cursor to the specified coordinates on the host computer
 // (POST /computer/move_mouse)
 func (_ Unimplemented) MoveMouse(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Press one or more keys on the host computer
+// (POST /computer/press_key)
+func (_ Unimplemented) PressKey(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Capture a screenshot of the host computer
+// (POST /computer/screenshot)
+func (_ Unimplemented) TakeScreenshot(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Scroll the mouse wheel at a position on the host computer
+// (POST /computer/scroll)
+func (_ Unimplemented) Scroll(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Type text on the host computer
+// (POST /computer/type)
+func (_ Unimplemented) TypeText(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update display configuration
+// (PATCH /display)
+func (_ Unimplemented) PatchDisplay(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -5119,6 +6522,34 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// PatchChromiumFlags operation middleware
+func (siw *ServerInterfaceWrapper) PatchChromiumFlags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchChromiumFlags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadExtensionsAndRestart operation middleware
+func (siw *ServerInterfaceWrapper) UploadExtensionsAndRestart(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadExtensionsAndRestart(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClickMouse operation middleware
 func (siw *ServerInterfaceWrapper) ClickMouse(w http.ResponseWriter, r *http.Request) {
 
@@ -5133,11 +6564,95 @@ func (siw *ServerInterfaceWrapper) ClickMouse(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// DragMouse operation middleware
+func (siw *ServerInterfaceWrapper) DragMouse(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DragMouse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MoveMouse operation middleware
 func (siw *ServerInterfaceWrapper) MoveMouse(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveMouse(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PressKey operation middleware
+func (siw *ServerInterfaceWrapper) PressKey(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PressKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TakeScreenshot operation middleware
+func (siw *ServerInterfaceWrapper) TakeScreenshot(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TakeScreenshot(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Scroll operation middleware
+func (siw *ServerInterfaceWrapper) Scroll(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Scroll(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TypeText operation middleware
+func (siw *ServerInterfaceWrapper) TypeText(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TypeText(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PatchDisplay operation middleware
+func (siw *ServerInterfaceWrapper) PatchDisplay(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchDisplay(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5870,10 +7385,34 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/chromium/flags", wrapper.PatchChromiumFlags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/chromium/upload-extensions-and-restart", wrapper.UploadExtensionsAndRestart)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/computer/click_mouse", wrapper.ClickMouse)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/drag_mouse", wrapper.DragMouse)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/computer/move_mouse", wrapper.MoveMouse)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/press_key", wrapper.PressKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/screenshot", wrapper.TakeScreenshot)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/scroll", wrapper.Scroll)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/computer/type", wrapper.TypeText)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/display", wrapper.PatchDisplay)
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/create_directory", wrapper.CreateDirectory)
@@ -5968,6 +7507,74 @@ type InternalErrorJSONResponse Error
 
 type NotFoundErrorJSONResponse Error
 
+type PatchChromiumFlagsRequestObject struct {
+	Body *PatchChromiumFlagsJSONRequestBody
+}
+
+type PatchChromiumFlagsResponseObject interface {
+	VisitPatchChromiumFlagsResponse(w http.ResponseWriter) error
+}
+
+type PatchChromiumFlags200Response struct {
+}
+
+func (response PatchChromiumFlags200Response) VisitPatchChromiumFlagsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type PatchChromiumFlags400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response PatchChromiumFlags400JSONResponse) VisitPatchChromiumFlagsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchChromiumFlags500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response PatchChromiumFlags500JSONResponse) VisitPatchChromiumFlagsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadExtensionsAndRestartRequestObject struct {
+	Body *multipart.Reader
+}
+
+type UploadExtensionsAndRestartResponseObject interface {
+	VisitUploadExtensionsAndRestartResponse(w http.ResponseWriter) error
+}
+
+type UploadExtensionsAndRestart201Response struct {
+}
+
+func (response UploadExtensionsAndRestart201Response) VisitUploadExtensionsAndRestartResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type UploadExtensionsAndRestart400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response UploadExtensionsAndRestart400JSONResponse) VisitUploadExtensionsAndRestartResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UploadExtensionsAndRestart500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response UploadExtensionsAndRestart500JSONResponse) VisitUploadExtensionsAndRestartResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ClickMouseRequestObject struct {
 	Body *ClickMouseJSONRequestBody
 }
@@ -6002,6 +7609,40 @@ func (response ClickMouse500JSONResponse) VisitClickMouseResponse(w http.Respons
 	return json.NewEncoder(w).Encode(response)
 }
 
+type DragMouseRequestObject struct {
+	Body *DragMouseJSONRequestBody
+}
+
+type DragMouseResponseObject interface {
+	VisitDragMouseResponse(w http.ResponseWriter) error
+}
+
+type DragMouse200Response struct {
+}
+
+func (response DragMouse200Response) VisitDragMouseResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DragMouse400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response DragMouse400JSONResponse) VisitDragMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DragMouse500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DragMouse500JSONResponse) VisitDragMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type MoveMouseRequestObject struct {
 	Body *MoveMouseJSONRequestBody
 }
@@ -6030,6 +7671,197 @@ func (response MoveMouse400JSONResponse) VisitMoveMouseResponse(w http.ResponseW
 type MoveMouse500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response MoveMouse500JSONResponse) VisitMoveMouseResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PressKeyRequestObject struct {
+	Body *PressKeyJSONRequestBody
+}
+
+type PressKeyResponseObject interface {
+	VisitPressKeyResponse(w http.ResponseWriter) error
+}
+
+type PressKey200Response struct {
+}
+
+func (response PressKey200Response) VisitPressKeyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type PressKey400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response PressKey400JSONResponse) VisitPressKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PressKey500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response PressKey500JSONResponse) VisitPressKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TakeScreenshotRequestObject struct {
+	Body *TakeScreenshotJSONRequestBody
+}
+
+type TakeScreenshotResponseObject interface {
+	VisitTakeScreenshotResponse(w http.ResponseWriter) error
+}
+
+type TakeScreenshot200ImagepngResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response TakeScreenshot200ImagepngResponse) VisitTakeScreenshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "image/png")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type TakeScreenshot400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response TakeScreenshot400JSONResponse) VisitTakeScreenshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TakeScreenshot500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response TakeScreenshot500JSONResponse) VisitTakeScreenshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ScrollRequestObject struct {
+	Body *ScrollJSONRequestBody
+}
+
+type ScrollResponseObject interface {
+	VisitScrollResponse(w http.ResponseWriter) error
+}
+
+type Scroll200Response struct {
+}
+
+func (response Scroll200Response) VisitScrollResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type Scroll400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response Scroll400JSONResponse) VisitScrollResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type Scroll500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response Scroll500JSONResponse) VisitScrollResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TypeTextRequestObject struct {
+	Body *TypeTextJSONRequestBody
+}
+
+type TypeTextResponseObject interface {
+	VisitTypeTextResponse(w http.ResponseWriter) error
+}
+
+type TypeText200Response struct {
+}
+
+func (response TypeText200Response) VisitTypeTextResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type TypeText400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response TypeText400JSONResponse) VisitTypeTextResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type TypeText500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response TypeText500JSONResponse) VisitTypeTextResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplayRequestObject struct {
+	Body *PatchDisplayJSONRequestBody
+}
+
+type PatchDisplayResponseObject interface {
+	VisitPatchDisplayResponse(w http.ResponseWriter) error
+}
+
+type PatchDisplay200JSONResponse DisplayConfig
+
+func (response PatchDisplay200JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response PatchDisplay400JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay409JSONResponse struct{ ConflictErrorJSONResponse }
+
+func (response PatchDisplay409JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PatchDisplay500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response PatchDisplay500JSONResponse) VisitPatchDisplayResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -7304,12 +9136,36 @@ func (response StopRecording500JSONResponse) VisitStopRecordingResponse(w http.R
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Update Chromium launch flags and restart
+	// (PATCH /chromium/flags)
+	PatchChromiumFlags(ctx context.Context, request PatchChromiumFlagsRequestObject) (PatchChromiumFlagsResponseObject, error)
+	// Upload one or more unpacked extensions (as zips) and restart Chromium
+	// (POST /chromium/upload-extensions-and-restart)
+	UploadExtensionsAndRestart(ctx context.Context, request UploadExtensionsAndRestartRequestObject) (UploadExtensionsAndRestartResponseObject, error)
 	// Simulate a mouse click action on the host computer
 	// (POST /computer/click_mouse)
 	ClickMouse(ctx context.Context, request ClickMouseRequestObject) (ClickMouseResponseObject, error)
+	// Drag the mouse along a path
+	// (POST /computer/drag_mouse)
+	DragMouse(ctx context.Context, request DragMouseRequestObject) (DragMouseResponseObject, error)
 	// Move the mouse cursor to the specified coordinates on the host computer
 	// (POST /computer/move_mouse)
 	MoveMouse(ctx context.Context, request MoveMouseRequestObject) (MoveMouseResponseObject, error)
+	// Press one or more keys on the host computer
+	// (POST /computer/press_key)
+	PressKey(ctx context.Context, request PressKeyRequestObject) (PressKeyResponseObject, error)
+	// Capture a screenshot of the host computer
+	// (POST /computer/screenshot)
+	TakeScreenshot(ctx context.Context, request TakeScreenshotRequestObject) (TakeScreenshotResponseObject, error)
+	// Scroll the mouse wheel at a position on the host computer
+	// (POST /computer/scroll)
+	Scroll(ctx context.Context, request ScrollRequestObject) (ScrollResponseObject, error)
+	// Type text on the host computer
+	// (POST /computer/type)
+	TypeText(ctx context.Context, request TypeTextRequestObject) (TypeTextResponseObject, error)
+	// Update display configuration
+	// (PATCH /display)
+	PatchDisplay(ctx context.Context, request PatchDisplayRequestObject) (PatchDisplayResponseObject, error)
 	// Create a new directory
 	// (PUT /fs/create_directory)
 	CreateDirectory(ctx context.Context, request CreateDirectoryRequestObject) (CreateDirectoryResponseObject, error)
@@ -7422,6 +9278,68 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// PatchChromiumFlags operation middleware
+func (sh *strictHandler) PatchChromiumFlags(w http.ResponseWriter, r *http.Request) {
+	var request PatchChromiumFlagsRequestObject
+
+	var body PatchChromiumFlagsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchChromiumFlags(ctx, request.(PatchChromiumFlagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchChromiumFlags")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchChromiumFlagsResponseObject); ok {
+		if err := validResponse.VisitPatchChromiumFlagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadExtensionsAndRestart operation middleware
+func (sh *strictHandler) UploadExtensionsAndRestart(w http.ResponseWriter, r *http.Request) {
+	var request UploadExtensionsAndRestartRequestObject
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadExtensionsAndRestart(ctx, request.(UploadExtensionsAndRestartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadExtensionsAndRestart")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadExtensionsAndRestartResponseObject); ok {
+		if err := validResponse.VisitUploadExtensionsAndRestartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ClickMouse operation middleware
 func (sh *strictHandler) ClickMouse(w http.ResponseWriter, r *http.Request) {
 	var request ClickMouseRequestObject
@@ -7453,6 +9371,37 @@ func (sh *strictHandler) ClickMouse(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DragMouse operation middleware
+func (sh *strictHandler) DragMouse(w http.ResponseWriter, r *http.Request) {
+	var request DragMouseRequestObject
+
+	var body DragMouseJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DragMouse(ctx, request.(DragMouseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DragMouse")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DragMouseResponseObject); ok {
+		if err := validResponse.VisitDragMouseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // MoveMouse operation middleware
 func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
 	var request MoveMouseRequestObject
@@ -7477,6 +9426,161 @@ func (sh *strictHandler) MoveMouse(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveMouseResponseObject); ok {
 		if err := validResponse.VisitMoveMouseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PressKey operation middleware
+func (sh *strictHandler) PressKey(w http.ResponseWriter, r *http.Request) {
+	var request PressKeyRequestObject
+
+	var body PressKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PressKey(ctx, request.(PressKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PressKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PressKeyResponseObject); ok {
+		if err := validResponse.VisitPressKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TakeScreenshot operation middleware
+func (sh *strictHandler) TakeScreenshot(w http.ResponseWriter, r *http.Request) {
+	var request TakeScreenshotRequestObject
+
+	var body TakeScreenshotJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TakeScreenshot(ctx, request.(TakeScreenshotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TakeScreenshot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TakeScreenshotResponseObject); ok {
+		if err := validResponse.VisitTakeScreenshotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Scroll operation middleware
+func (sh *strictHandler) Scroll(w http.ResponseWriter, r *http.Request) {
+	var request ScrollRequestObject
+
+	var body ScrollJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Scroll(ctx, request.(ScrollRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Scroll")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ScrollResponseObject); ok {
+		if err := validResponse.VisitScrollResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TypeText operation middleware
+func (sh *strictHandler) TypeText(w http.ResponseWriter, r *http.Request) {
+	var request TypeTextRequestObject
+
+	var body TypeTextJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TypeText(ctx, request.(TypeTextRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TypeText")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TypeTextResponseObject); ok {
+		if err := validResponse.VisitTypeTextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchDisplay operation middleware
+func (sh *strictHandler) PatchDisplay(w http.ResponseWriter, r *http.Request) {
+	var request PatchDisplayRequestObject
+
+	var body PatchDisplayJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchDisplay(ctx, request.(PatchDisplayRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchDisplay")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PatchDisplayResponseObject); ok {
+		if err := validResponse.VisitPatchDisplayResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8268,80 +10372,115 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"jQAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

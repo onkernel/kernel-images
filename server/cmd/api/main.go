@@ -23,6 +23,7 @@ import (
 	"github.com/onkernel/kernel-images/server/cmd/config"
 	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
+	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
@@ -46,6 +47,7 @@ func main() {
 	// ensure ffmpeg is available
 	mustFFmpeg()
 
+	stz := scaletozero.NewDebouncedController(scaletozero.NewUnikraftCloudController())
 	r := chi.NewRouter()
 	r.Use(
 		chiMiddleware.Logger,
@@ -56,6 +58,7 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctxWithLogger))
 			})
 		},
+		scaletozero.Middleware(stz),
 	)
 
 	defaultParams := recorder.FFmpegRecordingParams{
@@ -68,11 +71,29 @@ func main() {
 		slogger.Error("invalid default recording parameters", "err", err)
 		os.Exit(1)
 	}
-	stz := scaletozero.NewUnikraftCloudController()
+
+	// DevTools WebSocket upstream manager: tail Chromium supervisord log
+	const chromiumLogPath = "/var/log/supervisord/chromium"
+	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
+	upstreamMgr.Start(ctx)
+
+	// Initialize Neko authenticated client
+	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = "admin" // Default from neko.yaml
+	}
+	nekoAuthClient, err := nekoclient.NewAuthClient("http://127.0.0.1:8080", "admin", adminPassword)
+	if err != nil {
+		slogger.Error("failed to create neko auth client", "err", err)
+		os.Exit(1)
+	}
 
 	apiService, err := api.New(
 		recorder.NewFFmpegManager(),
 		recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams, stz),
+		upstreamMgr,
+		stz,
+		nekoAuthClient,
 	)
 	if err != nil {
 		slogger.Error("failed to create api service", "err", err)
@@ -103,11 +124,6 @@ func main() {
 		Handler: r,
 	}
 
-	// DevTools WebSocket proxy setup: tail Chromium supervisord log and start WS server on :9222 only after upstream is found
-	const chromiumLogPath = "/var/log/supervisord/chromium"
-	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
-	upstreamMgr.Start(ctx)
-
 	// wait up to 10 seconds for initial upstream; exit nonzero if not found
 	if _, err := upstreamMgr.WaitForInitial(10 * time.Second); err != nil {
 		slogger.Error("devtools upstream not available", "err", err)
@@ -124,6 +140,7 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctxWithLogger))
 			})
 		},
+		scaletozero.Middleware(stz),
 	)
 	// Expose a minimal /json/version endpoint so clients that attempt to
 	// resolve a browser websocket URL via HTTP can succeed. We map the
