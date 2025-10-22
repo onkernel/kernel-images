@@ -163,8 +163,8 @@ RUN apt update -y && apt install -y chromium sqlite3
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1
-ENV HEIGHT=1080
-ENV WIDTH=1920
+ENV HEIGHT=768
+ENV WIDTH=1024
 ENV WITHDOCKER=true
 
 COPY images/chromium-headful/xorg.conf /etc/neko/xorg.conf
