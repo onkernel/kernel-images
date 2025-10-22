@@ -4,95 +4,136 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
+	"github.com/onkernel/kernel-images/server/lib/oapi"
 )
 
-type ExecutePlaywrightRequest struct {
-	Code       string `json:"code"`
-	TimeoutSec *int   `json:"timeout_sec,omitempty"`
-}
+// ExecutePlaywrightCode implements the Playwright code execution endpoint
+func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.ExecutePlaywrightCodeRequestObject) (oapi.ExecutePlaywrightCodeResponseObject, error) {
+	log := logger.FromContext(ctx)
 
-type ExecutePlaywrightResult struct {
-	Success bool        `json:"success"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   string      `json:"error,omitempty"`
-	Stdout  string      `json:"stdout,omitempty"`
-	Stderr  string      `json:"stderr,omitempty"`
-}
-
-func (s *Service) ExecutePlaywrightCode(w http.ResponseWriter, r *http.Request) {
-	log := logger.FromContext(r.Context())
-
-	var req ExecutePlaywrightRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
+	// Validate request
+	if request.Body == nil || request.Body.Code == "" {
+		return oapi.ExecutePlaywrightCode400JSONResponse{
+			BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
+				Message: "code is required",
+			},
+		}, nil
 	}
 
-	if req.Code == "" {
-		http.Error(w, "code is required", http.StatusBadRequest)
-		return
+	// Determine timeout (default to 60 seconds per review feedback)
+	timeout := 60 * time.Second
+	if request.Body.TimeoutSec != nil && *request.Body.TimeoutSec > 0 {
+		timeout = time.Duration(*request.Body.TimeoutSec) * time.Second
 	}
 
-	timeout := 30 * time.Second
-	if req.TimeoutSec != nil && *req.TimeoutSec > 0 {
-		timeout = time.Duration(*req.TimeoutSec) * time.Second
+	// Create a temporary file for the user code
+	tmpFile, err := os.CreateTemp("", "playwright-code-*.ts")
+	if err != nil {
+		log.Error("failed to create temp file", "error", err)
+		return oapi.ExecutePlaywrightCode500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
+				Message: fmt.Sprintf("failed to create temp file: %v", err),
+			},
+		}, nil
 	}
+	tmpFilePath := tmpFile.Name()
+	defer os.Remove(tmpFilePath) // Clean up the temp file
 
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	// Write the user code to the temp file
+	if _, err := tmpFile.WriteString(request.Body.Code); err != nil {
+		tmpFile.Close()
+		log.Error("failed to write code to temp file", "error", err)
+		return oapi.ExecutePlaywrightCode500JSONResponse{
+			InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
+				Message: fmt.Sprintf("failed to write code to temp file: %v", err),
+			},
+		}, nil
+	}
+	tmpFile.Close()
+
+	// Create context with timeout
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "tsx", "/usr/local/lib/playwright-executor.ts", req.Code)
+	// Execute the Playwright code via the executor script
+	cmd := exec.CommandContext(execCtx, "tsx", "/usr/local/lib/playwright-executor.ts", tmpFilePath)
 
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if execCtx.Err() == context.DeadlineExceeded {
 			log.Error("playwright execution timed out", "timeout", timeout)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(ExecutePlaywrightResult{
-				Success: false,
-				Error:   fmt.Sprintf("execution timed out after %v", timeout),
-			})
-			return
+			success := false
+			errorMsg := fmt.Sprintf("execution timed out after %v", timeout)
+			return oapi.ExecutePlaywrightCode200JSONResponse{
+				Success: success,
+				Error:   &errorMsg,
+			}, nil
 		}
 
 		log.Error("playwright execution failed", "error", err, "output", string(output))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 
-		var result ExecutePlaywrightResult
-		if jsonErr := json.Unmarshal(output, &result); jsonErr == nil {
-			json.NewEncoder(w).Encode(result)
-		} else {
-			json.NewEncoder(w).Encode(ExecutePlaywrightResult{
-				Success: false,
-				Error:   fmt.Sprintf("execution failed: %v", err),
-				Stderr:  string(output),
-			})
+		// Try to parse the error output as JSON
+		var result struct {
+			Success bool        `json:"success"`
+			Result  interface{} `json:"result,omitempty"`
+			Error   string      `json:"error,omitempty"`
+			Stack   string      `json:"stack,omitempty"`
 		}
-		return
+		if jsonErr := json.Unmarshal(output, &result); jsonErr == nil {
+			success := result.Success
+			errorMsg := result.Error
+			stderr := string(output)
+			return oapi.ExecutePlaywrightCode200JSONResponse{
+				Success: success,
+				Error:   &errorMsg,
+				Stderr:  &stderr,
+			}, nil
+		}
+
+		// If we can't parse the output, return a generic error
+		success := false
+		errorMsg := fmt.Sprintf("execution failed: %v", err)
+		stderr := string(output)
+		return oapi.ExecutePlaywrightCode200JSONResponse{
+			Success: success,
+			Error:   &errorMsg,
+			Stderr:  &stderr,
+		}, nil
 	}
 
-	var result ExecutePlaywrightResult
+	// Parse successful output
+	var result struct {
+		Success bool        `json:"success"`
+		Result  interface{} `json:"result,omitempty"`
+	}
 	if err := json.Unmarshal(output, &result); err != nil {
 		log.Error("failed to parse playwright output", "error", err, "output", string(output))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(ExecutePlaywrightResult{
-			Success: false,
-			Error:   fmt.Sprintf("failed to parse output: %v", err),
-			Stdout:  string(output),
-		})
-		return
+		success := false
+		errorMsg := fmt.Sprintf("failed to parse output: %v", err)
+		stdout := string(output)
+		return oapi.ExecutePlaywrightCode200JSONResponse{
+			Success: success,
+			Error:   &errorMsg,
+			Stdout:  &stdout,
+		}, nil
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+	return oapi.ExecutePlaywrightCode200JSONResponse{
+		Success: result.Success,
+		Result:  &result.Result,
+	}, nil
+}
+
+// Ensure the temp directory exists
+func init() {
+	// Make sure /tmp exists and is writable
+	tmpDir := filepath.Join(os.TempDir(), "playwright")
+	os.MkdirAll(tmpDir, 0755)
 }

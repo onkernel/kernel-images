@@ -1,10 +1,22 @@
 import { chromium } from 'playwright';
+import { readFileSync } from 'fs';
 
 async function main() {
-  const userCode = process.argv[2];
+  const codeFilePath = process.argv[2];
 
-  if (!userCode) {
-    console.error('Usage: tsx playwright-executor.ts <code>');
+  if (!codeFilePath) {
+    console.error('Usage: tsx playwright-executor.ts <code-file-path>');
+    process.exit(1);
+  }
+
+  let userCode: string;
+  try {
+    userCode = readFileSync(codeFilePath, 'utf-8');
+  } catch (error: any) {
+    console.error(JSON.stringify({
+      success: false,
+      error: `Failed to read code file: ${error.message}`
+    }));
     process.exit(1);
   }
 

@@ -161,9 +161,9 @@ RUN set -eux; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium sqlite3
 
-# Install Node.js 20.x
+# Install Node.js 22.x
 RUN set -eux; \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
     apt-get install -y nodejs; \
     rm -rf /var/lib/apt/lists/*
 

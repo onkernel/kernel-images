@@ -73,9 +73,9 @@ RUN set -eux; \
 # Remove upower to prevent spurious D-Bus activations and logs
 RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20.x
+# Install Node.js 22.x
 RUN set -eux; \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
     apt-get install -y nodejs; \
     rm -rf /var/lib/apt/lists/*
 
