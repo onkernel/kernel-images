@@ -1,5 +1,5 @@
-import { chromium } from 'playwright';
-import { readFileSync } from 'fs';
+const { chromium } = require('playwright');
+const { readFileSync } = require('fs');
 
 async function main() {
   const codeFilePath = process.argv[2];
