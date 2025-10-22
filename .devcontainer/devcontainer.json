@@ -1,0 +1,36 @@
+{
+	"name": "Kernel Devcontainer",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+		"ghcr.io/devcontainers/features/go:1": {},
+		"ghcr.io/devcontainers/features/node:1": {
+			"nodeGypDependencies": false,
+			"version": "latest"
+		}
+	},
+	"onCreateCommand": "sudo apt-get -y update && sudo apt-get -y install ca-certificates curl gnupg lsb-release && sudo mkdir -p /etc/apt/keyrings && curl -fsSL https://deb.pkg.kraftkit.sh/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/unikraft.gpg && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/unikraft.gpg] https://deb.pkg.kraftkit.sh /\" | sudo tee /etc/apt/sources.list.d/unikraft.list >/dev/null && sudo apt-get -y update && sudo apt-get -y install kraftkit && sudo apt-get -y upgrade",
+	"forwardPorts": [
+		444,
+		8080,
+		9222
+	],
+	"portsAttributes": {
+		"444": {
+			"label": "Kernel Images API",
+			"onAutoForward": "notify"
+		},
+		"8080": {
+			"label": "Web Interface (Neko WebRTC UI)",
+			"onAutoForward": "notify"
+		},
+		"9222": {
+			"label": "CDP (ncat Chromium)",
+			"onAutoForward": "notify"
+		}
+	},
+	// WebRTC UDP ports
+	"appPort": [
+		"56000-56100:56000-56100/udp"
+	]
+}
