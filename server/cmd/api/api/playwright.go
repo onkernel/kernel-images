@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -129,11 +128,4 @@ func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.Exe
 		Success: result.Success,
 		Result:  &result.Result,
 	}, nil
-}
-
-// Ensure the temp directory exists
-func init() {
-	// Make sure /tmp exists and is writable
-	tmpDir := filepath.Join(os.TempDir(), "playwright")
-	os.MkdirAll(tmpDir, 0755)
 }
