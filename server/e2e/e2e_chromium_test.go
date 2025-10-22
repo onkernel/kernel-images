@@ -776,7 +776,29 @@ func TestPlaywrightExecuteAPI(t *testing.T) {
 	require.NoError(t, err, "playwright execute request error: %v", err)
 	require.Equal(t, http.StatusOK, rsp.StatusCode(), "unexpected status for playwright execute: %s body=%s", rsp.Status(), string(rsp.Body))
 	require.NotNil(t, rsp.JSON200, "expected JSON200 response, got nil")
-	require.True(t, rsp.JSON200.Success, "expected success=true, got success=false. Error: %v", rsp.JSON200.Error)
+
+	// Log the full response for debugging
+	if !rsp.JSON200.Success {
+		var errorMsg string
+		if rsp.JSON200.Error != nil {
+			errorMsg = *rsp.JSON200.Error
+		}
+		var stdout, stderr string
+		if rsp.JSON200.Stdout != nil {
+			stdout = *rsp.JSON200.Stdout
+		}
+		if rsp.JSON200.Stderr != nil {
+			stderr = *rsp.JSON200.Stderr
+		}
+		logger.Error("[test]", "error", errorMsg, "stdout", stdout, "stderr", stderr)
+	}
+
+	require.True(t, rsp.JSON200.Success, "expected success=true, got success=false. Error: %s", func() string {
+		if rsp.JSON200.Error != nil {
+			return *rsp.JSON200.Error
+		}
+		return "nil"
+	}())
 	require.NotNil(t, rsp.JSON200.Result, "expected result to be non-nil")
 
 	// Verify the result contains "Example Domain" (the title of example.com)
