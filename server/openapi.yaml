@@ -1524,8 +1524,8 @@ components:
             Example: "await page.goto('https://example.com'); return await page.title();"
         timeout_sec:
           type: integer
-          description: Maximum execution time in seconds. Default is 30.
-          default: 30
+          description: Maximum execution time in seconds. Default is 60.
+          default: 60
           minimum: 1
           maximum: 300
       additionalProperties: false
