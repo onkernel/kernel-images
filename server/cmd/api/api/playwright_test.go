@@ -1,94 +1,58 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"log/slog"
-	"net/http"
-	"net/http/httptest"
-	"os"
 	"testing"
 
-	"github.com/onkernel/kernel-images/server/lib/logger"
+	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExecutePlaywrightRequest_Validation(t *testing.T) {
-	s := &Service{}
+	t.Parallel()
+	ctx := context.Background()
+	svc := &ApiService{}
 
 	tests := []struct {
-		name           string
-		requestBody    string
-		expectedStatus int
-		checkError     bool
+		name        string
+		code        string
+		expectError bool
 	}{
 		{
-			name:           "empty code",
-			requestBody:    `{"code": ""}`,
-			expectedStatus: http.StatusBadRequest,
-			checkError:     true,
+			name:        "empty code",
+			code:        "",
+			expectError: true,
 		},
 		{
-			name:           "missing code field",
-			requestBody:    `{}`,
-			expectedStatus: http.StatusBadRequest,
-			checkError:     true,
-		},
-		{
-			name:           "invalid json",
-			requestBody:    `{invalid}`,
-			expectedStatus: http.StatusBadRequest,
-			checkError:     true,
+			name:        "valid code",
+			code:        "return 'hello world';",
+			expectError: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/playwright/execute", bytes.NewBufferString(tt.requestBody))
-			req.Header.Set("Content-Type", "application/json")
+			body := &oapi.ExecutePlaywrightCodeRequest{
+				Code: tt.code,
+			}
+			resp, err := svc.ExecutePlaywrightCode(ctx, oapi.ExecutePlaywrightCodeRequestObject{Body: body})
+			require.NoError(t, err, "ExecutePlaywrightCode returned error")
 
-			testLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-			ctx := logger.AddToContext(context.Background(), testLogger)
-			req = req.WithContext(ctx)
-
-			w := httptest.NewRecorder()
-
-			s.ExecutePlaywrightCode(w, req)
-
-			if w.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
+			if tt.expectError {
+				_, ok := resp.(oapi.ExecutePlaywrightCode400JSONResponse)
+				require.True(t, ok, "expected 400 response for empty code, got %T", resp)
+			} else {
+				// For valid code, we expect either 200 or 500 (if playwright is not available)
+				// The actual execution is tested in e2e tests
+				switch resp.(type) {
+				case oapi.ExecutePlaywrightCode200JSONResponse:
+					// Success case (if playwright is available)
+				case oapi.ExecutePlaywrightCode500JSONResponse:
+					// Expected if playwright is not available in test environment
+				default:
+					t.Errorf("unexpected response type: %T", resp)
+				}
 			}
 		})
-	}
-}
-
-func TestExecutePlaywrightRequest_ValidCode(t *testing.T) {
-	t.Skip("Skipping integration test that requires Playwright to be installed")
-
-	s := &Service{}
-
-	reqBody := ExecutePlaywrightRequest{
-		Code: "return 'hello world';",
-	}
-
-	body, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/playwright/execute", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-
-	testLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	ctx := logger.AddToContext(context.Background(), testLogger)
-	req = req.WithContext(ctx)
-
-	w := httptest.NewRecorder()
-
-	s.ExecutePlaywrightCode(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Logf("Response body: %s", w.Body.String())
-	}
-
-	var result ExecutePlaywrightResult
-	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
-		t.Logf("Could not parse response as ExecutePlaywrightResult, this is expected if Playwright is not available")
 	}
 }

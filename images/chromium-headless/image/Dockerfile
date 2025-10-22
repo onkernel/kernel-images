@@ -80,8 +80,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # Install TypeScript and Playwright globally
-RUN npm install -g typescript tsx playwright && \
-    npx playwright install-deps chromium
+RUN npm install -g typescript tsx playwright
 
 ENV WITHDOCKER=true
 

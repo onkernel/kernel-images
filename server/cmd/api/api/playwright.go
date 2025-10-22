@@ -26,7 +26,7 @@ func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.Exe
 		}, nil
 	}
 
-	// Determine timeout (default to 60 seconds per review feedback)
+	// Determine timeout (default to 60 seconds)
 	timeout := 60 * time.Second
 	if request.Body.TimeoutSec != nil && *request.Body.TimeoutSec > 0 {
 		timeout = time.Duration(*request.Body.TimeoutSec) * time.Second
