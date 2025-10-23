@@ -62,8 +62,6 @@ func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.Exe
 
 	// Execute the Playwright code via the executor script
 	cmd := exec.CommandContext(execCtx, "tsx", "/usr/local/lib/playwright-executor.ts", tmpFilePath)
-	// Set NODE_PATH to point to global node_modules so playwright can be resolved
-	cmd.Env = append(os.Environ(), "NODE_PATH=/usr/lib/node_modules")
 
 	output, err := cmd.CombinedOutput()
 

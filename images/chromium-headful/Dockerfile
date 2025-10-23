@@ -170,6 +170,9 @@ RUN set -eux; \
 # Install TypeScript and Playwright globally
 RUN npm install -g typescript tsx playwright
 
+# Set NODE_PATH so that globally installed modules can be resolved
+ENV NODE_PATH=/usr/lib/node_modules
+
 # setup desktop env & app
 ENV DISPLAY_NUM=1
 ENV HEIGHT=768
