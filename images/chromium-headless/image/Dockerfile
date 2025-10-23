@@ -73,11 +73,16 @@ RUN set -eux; \
 # Remove upower to prevent spurious D-Bus activations and logs
 RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22.x
+# install Node.js 22.x by copying from the node:22-bullseye-slim stage
+COPY --from=client /usr/local/bin/node /usr/local/bin/node
+COPY --from=client /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Recreate symlinks for npm/npx/corepack to point into node_modules
 RUN set -eux; \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -; \
-    apt-get install -y nodejs; \
-    rm -rf /var/lib/apt/lists/*
+    ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
+    if [ -e /usr/local/lib/node_modules/corepack/dist/corepack.js ]; then \
+    ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack; \
+    fi
 
 # Install TypeScript and Playwright globally
 RUN npm install -g typescript tsx playwright
