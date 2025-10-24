@@ -21,9 +21,6 @@ import (
 func (s *ApiService) PatchDisplay(ctx context.Context, req oapi.PatchDisplayRequestObject) (oapi.PatchDisplayResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	if req.Body == nil {
 		return oapi.PatchDisplay400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "missing request body"}}, nil
 	}

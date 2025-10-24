@@ -198,8 +198,6 @@ func (u *UpstreamManager) runTailOnce(ctx context.Context) {
 // If logCDPMessages is true, all CDP messages will be logged with their direction.
 func WebSocketProxyHandler(mgr *UpstreamManager, logger *slog.Logger, logCDPMessages bool, ctrl scaletozero.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctrl.Disable(context.WithoutCancel(r.Context()))
-		defer ctrl.Enable(context.WithoutCancel(r.Context()))
 
 		upstreamCurrent := mgr.Current()
 		if upstreamCurrent == "" {

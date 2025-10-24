@@ -18,9 +18,6 @@ import (
 func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseRequestObject) (oapi.MoveMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -89,9 +86,6 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 
 func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequestObject) (oapi.ClickMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
@@ -211,9 +205,6 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreenshotRequestObject) (oapi.TakeScreenshotResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	// serialize input operations to avoid race with other input/screen actions
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -331,9 +322,6 @@ func (s *ApiService) TakeScreenshot(ctx context.Context, request oapi.TakeScreen
 func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestObject) (oapi.TypeTextResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -376,9 +364,6 @@ func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestO
 
 func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestObject) (oapi.PressKeyResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
@@ -487,9 +472,6 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObject) (oapi.ScrollResponseObject, error) {
 	log := logger.FromContext(ctx)
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
@@ -575,9 +557,6 @@ func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObjec
 
 func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseRequestObject) (oapi.DragMouseResponseObject, error) {
 	log := logger.FromContext(ctx)
-
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
 
 	// serialize input operations to avoid overlapping xdotool commands
 	s.inputMu.Lock()

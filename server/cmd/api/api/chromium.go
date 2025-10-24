@@ -28,9 +28,6 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	start := time.Now()
 	log.Info("upload extensions: begin")
 
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
-
 	if request.Body == nil {
 		return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
 	}
@@ -274,9 +271,6 @@ func (s *ApiService) PatchChromiumFlags(ctx context.Context, request oapi.PatchC
 	log := logger.FromContext(ctx)
 	start := time.Now()
 	log.Info("patch chromium flags: begin")
-
-	s.stz.Disable(ctx)
-	defer s.stz.Enable(ctx)
 
 	if request.Body == nil {
 		return oapi.PatchChromiumFlags400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil

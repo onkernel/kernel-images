@@ -47,6 +47,7 @@ func main() {
 	// ensure ffmpeg is available
 	mustFFmpeg()
 
+	stz := scaletozero.NewDebouncedController(scaletozero.NewUnikraftCloudController())
 	r := chi.NewRouter()
 	r.Use(
 		chiMiddleware.Logger,
@@ -57,6 +58,7 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctxWithLogger))
 			})
 		},
+		scaletozero.Middleware(stz),
 	)
 
 	defaultParams := recorder.FFmpegRecordingParams{
@@ -69,7 +71,6 @@ func main() {
 		slogger.Error("invalid default recording parameters", "err", err)
 		os.Exit(1)
 	}
-	stz := scaletozero.NewUnikraftCloudController()
 
 	// DevTools WebSocket upstream manager: tail Chromium supervisord log
 	const chromiumLogPath = "/var/log/supervisord/chromium"
@@ -139,6 +140,7 @@ func main() {
 				next.ServeHTTP(w, r.WithContext(ctxWithLogger))
 			})
 		},
+		scaletozero.Middleware(stz),
 	)
 	// Expose a minimal /json/version endpoint so clients that attempt to
 	// resolve a browser websocket URL via HTTP can succeed. We map the

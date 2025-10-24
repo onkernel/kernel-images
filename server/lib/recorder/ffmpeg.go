@@ -152,7 +152,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 	args, err := ffmpegArgs(fr.params, fr.outputPath)
 	if err != nil {
-		_ = fr.stz.Enable(ctx)
+		_ = fr.stz.Enable(context.WithoutCancel(ctx))
 		fr.cmd = nil
 		close(fr.exited)
 		fr.mu.Unlock()
@@ -170,7 +170,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	fr.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
-		_ = fr.stz.Enable(ctx)
+		_ = fr.stz.Enable(context.WithoutCancel(ctx))
 		fr.mu.Lock()
 		fr.ffmpegErr = err
 		fr.cmd = nil // reset cmd on failure to start so IsRecording() remains correct
@@ -194,7 +194,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
-	defer fr.stz.Enable(ctx)
+	defer fr.stz.Enable(context.WithoutCancel(ctx))
 	// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
 	// be complex and we care more about the recording than performance. In cases where ffmpeg
 	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
@@ -211,7 +211,7 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
-	defer fr.stz.Enable(ctx)
+	defer fr.stz.Enable(context.WithoutCancel(ctx))
 	err := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
@@ -348,7 +348,7 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 // waitForCommand should be run in the background to wait for the ffmpeg process to complete and
 // update the internal state accordingly.
 func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
-	defer fr.stz.Enable(ctx)
+	defer fr.stz.Enable(context.WithoutCancel(ctx))
 
 	log := logger.FromContext(ctx)
 

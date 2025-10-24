@@ -53,7 +53,7 @@ RUN set -eux; \
     make -j$(nproc); \
     make install;
 
-FROM ghcr.io/onkernel/neko/base:3.0.8-v1.1.0 AS neko
+FROM ghcr.io/onkernel/neko/base:3.0.8-v1.3.0 AS neko
 # ^--- now has event.SYSTEM_PONG with legacy support to keepalive
 FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
@@ -190,6 +190,8 @@ COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
 COPY images/chromium-headful/image-chromium/ /
+COPY images/chromium-headful/start-pulseaudio.sh /images/chromium-headful/start-pulseaudio.sh
+RUN chmod +x /images/chromium-headful/start-pulseaudio.sh
 COPY images/chromium-headful/wrapper.sh /wrapper.sh
 COPY images/chromium-headful/supervisord.conf /etc/supervisor/supervisord.conf
 COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/services/
