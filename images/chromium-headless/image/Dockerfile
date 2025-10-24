@@ -87,9 +87,6 @@ RUN set -eux; \
 # Install TypeScript and Playwright globally
 RUN npm install -g typescript tsx playwright
 
-# Set NODE_PATH so that globally installed modules can be resolved
-ENV NODE_PATH=/usr/lib/node_modules
-
 ENV WITHDOCKER=true
 
 # Create a non-root user with a home directory
