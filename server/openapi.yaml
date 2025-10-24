@@ -930,6 +930,31 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /playwright/execute:
+    post:
+      summary: Execute Playwright/TypeScript code against the browser
+      description: |
+        Execute arbitrary Playwright code in a fresh execution context against the browser running
+        on localhost:9222. The code has access to 'page', 'context', and 'browser' variables.
+        The result of the code execution is returned in the response.
+      operationId: executePlaywrightCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutePlaywrightRequest"
+      responses:
+        "200":
+          description: Code executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutePlaywrightResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -1486,6 +1511,43 @@ components:
           type: boolean
           description: Indicates success.
           default: true
+      additionalProperties: false
+    ExecutePlaywrightRequest:
+      type: object
+      description: Request to execute Playwright code
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: |
+            TypeScript/JavaScript code to execute. The code has access to 'page', 'context', and 'browser' variables.
+            Example: "await page.goto('https://example.com'); return await page.title();"
+        timeout_sec:
+          type: integer
+          description: Maximum execution time in seconds. Default is 60.
+          default: 60
+          minimum: 1
+          maximum: 300
+      additionalProperties: false
+    ExecutePlaywrightResult:
+      type: object
+      description: Result of Playwright code execution
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          description: Whether the code executed successfully
+        result:
+          description: The value returned by the code (if any)
+        error:
+          type: string
+          description: Error message if execution failed
+        stdout:
+          type: string
+          description: Standard output from the execution
+        stderr:
+          type: string
+          description: Standard error from the execution
       additionalProperties: false
   responses:
     BadRequestError:

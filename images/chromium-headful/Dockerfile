@@ -55,6 +55,7 @@ RUN set -eux; \
 
 FROM ghcr.io/onkernel/neko/base:3.0.8-v1.3.0 AS neko
 # ^--- now has event.SYSTEM_PONG with legacy support to keepalive
+FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -161,6 +162,20 @@ RUN set -eux; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium sqlite3
 
+# install Node.js 22.x by copying from the node:22-bullseye-slim stage
+COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-22 /usr/local/lib/node_modules /usr/local/lib/node_modules
+# Recreate symlinks for npm/npx/corepack to point into node_modules
+RUN set -eux; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
+    if [ -e /usr/local/lib/node_modules/corepack/dist/corepack.js ]; then \
+    ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack; \
+    fi
+
+# Install TypeScript and Playwright globally
+RUN npm install -g typescript playwright-core tsx
+
 # setup desktop env & app
 ENV DISPLAY_NUM=1
 ENV HEIGHT=768
@@ -184,6 +199,9 @@ COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/service
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
 COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
+
+# Copy the Playwright executor runtime
+COPY server/runtime/playwright-executor.ts /usr/local/lib/playwright-executor.ts
 
 RUN useradd -m -s /bin/bash kernel
 
