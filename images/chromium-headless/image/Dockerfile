@@ -85,7 +85,7 @@ RUN set -eux; \
     fi
 
 # Install TypeScript and Playwright globally
-RUN npm install -g typescript tsx playwright
+RUN npm install -g typescript playwright-core tsx
 
 ENV WITHDOCKER=true
 

@@ -173,7 +173,7 @@ RUN set -eux; \
     fi
 
 # Install TypeScript and Playwright globally
-RUN npm install -g typescript tsx playwright
+RUN npm install -g typescript playwright-core tsx
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1

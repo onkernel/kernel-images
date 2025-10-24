@@ -1,5 +1,5 @@
-import { chromium } from 'playwright';
 import { readFileSync } from 'fs';
+import { chromium } from 'playwright-core';
 
 async function main() {
   const codeFilePath = process.argv[2];
@@ -30,7 +30,7 @@ async function main() {
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const AsyncFunction = Object.getPrototypeOf(async function () { }).constructor;
     const userFunction = new AsyncFunction('page', 'context', 'browser', userCode);
     result = await userFunction(page, context, browser);
 
