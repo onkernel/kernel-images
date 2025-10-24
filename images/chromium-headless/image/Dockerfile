@@ -21,6 +21,7 @@ RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
 RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
+FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
 
 RUN set -xe; \
@@ -74,8 +75,8 @@ RUN set -eux; \
 RUN apt-get -yqq purge upower || true && rm -rf /var/lib/apt/lists/*
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
-COPY --from=client /usr/local/bin/node /usr/local/bin/node
-COPY --from=client /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-22 /usr/local/lib/node_modules /usr/local/lib/node_modules
 # Recreate symlinks for npm/npx/corepack to point into node_modules
 RUN set -eux; \
     ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
