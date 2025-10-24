@@ -24,7 +24,7 @@ async function main() {
   let result;
 
   try {
-    browser = await chromium.connectOverCDP('ws://localhost:9222');
+    browser = await chromium.connectOverCDP('ws://127.0.0.1:9222');
     const contexts = browser.contexts();
     const context = contexts.length > 0 ? contexts[0] : await browser.newContext();
     const pages = context.pages();
