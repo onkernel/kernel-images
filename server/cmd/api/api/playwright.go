@@ -14,6 +14,10 @@ import (
 
 // ExecutePlaywrightCode implements the Playwright code execution endpoint
 func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.ExecutePlaywrightCodeRequestObject) (oapi.ExecutePlaywrightCodeResponseObject, error) {
+	// Serialize Playwright execution - only one execution at a time
+	s.playwrightMu.Lock()
+	defer s.playwrightMu.Unlock()
+
 	log := logger.FromContext(ctx)
 
 	// Validate request

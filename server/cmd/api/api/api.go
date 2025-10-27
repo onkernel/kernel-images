@@ -39,6 +39,9 @@ type ApiService struct {
 
 	// inputMu serializes input-related operations (mouse, keyboard, screenshot)
 	inputMu sync.Mutex
+
+	// playwrightMu serializes Playwright code execution (only one execution at a time)
+	playwrightMu sync.Mutex
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
