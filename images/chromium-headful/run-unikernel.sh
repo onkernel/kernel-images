@@ -71,8 +71,8 @@ deploy_args=(
   -p 9222:9222/tls
   -p 444:10001/tls
   -e DISPLAY_NUM=1
-  -e HEIGHT=768
-  -e WIDTH=1024
+  -e HEIGHT=1080
+  -e WIDTH=1920
   -e TZ=${TZ:-'America/Los_Angeles'}
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
   -e LOG_CDP_MESSAGES=true

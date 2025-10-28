@@ -59,8 +59,8 @@ RUN_ARGS=(
   -p 9222:9222
   -p 444:10001
   -e DISPLAY_NUM=1
-  -e HEIGHT=768
-  -e WIDTH=1024
+  -e HEIGHT=1080
+  -e WIDTH=1920
   -e TZ=${TZ:-'America/Los_Angeles'}
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
