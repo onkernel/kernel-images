@@ -3,8 +3,8 @@
 set -o pipefail -o errexit -o nounset
 
 DISPLAY="${DISPLAY:-:1}"
-WIDTH="${WIDTH:-1024}"
-HEIGHT="${HEIGHT:-768}"
+WIDTH="${WIDTH:-1920}"
+HEIGHT="${HEIGHT:-1080}"
 DPI="${DPI:-96}"
 
 echo "Starting Xvfb on ${DISPLAY} with ${WIDTH}x${HEIGHT}x24, DPI ${DPI}"

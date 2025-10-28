@@ -161,8 +161,8 @@ start_dynamic_log_aggregator
 
 # Export common env used by services
 export DISPLAY=:1
-export HEIGHT=${HEIGHT:-768}
-export WIDTH=${WIDTH:-1024}
+export HEIGHT=${HEIGHT:-1080}
+export WIDTH=${WIDTH:-1920}
 export INTERNAL_PORT="${INTERNAL_PORT:-9223}"
 export CHROME_PORT="${CHROME_PORT:-9222}"
 
