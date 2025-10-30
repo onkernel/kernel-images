@@ -3,3 +3,4 @@ recording/
 .tmp/
 .rootfs/
 initrd
+temp.sh

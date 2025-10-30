@@ -18,6 +18,9 @@ CHROMIUM_FLAGS_DEFAULT="--user-data-dir=/home/kernel/user-data --disable-dev-shm
 if [[ "$RUN_AS_ROOT" == "true" ]]; then
   CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
 fi
+if [[ -n "${XDS_JWT:-}" ]]; then
+  CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --proxy-server=https://127.0.0.1:3128"
+fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
@@ -65,6 +68,22 @@ RUN_ARGS=(
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
+
+# Add XDS environment variables if provided
+if [[ -n "${INST_NAME:-}" ]]; then
+  RUN_ARGS+=( -e "INST_NAME=$INST_NAME" )
+fi
+if [[ -n "${METRO_NAME:-}" ]]; then
+  RUN_ARGS+=( -e "METRO_NAME=$METRO_NAME" )
+fi
+if [[ -n "${XDS_SERVER:-}" ]]; then
+  RUN_ARGS+=( -e "XDS_SERVER=$XDS_SERVER" )
+fi
+if [[ -n "${XDS_JWT:-}" ]]; then
+  RUN_ARGS+=( -e "XDS_JWT=$XDS_JWT" )
+  RUN_ARGS+=( -p 9901:9901 )
+  RUN_ARGS+=( -p 3128:3128 )
+fi
 
 # WebRTC port mapping
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then

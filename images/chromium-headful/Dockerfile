@@ -133,7 +133,8 @@ RUN set -eux; \
     x11-xserver-utils \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-    gstreamer1.0-pulseaudio gstreamer1.0-omx; \
+    gstreamer1.0-pulseaudio gstreamer1.0-omx \
+    libnss3-tools; \
     #
     # install libxcvt0 (not available in debian:bullseye)
     ARCH=$(dpkg --print-architecture); \
@@ -189,12 +190,24 @@ COPY --from=client /src/dist/ /var/www
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/xorg/modules/drivers/dummy_drv.so
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/input/neko_drv.so /usr/lib/xorg/modules/input/neko_drv.so
 
+# Install Envoy proxy and BrightData certificates
+COPY shared/envoy/install-proxy.sh /usr/local/bin/install-proxy.sh
+RUN chmod +x /usr/local/bin/install-proxy.sh && /usr/local/bin/install-proxy.sh && rm /usr/local/bin/install-proxy.sh
+
+# Copy Envoy configuration files
+COPY shared/envoy/bootstrap.yaml /etc/envoy/templates/bootstrap.yaml
+# Copy default config to bootstrap.yaml so supervisor can start envoy immediately
+COPY shared/envoy/default.yaml /etc/envoy/bootstrap.yaml
+COPY shared/envoy/init-envoy.sh /usr/local/bin/init-envoy.sh
+RUN chmod +x /usr/local/bin/init-envoy.sh
+
 COPY images/chromium-headful/image-chromium/ /
 COPY images/chromium-headful/start-pulseaudio.sh /images/chromium-headful/start-pulseaudio.sh
 RUN chmod +x /images/chromium-headful/start-pulseaudio.sh
 COPY images/chromium-headful/wrapper.sh /wrapper.sh
 COPY images/chromium-headful/supervisord.conf /etc/supervisor/supervisord.conf
 COPY images/chromium-headful/supervisor/services/ /etc/supervisor/conf.d/services/
+COPY shared/envoy/supervisor-envoy.conf /etc/supervisor/conf.d/services/envoy.conf
 
 # copy the kernel-images API binary built in the builder stage
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
