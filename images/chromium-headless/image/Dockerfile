@@ -66,6 +66,10 @@ RUN set -xe; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium sqlite3
 
+# Copy Chromium policy configuration
+RUN mkdir -p /etc/chromium/policies/managed
+COPY shared/chromium-policies/managed/policy.json /etc/chromium/policies/managed/policy.json
+
 # Install FFmpeg (latest static build) for the recording server
 RUN set -eux; \
     URL="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"; \

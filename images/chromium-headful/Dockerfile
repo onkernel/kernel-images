@@ -166,6 +166,10 @@ RUN set -eux; \
 RUN add-apt-repository -y ppa:xtradeb/apps
 RUN apt update -y && apt install -y chromium sqlite3
 
+# Copy Chromium policy configuration
+RUN mkdir -p /etc/chromium/policies/managed
+COPY shared/chromium-policies/managed/policy.json /etc/chromium/policies/managed/policy.json
+
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
 COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-22 /usr/local/lib/node_modules /usr/local/lib/node_modules
