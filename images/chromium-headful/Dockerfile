@@ -127,7 +127,7 @@ ENV USERNAME=root
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-    wget ca-certificates python2 supervisor xclip xdotool \
+    wget ca-certificates python2 supervisor xclip xdotool unclutter \
     pulseaudio dbus-x11 xserver-xorg-video-dummy \
     libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
     x11-xserver-utils \
