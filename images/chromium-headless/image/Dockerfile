@@ -54,8 +54,13 @@ RUN set -xe; \
     xvfb \
     x11-utils \
     xdotool \
+    fontconfig \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-nanum \
     software-properties-common \
-    supervisor;
+    supervisor; \
+    fc-cache -f
 
 # install chromium and sqlite3 for debugging the cookies file
 RUN add-apt-repository -y ppa:xtradeb/apps

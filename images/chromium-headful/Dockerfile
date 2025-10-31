@@ -108,8 +108,12 @@ RUN apt-get update && \
     xdg-utils \
     libvulkan1 \
     fonts-liberation \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-nanum \
+    fontconfig \
     unzip && \
-    apt-get clean
+    apt-get clean && fc-cache -f
 
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
 # as of writing these static builds will be the latest 7.0.x release.
