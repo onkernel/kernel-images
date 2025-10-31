@@ -185,3 +185,6 @@ infra/tests/*
 
 # Unikraft
 .unikraft
+
+# mise-en-place
+.mise.toml
