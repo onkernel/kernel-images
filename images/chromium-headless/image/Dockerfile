@@ -21,6 +21,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
 
+# Build chromium launcher
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
+
 FROM docker.io/ubuntu:22.04 AS ffmpeg-downloader
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
     --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
@@ -64,10 +70,6 @@ RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
     install -m755 /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
     rm -rf /tmp/ffmpeg*
 EOT
-
-# Build chromium launcher
-RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
 FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
@@ -140,7 +142,7 @@ RUN set -eux; \
     fi
 
 # Install TypeScript and Playwright globally
-RUN npm install -g typescript playwright-core tsx
+RUN --mount=type=cache,target=/root/.npm npm install -g typescript playwright-core tsx
 
 ENV WITHDOCKER=true
 
