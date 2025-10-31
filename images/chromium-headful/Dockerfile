@@ -160,7 +160,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     xdg-utils \
     libvulkan1 \
     fonts-liberation \
-    unzip;
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-nanum \
+    fontconfig \
+    unzip && \
+    fc-cache -f
 
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
 COPY --from=ffmpeg-downloader /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
@@ -210,6 +215,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     apt update -y && \
     apt -y install chromium && \
     apt --no-install-recommends -y install sqlite3;
+
+# Copy Chromium policy configuration
+RUN mkdir -p /etc/chromium/policies/managed
+COPY shared/chromium-policies/managed/policy.json /etc/chromium/policies/managed/policy.json
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
 COPY --from=node-22 /usr/local/bin/node /usr/local/bin/node
