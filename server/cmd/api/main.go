@@ -21,6 +21,7 @@ import (
 	serverpkg "github.com/onkernel/kernel-images/server"
 	"github.com/onkernel/kernel-images/server/cmd/api/api"
 	"github.com/onkernel/kernel-images/server/cmd/config"
+	"github.com/onkernel/kernel-images/server/lib/benchmarks"
 	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/nekoclient"
@@ -32,7 +33,11 @@ import (
 func main() {
 	slogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
+	// Track startup timing
+	startupTiming := benchmarks.GetGlobalStartupTiming()
+
 	// Load configuration from environment variables
+	startupTiming.StartPhase("config_load")
 	config, err := config.Load()
 	if err != nil {
 		slogger.Error("failed to load configuration", "err", err)
@@ -45,9 +50,13 @@ func main() {
 	defer stop()
 
 	// ensure ffmpeg is available
+	startupTiming.StartPhase("ffmpeg_validation")
 	mustFFmpeg()
 
+	startupTiming.StartPhase("controller_init")
 	stz := scaletozero.NewDebouncedController(scaletozero.NewUnikraftCloudController())
+
+	startupTiming.StartPhase("router_middleware_setup")
 	r := chi.NewRouter()
 	r.Use(
 		chiMiddleware.Logger,
@@ -61,6 +70,7 @@ func main() {
 		scaletozero.Middleware(stz),
 	)
 
+	startupTiming.StartPhase("recording_params_validation")
 	defaultParams := recorder.FFmpegRecordingParams{
 		DisplayNum:  &config.DisplayNum,
 		FrameRate:   &config.FrameRate,
@@ -73,11 +83,13 @@ func main() {
 	}
 
 	// DevTools WebSocket upstream manager: tail Chromium supervisord log
+	startupTiming.StartPhase("devtools_upstream_init")
 	const chromiumLogPath = "/var/log/supervisord/chromium"
 	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
 	upstreamMgr.Start(ctx)
 
 	// Initialize Neko authenticated client
+	startupTiming.StartPhase("neko_client_init")
 	adminPassword := os.Getenv("NEKO_ADMIN_PASSWORD")
 	if adminPassword == "" {
 		adminPassword = "admin" // Default from neko.yaml
@@ -88,6 +100,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	startupTiming.StartPhase("api_service_creation")
 	apiService, err := api.New(
 		recorder.NewFFmpegManager(),
 		recorder.NewFFmpegRecorderFactory(config.PathToFFmpeg, defaultParams, stz),
@@ -100,6 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	startupTiming.StartPhase("http_handler_setup")
 	strictHandler := oapi.NewStrictHandler(apiService, nil)
 	oapi.HandlerFromMux(strictHandler, r)
 
@@ -119,17 +133,20 @@ func main() {
 		w.Write(jsonData)
 	})
 
+	startupTiming.StartPhase("main_server_creation")
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: r,
 	}
 
 	// wait up to 10 seconds for initial upstream; exit nonzero if not found
+	startupTiming.StartPhase("upstream_wait")
 	if _, err := upstreamMgr.WaitForInitial(10 * time.Second); err != nil {
 		slogger.Error("devtools upstream not available", "err", err)
 		os.Exit(1)
 	}
 
+	startupTiming.StartPhase("devtools_proxy_setup")
 	rDevtools := chi.NewRouter()
 	rDevtools.Use(
 		chiMiddleware.Logger,
@@ -166,6 +183,7 @@ func main() {
 		Handler: rDevtools,
 	}
 
+	startupTiming.StartPhase("server_startup")
 	go func() {
 		slogger.Info("http server starting", "addr", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -181,6 +199,11 @@ func main() {
 			stop()
 		}
 	}()
+
+	// Mark server as ready
+	startupTiming.MarkServerReady()
+	slogger.Info("server initialization complete",
+		"total_startup_time_ms", startupTiming.GetTotalStartupTime().Milliseconds())
 
 	// graceful shutdown
 	<-ctx.Done()

@@ -2,6 +2,47 @@
 
 set -o pipefail -o errexit -o nounset
 
+# Startup timing infrastructure
+STARTUP_TIMING_FILE="/tmp/kernel_startup_timing.json"
+STARTUP_START_TIME=$(date +%s%N)
+STARTUP_PHASES=()
+
+log_phase() {
+  local phase_name="$1"
+  local phase_end_time=$(date +%s%N)
+  local duration_ns=$((phase_end_time - STARTUP_START_TIME))
+  local duration_ms=$((duration_ns / 1000000))
+
+  STARTUP_PHASES+=("{\"name\":\"$phase_name\",\"duration_ms\":$duration_ms}")
+  echo "[wrapper][timing] $phase_name: ${duration_ms}ms"
+}
+
+export_startup_timing() {
+  local total_time_ns=$(($(date +%s%N) - STARTUP_START_TIME))
+  local total_time_ms=$((total_time_ns / 1000000))
+
+  echo "{" > "$STARTUP_TIMING_FILE"
+  echo "  \"total_startup_time_ms\": $total_time_ms," >> "$STARTUP_TIMING_FILE"
+  echo "  \"phases\": [" >> "$STARTUP_TIMING_FILE"
+
+  local first=true
+  for phase in "${STARTUP_PHASES[@]}"; do
+    if [ "$first" = true ]; then
+      first=false
+    else
+      echo "," >> "$STARTUP_TIMING_FILE"
+    fi
+    echo -n "    $phase" >> "$STARTUP_TIMING_FILE"
+  done
+
+  echo "" >> "$STARTUP_TIMING_FILE"
+  echo "  ]" >> "$STARTUP_TIMING_FILE"
+  echo "}" >> "$STARTUP_TIMING_FILE"
+
+  echo "[wrapper][timing] Total startup time: ${total_time_ms}ms"
+  echo "[wrapper][timing] Timing data exported to $STARTUP_TIMING_FILE"
+}
+
 # If the WITHDOCKER environment variable is not set, it means we are not running inside a Docker container.
 # Docker manages /dev/shm itself, and attempting to mount or modify it can cause permission or device errors.
 # However, in a unikernel container environment (non-Docker), we need to manually create and mount /dev/shm as a tmpfs
@@ -11,6 +52,7 @@ if [ -z "${WITHDOCKER:-}" ]; then
   chmod 777 /dev/shm
   mount -t tmpfs tmpfs /dev/shm
 fi
+log_phase "shm_setup"
 
 # We disable scale-to-zero for the lifetime of this script and restore
 # the original setting on exit.
@@ -32,6 +74,7 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
   echo "[wrapper] Disabling scale-to-zero"
   disable_scale_to_zero
 fi
+log_phase "scale_to_zero_disable"
 
 # -----------------------------------------------------------------------------
 # House-keeping for the unprivileged "kernel" user --------------------------------
@@ -78,6 +121,7 @@ else
     fi
   done
 fi
+log_phase "user_dirs_setup"
 
 # -----------------------------------------------------------------------------
 # Dynamic log aggregation for /var/log/supervisord -----------------------------
@@ -110,6 +154,7 @@ start_dynamic_log_aggregator() {
 
 # Start log aggregator early so we see supervisor and service logs as they appear
 start_dynamic_log_aggregator
+log_phase "log_aggregator_start"
 
 export DISPLAY=:1
 
@@ -147,6 +192,7 @@ if [ -S /var/run/supervisor.sock ]; then
 fi
 sleep 0.2
 done
+log_phase "supervisord_start"
 
 echo "[wrapper] Starting Xorg via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start xorg
@@ -157,6 +203,7 @@ for i in {1..50}; do
   fi
   sleep 0.2
 done
+log_phase "xorg_start"
 
 echo "[wrapper] Starting Mutter via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start mutter
@@ -169,6 +216,7 @@ while [ $timeout -gt 0 ]; do
   sleep 1
   ((timeout--))
 done
+log_phase "mutter_start"
 
 # -----------------------------------------------------------------------------
 # System-bus setup via supervisord --------------------------------------------
@@ -182,6 +230,7 @@ for i in {1..50}; do
   fi
   sleep 0.2
 done
+log_phase "dbus_start"
 
 # We will point DBUS_SESSION_BUS_ADDRESS at the system bus socket to suppress
 # autolaunch attempts that failed and spammed logs.
@@ -197,6 +246,7 @@ for i in {1..100}; do
   fi
   sleep 0.2
 done
+log_phase "chromium_start"
 
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   # use webrtc
@@ -209,6 +259,7 @@ if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
     sleep 0.5
   done
   echo "[wrapper] Port 8080 is open"
+  log_phase "neko_start"
 fi
 
 echo "[wrapper] ✨ Starting kernel-images API."
@@ -222,8 +273,16 @@ API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
 # Start via supervisord (env overrides are read by the service's command)
 supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
 
+# Wait for API to be ready (happens after wrapper script in original code)
+echo "[wrapper] Waiting for kernel-images API port 127.0.0.1:${API_PORT}..."
+while ! nc -z 127.0.0.1 "${API_PORT}" 2>/dev/null; do
+  sleep 0.5
+done
+log_phase "kernel_api_start"
+
 echo "[wrapper] Starting PulseAudio daemon via supervisord"
 supervisorctl -c /etc/supervisor/supervisord.conf start pulseaudio
+log_phase "pulseaudio_start"
 
 # close the "--no-sandbox unsupported flag" warning when running as root
 # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors
@@ -281,6 +340,9 @@ fi
 if [[ -z "${WITHDOCKER:-}" ]]; then
   enable_scale_to_zero
 fi
+
+# Export startup timing
+export_startup_timing
 
 # Keep the container running while streaming logs
 wait

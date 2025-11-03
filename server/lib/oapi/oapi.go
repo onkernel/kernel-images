@@ -95,6 +95,93 @@ const (
 	Supervisor LogsStreamParamsSource = "supervisor"
 )
 
+// BenchmarkResults Performance benchmark results.
+type BenchmarkResults struct {
+	// ElapsedSeconds Actual elapsed time in seconds for all benchmarks to complete
+	ElapsedSeconds *float32 `json:"elapsed_seconds,omitempty"`
+
+	// Errors Errors encountered during benchmarking.
+	Errors *[]string `json:"errors,omitempty"`
+
+	// Results Results from individual benchmark components.
+	Results *ComponentResults `json:"results,omitempty"`
+
+	// StartupTiming Container startup timing metrics
+	StartupTiming *StartupTimingResults `json:"startup_timing,omitempty"`
+	System        *SystemInfo           `json:"system,omitempty"`
+
+	// Timestamp When the benchmark was run
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+}
+
+// BitrateMetrics defines model for BitrateMetrics.
+type BitrateMetrics struct {
+	// Audio Audio bitrate in kbps
+	Audio *float32 `json:"audio,omitempty"`
+
+	// Total Total bitrate in kbps
+	Total *float32 `json:"total,omitempty"`
+
+	// Video Video bitrate in kbps
+	Video *float32 `json:"video,omitempty"`
+}
+
+// CDPEndpointResults Results for a specific CDP endpoint (proxied or direct)
+type CDPEndpointResults struct {
+	// EndpointUrl CDP endpoint URL
+	EndpointUrl *string         `json:"endpoint_url,omitempty"`
+	LatencyMs   *LatencyMetrics `json:"latency_ms,omitempty"`
+
+	// Scenarios Per-scenario results for this endpoint
+	Scenarios *[]CDPScenarioResult `json:"scenarios,omitempty"`
+
+	// ThroughputMsgsPerSec Messages per second throughput
+	ThroughputMsgsPerSec *float32 `json:"throughput_msgs_per_sec,omitempty"`
+}
+
+// CDPProxyResults defines model for CDPProxyResults.
+type CDPProxyResults struct {
+	ConcurrentConnections *int `json:"concurrent_connections,omitempty"`
+
+	// DirectEndpoint Results for a specific CDP endpoint (proxied or direct)
+	DirectEndpoint   *CDPEndpointResults `json:"direct_endpoint,omitempty"`
+	LatencyMs        *LatencyMetrics     `json:"latency_ms,omitempty"`
+	MemoryMb         *MemoryMetrics      `json:"memory_mb,omitempty"`
+	MessageSizeBytes *MessageSizeMetrics `json:"message_size_bytes,omitempty"`
+
+	// ProxiedEndpoint Results for a specific CDP endpoint (proxied or direct)
+	ProxiedEndpoint *CDPEndpointResults `json:"proxied_endpoint,omitempty"`
+
+	// ProxyOverheadPercent Performance overhead of proxy as percentage (positive = slower through proxy)
+	ProxyOverheadPercent *float32 `json:"proxy_overhead_percent,omitempty"`
+
+	// Scenarios Per-scenario benchmark results
+	Scenarios            *[]CDPScenarioResult `json:"scenarios,omitempty"`
+	ThroughputMsgsPerSec *float32             `json:"throughput_msgs_per_sec,omitempty"`
+}
+
+// CDPScenarioResult Results for a specific CDP test scenario
+type CDPScenarioResult struct {
+	// Category Scenario category (e.g., Runtime, DOM, Page, Network, Performance)
+	Category *string `json:"category,omitempty"`
+
+	// Description Human-readable description of the scenario
+	Description *string         `json:"description,omitempty"`
+	LatencyMs   *LatencyMetrics `json:"latency_ms,omitempty"`
+
+	// Name Scenario name (e.g., Runtime.evaluate, DOM.getDocument)
+	Name *string `json:"name,omitempty"`
+
+	// OperationCount Number of operations performed in this scenario
+	OperationCount *int `json:"operation_count,omitempty"`
+
+	// SuccessRate Success rate percentage (0-100)
+	SuccessRate *float32 `json:"success_rate,omitempty"`
+
+	// ThroughputOpsPerSec Operations per second for this scenario
+	ThroughputOpsPerSec *float32 `json:"throughput_ops_per_sec,omitempty"`
+}
+
 // ClickMouseRequest defines model for ClickMouseRequest.
 type ClickMouseRequest struct {
 	// Button Mouse button to interact with
@@ -121,6 +208,24 @@ type ClickMouseRequestButton string
 
 // ClickMouseRequestClickType Type of click action
 type ClickMouseRequestClickType string
+
+// CodecMetrics Codec information
+type CodecMetrics struct {
+	// Audio Audio codec (e.g., audio/opus)
+	Audio *string `json:"audio,omitempty"`
+
+	// Video Video codec (e.g., video/VP8)
+	Video *string `json:"video,omitempty"`
+}
+
+// ComponentResults Results from individual benchmark components.
+type ComponentResults struct {
+	Cdp       *CDPProxyResults  `json:"cdp,omitempty"`
+	Recording *RecordingResults `json:"recording,omitempty"`
+
+	// WebrtcLiveView Comprehensive WebRTC live view benchmark results from client
+	WebrtcLiveView *WebRTCLiveViewResults `json:"webrtc_live_view,omitempty"`
+}
 
 // CreateDirectoryRequest defines model for CreateDirectoryRequest.
 type CreateDirectoryRequest struct {
@@ -190,7 +295,7 @@ type ExecutePlaywrightRequest struct {
 	// Example: "await page.goto('https://example.com'); return await page.title();"
 	Code string `json:"code"`
 
-	// TimeoutSec Maximum execution time in seconds. Default is 30.
+	// TimeoutSec Maximum execution time in seconds. Default is 60.
 	TimeoutSec *int `json:"timeout_sec,omitempty"`
 }
 
@@ -251,6 +356,48 @@ type FileSystemEvent struct {
 // FileSystemEventType Event type.
 type FileSystemEventType string
 
+// FrameMetrics Frame statistics for WebRTC video
+type FrameMetrics struct {
+	// Corrupted Corrupted frames
+	Corrupted *int `json:"corrupted,omitempty"`
+
+	// Decoded Frames decoded
+	Decoded *int `json:"decoded,omitempty"`
+
+	// Dropped Frames dropped
+	Dropped *int `json:"dropped,omitempty"`
+
+	// KeyFramesDecoded Key frames decoded
+	KeyFramesDecoded *int `json:"key_frames_decoded,omitempty"`
+
+	// Received Total frames received
+	Received *int `json:"received,omitempty"`
+}
+
+// FrameRateMetrics defines model for FrameRateMetrics.
+type FrameRateMetrics struct {
+	Achieved *float32 `json:"achieved,omitempty"`
+	Max      *float32 `json:"max,omitempty"`
+	Min      *float32 `json:"min,omitempty"`
+	Target   *float32 `json:"target,omitempty"`
+}
+
+// JitterMetrics Jitter measurements in milliseconds
+type JitterMetrics struct {
+	// Audio Audio jitter in ms
+	Audio *float32 `json:"audio,omitempty"`
+
+	// Video Video jitter in ms
+	Video *float32 `json:"video,omitempty"`
+}
+
+// LatencyMetrics defines model for LatencyMetrics.
+type LatencyMetrics struct {
+	P50 *float32 `json:"p50,omitempty"`
+	P95 *float32 `json:"p95,omitempty"`
+	P99 *float32 `json:"p99,omitempty"`
+}
+
 // ListFiles Array of file or directory information entries.
 type ListFiles = []FileInfo
 
@@ -261,6 +408,20 @@ type LogEvent struct {
 
 	// Timestamp Time the log entry was produced.
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// MemoryMetrics defines model for MemoryMetrics.
+type MemoryMetrics struct {
+	Baseline      *float32 `json:"baseline,omitempty"`
+	PerConnection *float32 `json:"per_connection,omitempty"`
+	PerViewer     *float32 `json:"per_viewer,omitempty"`
+}
+
+// MessageSizeMetrics defines model for MessageSizeMetrics.
+type MessageSizeMetrics struct {
+	Avg *int `json:"avg,omitempty"`
+	Max *int `json:"max,omitempty"`
+	Min *int `json:"min,omitempty"`
 }
 
 // MoveMouseRequest defines model for MoveMouseRequest.
@@ -284,10 +445,43 @@ type MovePathRequest struct {
 	SrcPath string `json:"src_path"`
 }
 
+// NetworkMetrics Network-level metrics
+type NetworkMetrics struct {
+	// AvailableOutgoingBitrateKbps Available outgoing bitrate in kbps
+	AvailableOutgoingBitrateKbps *float32 `json:"available_outgoing_bitrate_kbps,omitempty"`
+
+	// BytesReceived Total bytes received
+	BytesReceived *int `json:"bytes_received,omitempty"`
+
+	// BytesSent Total bytes sent
+	BytesSent *int `json:"bytes_sent,omitempty"`
+
+	// RttMs Round-trip time in milliseconds
+	RttMs *float32 `json:"rtt_ms,omitempty"`
+}
+
 // OkResponse Generic OK response.
 type OkResponse struct {
 	// Ok Indicates success.
 	Ok bool `json:"ok"`
+}
+
+// PacketMetrics Packet statistics for WebRTC streams
+type PacketMetrics struct {
+	// AudioLost Total audio packets lost
+	AudioLost *int `json:"audio_lost,omitempty"`
+
+	// AudioReceived Total audio packets received
+	AudioReceived *int `json:"audio_received,omitempty"`
+
+	// LossPercent Overall packet loss percentage
+	LossPercent *float32 `json:"loss_percent,omitempty"`
+
+	// VideoLost Total video packets lost
+	VideoLost *int `json:"video_lost,omitempty"`
+
+	// VideoReceived Total video packets received
+	VideoReceived *int `json:"video_received,omitempty"`
 }
 
 // PatchDisplayRequest defines model for PatchDisplayRequest.
@@ -310,6 +504,33 @@ type PatchDisplayRequest struct {
 
 // PatchDisplayRequestRefreshRate Display refresh rate in Hz. If omitted, uses the highest available rate for the resolution.
 type PatchDisplayRequestRefreshRate int
+
+// PhaseResult Timing data for a single startup phase
+type PhaseResult struct {
+	// DurationMs Duration of this phase in milliseconds
+	DurationMs *float32 `json:"duration_ms,omitempty"`
+
+	// Name Name of the startup phase
+	Name *string `json:"name,omitempty"`
+
+	// Percentage Percentage of total startup time
+	Percentage *float32 `json:"percentage,omitempty"`
+}
+
+// PhaseSummary Summary statistics for startup phases
+type PhaseSummary struct {
+	// FastestMs Duration of fastest phase in milliseconds
+	FastestMs *float32 `json:"fastest_ms,omitempty"`
+
+	// FastestPhase Name of the fastest phase
+	FastestPhase *string `json:"fastest_phase,omitempty"`
+
+	// SlowestMs Duration of slowest phase in milliseconds
+	SlowestMs *float32 `json:"slowest_ms,omitempty"`
+
+	// SlowestPhase Name of the slowest phase
+	SlowestPhase *string `json:"slowest_phase,omitempty"`
+}
 
 // PressKeyRequest defines model for PressKeyRequest.
 type PressKeyRequest struct {
@@ -450,6 +671,41 @@ type RecorderInfo struct {
 	StartedAt *time.Time `json:"started_at"`
 }
 
+// RecordingFrameRateImpact Impact of recording on live view frame rate
+type RecordingFrameRateImpact struct {
+	// BeforeRecordingFps Frame rate before recording started
+	BeforeRecordingFps *float32 `json:"before_recording_fps,omitempty"`
+
+	// DuringRecordingFps Frame rate while recording is active
+	DuringRecordingFps *float32 `json:"during_recording_fps,omitempty"`
+
+	// ImpactPercent Percentage change in frame rate (negative means degradation)
+	ImpactPercent *float32 `json:"impact_percent,omitempty"`
+}
+
+// RecordingResults defines model for RecordingResults.
+type RecordingResults struct {
+	AvgEncodingLagMs     *float32 `json:"avg_encoding_lag_ms,omitempty"`
+	ConcurrentRecordings *int     `json:"concurrent_recordings,omitempty"`
+	CpuOverheadPercent   *float32 `json:"cpu_overhead_percent,omitempty"`
+	DiskWriteMbps        *float32 `json:"disk_write_mbps,omitempty"`
+
+	// FrameRateImpact Impact of recording on live view frame rate
+	FrameRateImpact  *RecordingFrameRateImpact `json:"frame_rate_impact,omitempty"`
+	FramesCaptured   *int                      `json:"frames_captured,omitempty"`
+	FramesDropped    *int                      `json:"frames_dropped,omitempty"`
+	MemoryOverheadMb *float32                  `json:"memory_overhead_mb,omitempty"`
+}
+
+// ResolutionMetrics Video resolution
+type ResolutionMetrics struct {
+	// Height Video height in pixels
+	Height *int `json:"height,omitempty"`
+
+	// Width Video width in pixels
+	Width *int `json:"width,omitempty"`
+}
+
 // ScreenshotRegion defines model for ScreenshotRegion.
 type ScreenshotRegion struct {
 	// Height Height of the region in pixels
@@ -527,6 +783,18 @@ type StartRecordingRequest struct {
 	MaxFileSizeInMB *int `json:"maxFileSizeInMB,omitempty"`
 }
 
+// StartupTimingResults Container startup timing metrics
+type StartupTimingResults struct {
+	// PhaseSummary Summary statistics for startup phases
+	PhaseSummary *PhaseSummary `json:"phase_summary,omitempty"`
+
+	// Phases Individual startup phases with durations
+	Phases *[]PhaseResult `json:"phases,omitempty"`
+
+	// TotalStartupTimeMs Total startup time from container start to ready state
+	TotalStartupTimeMs *float32 `json:"total_startup_time_ms,omitempty"`
+}
+
 // StopRecordingRequest defines model for StopRecordingRequest.
 type StopRecordingRequest struct {
 	// ForceStop Immediately stop without graceful shutdown. This may result in a corrupted video file.
@@ -536,6 +804,14 @@ type StopRecordingRequest struct {
 	Id *string `json:"id,omitempty"`
 }
 
+// SystemInfo defines model for SystemInfo.
+type SystemInfo struct {
+	Arch          *string `json:"arch,omitempty"`
+	CpuCount      *int    `json:"cpu_count,omitempty"`
+	MemoryTotalMb *int    `json:"memory_total_mb,omitempty"`
+	Os            *string `json:"os,omitempty"`
+}
+
 // TypeTextRequest defines model for TypeTextRequest.
 type TypeTextRequest struct {
 	// Delay Delay in milliseconds between keystrokes
@@ -543,6 +819,40 @@ type TypeTextRequest struct {
 
 	// Text Text to type on the host computer
 	Text string `json:"text"`
+}
+
+// WebRTCLiveViewResults Comprehensive WebRTC live view benchmark results from client
+type WebRTCLiveViewResults struct {
+	BitrateKbps *BitrateMetrics `json:"bitrate_kbps,omitempty"`
+
+	// Codecs Codec information
+	Codecs            *CodecMetrics `json:"codecs,omitempty"`
+	ConcurrentViewers *int          `json:"concurrent_viewers,omitempty"`
+
+	// ConnectionState WebRTC connection state
+	ConnectionState *string           `json:"connection_state,omitempty"`
+	CpuUsagePercent *float32          `json:"cpu_usage_percent,omitempty"`
+	FrameLatencyMs  *LatencyMetrics   `json:"frame_latency_ms,omitempty"`
+	FrameRateFps    *FrameRateMetrics `json:"frame_rate_fps,omitempty"`
+
+	// Frames Frame statistics for WebRTC video
+	Frames *FrameMetrics `json:"frames,omitempty"`
+
+	// IceConnectionState ICE connection state
+	IceConnectionState *string `json:"ice_connection_state,omitempty"`
+
+	// JitterMs Jitter measurements in milliseconds
+	JitterMs *JitterMetrics `json:"jitter_ms,omitempty"`
+	MemoryMb *MemoryMetrics `json:"memory_mb,omitempty"`
+
+	// Network Network-level metrics
+	Network *NetworkMetrics `json:"network,omitempty"`
+
+	// Packets Packet statistics for WebRTC streams
+	Packets *PacketMetrics `json:"packets,omitempty"`
+
+	// Resolution Video resolution
+	Resolution *ResolutionMetrics `json:"resolution,omitempty"`
 }
 
 // BadRequestError defines model for BadRequestError.
@@ -573,6 +883,12 @@ type UploadExtensionsAndRestartMultipartBody struct {
 		// ZipFile Zip archive containing an unpacked Chromium extension (must include manifest.json)
 		ZipFile openapi_types.File `json:"zip_file"`
 	} `json:"extensions"`
+}
+
+// RunBenchmarkParams defines parameters for RunBenchmark.
+type RunBenchmarkParams struct {
+	// Components Comma-separated list of components to benchmark (cdp,webrtc,recording,all).
+	Components *string `form:"components,omitempty" json:"components,omitempty"`
 }
 
 // DownloadDirZipParams defines parameters for DownloadDirZip.
@@ -838,6 +1154,9 @@ type ClientInterface interface {
 	TypeTextWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TypeText(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RunBenchmark request
+	RunBenchmark(ctx context.Context, params *RunBenchmarkParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PatchDisplayWithBody request with any body
 	PatchDisplayWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1151,6 +1470,18 @@ func (c *Client) TypeTextWithBody(ctx context.Context, contentType string, body 
 
 func (c *Client) TypeText(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTypeTextRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RunBenchmark(ctx context.Context, params *RunBenchmarkParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRunBenchmarkRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2034,6 +2365,55 @@ func NewTypeTextRequestWithBody(server string, contentType string, body io.Reade
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRunBenchmarkRequest generates requests for RunBenchmark
+func NewRunBenchmarkRequest(server string, params *RunBenchmarkParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/dev/benchmark")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Components != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "components", runtime.ParamLocationQuery, *params.Components); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -3344,6 +3724,9 @@ type ClientWithResponsesInterface interface {
 
 	TypeTextWithResponse(ctx context.Context, body TypeTextJSONRequestBody, reqEditors ...RequestEditorFn) (*TypeTextResponse, error)
 
+	// RunBenchmarkWithResponse request
+	RunBenchmarkWithResponse(ctx context.Context, params *RunBenchmarkParams, reqEditors ...RequestEditorFn) (*RunBenchmarkResponse, error)
+
 	// PatchDisplayWithBodyWithResponse request with any body
 	PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error)
 
@@ -3663,6 +4046,30 @@ func (r TypeTextResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TypeTextResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RunBenchmarkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *BenchmarkResults
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r RunBenchmarkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RunBenchmarkResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4514,6 +4921,15 @@ func (c *ClientWithResponses) TypeTextWithResponse(ctx context.Context, body Typ
 	return ParseTypeTextResponse(rsp)
 }
 
+// RunBenchmarkWithResponse request returning *RunBenchmarkResponse
+func (c *ClientWithResponses) RunBenchmarkWithResponse(ctx context.Context, params *RunBenchmarkParams, reqEditors ...RequestEditorFn) (*RunBenchmarkResponse, error) {
+	rsp, err := c.RunBenchmark(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRunBenchmarkResponse(rsp)
+}
+
 // PatchDisplayWithBodyWithResponse request with arbitrary body returning *PatchDisplayResponse
 func (c *ClientWithResponses) PatchDisplayWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchDisplayResponse, error) {
 	rsp, err := c.PatchDisplayWithBody(ctx, contentType, body, reqEditors...)
@@ -5173,6 +5589,46 @@ func ParseTypeTextResponse(rsp *http.Response) (*TypeTextResponse, error) {
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRunBenchmarkResponse parses an HTTP response from a RunBenchmarkWithResponse call
+func ParseRunBenchmarkResponse(rsp *http.Response) (*RunBenchmarkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RunBenchmarkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest BenchmarkResults
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest BadRequestError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -6388,6 +6844,9 @@ type ServerInterface interface {
 	// Type text on the host computer
 	// (POST /computer/type)
 	TypeText(w http.ResponseWriter, r *http.Request)
+	// Run performance benchmarks
+	// (GET /dev/benchmark)
+	RunBenchmark(w http.ResponseWriter, r *http.Request, params RunBenchmarkParams)
 	// Update display configuration
 	// (PATCH /display)
 	PatchDisplay(w http.ResponseWriter, r *http.Request)
@@ -6532,6 +6991,12 @@ func (_ Unimplemented) Scroll(w http.ResponseWriter, r *http.Request) {
 // Type text on the host computer
 // (POST /computer/type)
 func (_ Unimplemented) TypeText(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Run performance benchmarks
+// (GET /dev/benchmark)
+func (_ Unimplemented) RunBenchmark(w http.ResponseWriter, r *http.Request, params RunBenchmarkParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6835,6 +7300,33 @@ func (siw *ServerInterfaceWrapper) TypeText(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TypeText(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunBenchmark operation middleware
+func (siw *ServerInterfaceWrapper) RunBenchmark(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RunBenchmarkParams
+
+	// ------------- Optional query parameter "components" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "components", r.URL.Query(), &params.Components)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "components", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunBenchmark(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7622,6 +8114,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/computer/type", wrapper.TypeText)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/dev/benchmark", wrapper.RunBenchmark)
+	})
+	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/display", wrapper.PatchDisplay)
 	})
 	r.Group(func(r chi.Router) {
@@ -8031,6 +8526,41 @@ func (response TypeText400JSONResponse) VisitTypeTextResponse(w http.ResponseWri
 type TypeText500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response TypeText500JSONResponse) VisitTypeTextResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RunBenchmarkRequestObject struct {
+	Params RunBenchmarkParams
+}
+
+type RunBenchmarkResponseObject interface {
+	VisitRunBenchmarkResponse(w http.ResponseWriter) error
+}
+
+type RunBenchmark200JSONResponse BenchmarkResults
+
+func (response RunBenchmark200JSONResponse) VisitRunBenchmarkResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RunBenchmark400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response RunBenchmark400JSONResponse) VisitRunBenchmarkResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RunBenchmark500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response RunBenchmark500JSONResponse) VisitRunBenchmarkResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -9411,6 +9941,9 @@ type StrictServerInterface interface {
 	// Type text on the host computer
 	// (POST /computer/type)
 	TypeText(ctx context.Context, request TypeTextRequestObject) (TypeTextResponseObject, error)
+	// Run performance benchmarks
+	// (GET /dev/benchmark)
+	RunBenchmark(ctx context.Context, request RunBenchmarkRequestObject) (RunBenchmarkResponseObject, error)
 	// Update display configuration
 	// (PATCH /display)
 	PatchDisplay(ctx context.Context, request PatchDisplayRequestObject) (PatchDisplayResponseObject, error)
@@ -9801,6 +10334,32 @@ func (sh *strictHandler) TypeText(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TypeTextResponseObject); ok {
 		if err := validResponse.VisitTypeTextResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RunBenchmark operation middleware
+func (sh *strictHandler) RunBenchmark(w http.ResponseWriter, r *http.Request, params RunBenchmarkParams) {
+	var request RunBenchmarkRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RunBenchmark(ctx, request.(RunBenchmarkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RunBenchmark")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RunBenchmarkResponseObject); ok {
+		if err := validResponse.VisitRunBenchmarkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -10654,122 +11213,154 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"9uCwKl9WP7SR/wkAAP//KSSqVIyVAAA=",
+	"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",
+	"Wf34wYX8vwAAAP//eN9WucG8AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -3,6 +3,31 @@ info:
   title: Kernel Images API
   version: 0.1.0
 paths:
+  /dev/benchmark:
+    get:
+      summary: Run performance benchmarks
+      description: |
+        Execute performance benchmarks
+      operationId: runBenchmark
+      parameters:
+        - name: components
+          in: query
+          description: Comma-separated list of components to benchmark (cdp,webrtc,recording,all).
+          required: false
+          schema:
+            type: string
+            default: "all"
+      responses:
+        "200":
+          description: Benchmark results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BenchmarkResults"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /recording/start:
     post:
       summary: Start a screen recording. Only one recording per ID can be registered at a time.
@@ -1511,6 +1536,386 @@ components:
           type: boolean
           description: Indicates success.
           default: true
+      additionalProperties: false
+    BenchmarkResults:
+      type: object
+      description: |
+        Performance benchmark results.
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: When the benchmark was run
+        elapsed_seconds:
+          type: number
+          description: Actual elapsed time in seconds for all benchmarks to complete
+        system:
+          $ref: "#/components/schemas/SystemInfo"
+        results:
+          $ref: "#/components/schemas/ComponentResults"
+        errors:
+          type: array
+          items:
+            type: string
+          description: |
+            Errors encountered during benchmarking.
+        startup_timing:
+          $ref: "#/components/schemas/StartupTimingResults"
+      additionalProperties: false
+    SystemInfo:
+      type: object
+      properties:
+        cpu_count:
+          type: integer
+        memory_total_mb:
+          type: integer
+        os:
+          type: string
+        arch:
+          type: string
+      additionalProperties: false
+    ComponentResults:
+      type: object
+      description: |
+        Results from individual benchmark components.
+      properties:
+        cdp:
+          $ref: "#/components/schemas/CDPProxyResults"
+        webrtc_live_view:
+          $ref: "#/components/schemas/WebRTCLiveViewResults"
+        recording:
+          $ref: "#/components/schemas/RecordingResults"
+      additionalProperties: false
+    CDPProxyResults:
+      type: object
+      properties:
+        throughput_msgs_per_sec:
+          type: number
+        latency_ms:
+          $ref: "#/components/schemas/LatencyMetrics"
+        concurrent_connections:
+          type: integer
+        memory_mb:
+          $ref: "#/components/schemas/MemoryMetrics"
+        message_size_bytes:
+          $ref: "#/components/schemas/MessageSizeMetrics"
+        scenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/CDPScenarioResult"
+          description: Per-scenario benchmark results
+        proxied_endpoint:
+          $ref: "#/components/schemas/CDPEndpointResults"
+          description: Results from proxied CDP endpoint (port 9222)
+        direct_endpoint:
+          $ref: "#/components/schemas/CDPEndpointResults"
+          description: Results from direct CDP endpoint (port 9223)
+        proxy_overhead_percent:
+          type: number
+          description: Performance overhead of proxy as percentage (positive = slower through proxy)
+      additionalProperties: false
+    CDPEndpointResults:
+      type: object
+      description: Results for a specific CDP endpoint (proxied or direct)
+      properties:
+        endpoint_url:
+          type: string
+          description: CDP endpoint URL
+        throughput_msgs_per_sec:
+          type: number
+          description: Messages per second throughput
+        latency_ms:
+          $ref: "#/components/schemas/LatencyMetrics"
+        scenarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/CDPScenarioResult"
+          description: Per-scenario results for this endpoint
+      additionalProperties: false
+    CDPScenarioResult:
+      type: object
+      description: Results for a specific CDP test scenario
+      properties:
+        name:
+          type: string
+          description: Scenario name (e.g., Runtime.evaluate, DOM.getDocument)
+        description:
+          type: string
+          description: Human-readable description of the scenario
+        category:
+          type: string
+          description: Scenario category (e.g., Runtime, DOM, Page, Network, Performance)
+        operation_count:
+          type: integer
+          description: Number of operations performed in this scenario
+        throughput_ops_per_sec:
+          type: number
+          description: Operations per second for this scenario
+        latency_ms:
+          $ref: "#/components/schemas/LatencyMetrics"
+        success_rate:
+          type: number
+          description: Success rate percentage (0-100)
+      additionalProperties: false
+    WebRTCLiveViewResults:
+      type: object
+      description: Comprehensive WebRTC live view benchmark results from client
+      properties:
+        connection_state:
+          type: string
+          description: WebRTC connection state
+        ice_connection_state:
+          type: string
+          description: ICE connection state
+        frame_rate_fps:
+          $ref: "#/components/schemas/FrameRateMetrics"
+        frame_latency_ms:
+          $ref: "#/components/schemas/LatencyMetrics"
+        bitrate_kbps:
+          $ref: "#/components/schemas/BitrateMetrics"
+        packets:
+          $ref: "#/components/schemas/PacketMetrics"
+        frames:
+          $ref: "#/components/schemas/FrameMetrics"
+        jitter_ms:
+          $ref: "#/components/schemas/JitterMetrics"
+        network:
+          $ref: "#/components/schemas/NetworkMetrics"
+        codecs:
+          $ref: "#/components/schemas/CodecMetrics"
+        resolution:
+          $ref: "#/components/schemas/ResolutionMetrics"
+        concurrent_viewers:
+          type: integer
+        cpu_usage_percent:
+          type: number
+        memory_mb:
+          $ref: "#/components/schemas/MemoryMetrics"
+      additionalProperties: false
+    RecordingResults:
+      type: object
+      properties:
+        cpu_overhead_percent:
+          type: number
+        memory_overhead_mb:
+          type: number
+        frames_captured:
+          type: integer
+        frames_dropped:
+          type: integer
+        avg_encoding_lag_ms:
+          type: number
+        disk_write_mbps:
+          type: number
+        concurrent_recordings:
+          type: integer
+        frame_rate_impact:
+          $ref: "#/components/schemas/RecordingFrameRateImpact"
+      additionalProperties: false
+    RecordingFrameRateImpact:
+      type: object
+      description: Impact of recording on live view frame rate
+      properties:
+        before_recording_fps:
+          type: number
+          description: Frame rate before recording started
+        during_recording_fps:
+          type: number
+          description: Frame rate while recording is active
+        impact_percent:
+          type: number
+          description: Percentage change in frame rate (negative means degradation)
+      additionalProperties: false
+    LatencyMetrics:
+      type: object
+      properties:
+        p50:
+          type: number
+        p95:
+          type: number
+        p99:
+          type: number
+      additionalProperties: false
+    FrameRateMetrics:
+      type: object
+      properties:
+        target:
+          type: number
+        achieved:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
+      additionalProperties: false
+    BitrateMetrics:
+      type: object
+      properties:
+        video:
+          type: number
+          description: Video bitrate in kbps
+        audio:
+          type: number
+          description: Audio bitrate in kbps
+        total:
+          type: number
+          description: Total bitrate in kbps
+      additionalProperties: false
+    PacketMetrics:
+      type: object
+      description: Packet statistics for WebRTC streams
+      properties:
+        video_received:
+          type: integer
+          description: Total video packets received
+        video_lost:
+          type: integer
+          description: Total video packets lost
+        audio_received:
+          type: integer
+          description: Total audio packets received
+        audio_lost:
+          type: integer
+          description: Total audio packets lost
+        loss_percent:
+          type: number
+          description: Overall packet loss percentage
+      additionalProperties: false
+    FrameMetrics:
+      type: object
+      description: Frame statistics for WebRTC video
+      properties:
+        received:
+          type: integer
+          description: Total frames received
+        dropped:
+          type: integer
+          description: Frames dropped
+        decoded:
+          type: integer
+          description: Frames decoded
+        corrupted:
+          type: integer
+          description: Corrupted frames
+        key_frames_decoded:
+          type: integer
+          description: Key frames decoded
+      additionalProperties: false
+    JitterMetrics:
+      type: object
+      description: Jitter measurements in milliseconds
+      properties:
+        video:
+          type: number
+          description: Video jitter in ms
+        audio:
+          type: number
+          description: Audio jitter in ms
+      additionalProperties: false
+    NetworkMetrics:
+      type: object
+      description: Network-level metrics
+      properties:
+        rtt_ms:
+          type: number
+          description: Round-trip time in milliseconds
+        available_outgoing_bitrate_kbps:
+          type: number
+          description: Available outgoing bitrate in kbps
+        bytes_received:
+          type: integer
+          description: Total bytes received
+        bytes_sent:
+          type: integer
+          description: Total bytes sent
+      additionalProperties: false
+    CodecMetrics:
+      type: object
+      description: Codec information
+      properties:
+        video:
+          type: string
+          description: Video codec (e.g., video/VP8)
+        audio:
+          type: string
+          description: Audio codec (e.g., audio/opus)
+      additionalProperties: false
+    ResolutionMetrics:
+      type: object
+      description: Video resolution
+      properties:
+        width:
+          type: integer
+          description: Video width in pixels
+        height:
+          type: integer
+          description: Video height in pixels
+      additionalProperties: false
+    MemoryMetrics:
+      type: object
+      properties:
+        baseline:
+          type: number
+        per_connection:
+          type: number
+        per_viewer:
+          type: number
+      additionalProperties: false
+    MessageSizeMetrics:
+      type: object
+      properties:
+        min:
+          type: integer
+        max:
+          type: integer
+        avg:
+          type: integer
+      additionalProperties: false
+    StartupTimingResults:
+      type: object
+      description: Container startup timing metrics
+      properties:
+        total_startup_time_ms:
+          type: number
+          description: Total startup time from container start to ready state
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PhaseResult"
+          description: Individual startup phases with durations
+        phase_summary:
+          $ref: "#/components/schemas/PhaseSummary"
+      additionalProperties: false
+    PhaseResult:
+      type: object
+      description: Timing data for a single startup phase
+      properties:
+        name:
+          type: string
+          description: Name of the startup phase
+        duration_ms:
+          type: number
+          description: Duration of this phase in milliseconds
+        percentage:
+          type: number
+          description: Percentage of total startup time
+      additionalProperties: false
+    PhaseSummary:
+      type: object
+      description: Summary statistics for startup phases
+      properties:
+        fastest_phase:
+          type: string
+          description: Name of the fastest phase
+        slowest_phase:
+          type: string
+          description: Name of the slowest phase
+        fastest_ms:
+          type: number
+          description: Duration of fastest phase in milliseconds
+        slowest_ms:
+          type: number
+          description: Duration of slowest phase in milliseconds
       additionalProperties: false
     ExecutePlaywrightRequest:
       type: object
