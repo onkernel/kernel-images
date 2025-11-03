@@ -75,37 +75,52 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
 RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
     <<-'EOT'
     set -eux
+    FFMPEG_CACHE_PATH="/tmp/cache/ffmpeg"
+
     case ${TARGETARCH:-amd64} in
         "amd64") FFMPEG_TARGET_ARCH="64" ;;
         "arm64") FFMPEG_TARGET_ARCH="arm64" ;;
     esac
     FFMPEG_TARGET=linux${FFMPEG_TARGET_ARCH:?}
+    echo Target Arch: $FFMPEG_TARGET_ARCH $FFMPEG_TARGET
+
     ARCHIVE_NAME="ffmpeg-n7.1-latest-${FFMPEG_TARGET}-gpl-7.1.tar.xz"
+    FFMPEG_CACHED_ARCHIVE_PATH="$FFMPEG_CACHE_PATH/$ARCHIVE_NAME"
+    FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH="$FFMPEG_CACHED_ARCHIVE_PATH.sha256"
+
     URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
+    TEMPORARY_SHA256_CHECKSUM_PATH=$(mktemp /tmp/tmp_sha256.XXXXXXXXXX)
+    CONTINUE="true"
     echo "Downloading FFmpeg checksum"
-    if ! curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+    if curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o $TEMPORARY_SHA256_CHECKSUM_PATH; then
+        grep -F "$ARCHIVE_NAME" $TEMPORARY_SHA256_CHECKSUM_PATH > $FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH
+    else
         echo "Failed to connect to ffmpeg static build provider for checksum."
         echo "Checking for cached version to use."
-        if [ ! -f /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 ]; then
-            echo "Unable to locate cached checksum. Exiting."
-            exit 1
-        else
+        if [ -f "$FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH" ]; then
             echo "Found cached checksum."
+        else
+            echo "Unable to locate cached checksum."
+            CONTINUE="false"
         fi
     fi
-    grep -F "$ARCHIVE_NAME" /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256 > /tmp/cache/ffmpeg/tmp_sha256_only
-    mv /tmp/cache/ffmpeg/tmp_sha256_only /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
-    sed -i -e 's/  .*$/  \/tmp\/cache\/ffmpeg\/ffmpeg.tar.xz/' /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+    rm $TEMPORARY_SHA256_CHECKSUM_PATH
+
+    if [ "$CONTINUE" = "false" ]; then
+        exit 1
+    fi
+
     echo "Checking cache for FFmpeg archive and validating checksum"
-    if sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
+    if (cd $FFMPEG_CACHE_PATH && sha256sum --check $FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH); then
         echo "Checksum validated, using cached FFmpeg archive"
     else
         echo "Downloading FFmpeg static build from $URL"
-        curl -fsSL "$URL" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz
+        curl -fsSL "$URL" -o $FFMPEG_CACHED_ARCHIVE_PATH
         echo "Validating checksum of FFmpeg static build download"
-        sha256sum --check /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256
+        (cd $FFMPEG_CACHE_PATH && sha256sum --check $FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH)
     fi
-    tar -xJf /tmp/cache/ffmpeg/ffmpeg.tar.xz -C /tmp
+
+    tar -xJf $FFMPEG_CACHED_ARCHIVE_PATH -C /tmp
     install -m755 /tmp/ffmpeg-*/bin/ffmpeg  /usr/local/bin/ffmpeg
     install -m755 /tmp/ffmpeg-*/bin/ffprobe /usr/local/bin/ffprobe
     rm -rf /tmp/ffmpeg*
