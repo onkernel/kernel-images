@@ -40,7 +40,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
 RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
     <<-'EOT'
     set -eux
-    ARCHIVE_NAME="ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz"
+    case ${TARGETARCH:-amd64} in
+        "amd64") FFMPEG_TARGET_ARCH="64" ;;
+        "arm64") FFMPEG_TARGET_ARCH="arm64" ;;
+    esac
+    FFMPEG_TARGET=linux${FFMPEG_TARGET_ARCH:?}
+    ARCHIVE_NAME="ffmpeg-n7.1-latest-${FFMPEG_TARGET}-gpl-7.1.tar.xz"
     URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
     echo "Downloading FFmpeg checksum"
     if ! curl --connect-timeout 10 -fsSL "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256" -o /tmp/cache/ffmpeg/ffmpeg.tar.xz.sha256; then
