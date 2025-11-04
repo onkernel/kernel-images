@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      CACHE_DIR: .buildx-cache-${{ runner.os }}-${{ runner.arch }}
 
     steps:
       - name: Checkout code
@@ -29,6 +31,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/e2e/playwright/pnpm-lock.yaml
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -40,6 +44,14 @@ jobs:
         with:
           go-version-file: "server/go.mod"
           cache: true
+
+      - name: Restore Docker layer cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: buildx-${{ runner.os }}-${{ runner.arch }}-e2e-${{ hashFiles('images/**/Dockerfile', 'images/**/wrapper.sh', 'images/chromium-headful/client/package.json', 'images/chromium-headful/client/package-lock.json', 'server/go.mod', 'server/go.sum') }}
+          restore-keys: |
+            buildx-${{ runner.os }}-${{ runner.arch }}-e2e-
 
       - name: Build chromium-headless image
         shell: bash

@@ -13,6 +13,7 @@ lerna-debug.log*
 # Caches
 
 .cache
+.buildx-cache-*
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 

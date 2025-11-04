@@ -29,9 +29,18 @@ jobs:
       NAME: ci-chromium-headless
       DETACH: "true"
       SERVICE_EXCEPTIONS: pulseaudio
+      CACHE_DIR: .buildx-cache-headless-${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore Docker layer cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: buildx-${{ runner.os }}-${{ matrix.runner }}-headless-${{ hashFiles('images/chromium-headless/image/Dockerfile', 'images/chromium-headless/image/wrapper.sh', 'server/go.mod', 'server/go.sum') }}
+          restore-keys: |
+            buildx-${{ runner.os }}-${{ matrix.runner }}-headless-
 
       - name: Build image
         shell: bash

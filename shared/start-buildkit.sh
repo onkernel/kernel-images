@@ -21,3 +21,11 @@ else
     docker start buildkit
     return $?
 fi
+
+CACHE_ARGS=()
+if [ -n "${CACHE_DIR:-}" ]; then
+  mkdir -p "$CACHE_DIR"
+  CACHE_ARGS+=(--cache-from type=local,src="$CACHE_DIR")
+  CACHE_ARGS+=(--cache-to type=local,dest="$CACHE_DIR",mode=max)
+fi
+export CACHE_ARGS

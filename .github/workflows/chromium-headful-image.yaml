@@ -29,9 +29,18 @@ jobs:
       NAME: ci-chromium-headful
       DETACH: "true"
       SERVICE_EXCEPTIONS: pulseaudio
+      CACHE_DIR: .buildx-cache-headful-${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore Docker layer cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CACHE_DIR }}
+          key: buildx-${{ runner.os }}-${{ matrix.runner }}-headful-${{ hashFiles('images/chromium-headful/Dockerfile', 'images/chromium-headful/wrapper.sh', 'images/chromium-headful/client/package.json', 'images/chromium-headful/client/package-lock.json', 'server/go.mod', 'server/go.sum') }}
+          restore-keys: |
+            buildx-${{ runner.os }}-${{ matrix.runner }}-headful-
 
       - name: Build image
         shell: bash
