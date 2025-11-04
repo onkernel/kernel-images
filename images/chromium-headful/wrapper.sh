@@ -2,6 +2,15 @@
 
 set -o pipefail -o errexit -o nounset
 
+# ------------------------------------------------------------------------------
+# Environment variables for audio and display
+# ------------------------------------------------------------------------------
+export PULSE_SERVER="/tmp/runtime-kernel/pulse/native"
+export XDG_CONFIG_HOME="/tmp/.chromium"
+export XDG_CACHE_HOME="/tmp/.chromium"
+export XDG_RUNTIME_DIR="/tmp/runtime-kernel"
+export DISPLAY=":1"
+
 # If the WITHDOCKER environment variable is not set, it means we are not running inside a Docker container.
 # Docker manages /dev/shm itself, and attempting to mount or modify it can cause permission or device errors.
 # However, in a unikernel container environment (non-Docker), we need to manually create and mount /dev/shm as a tmpfs
@@ -52,6 +61,8 @@ if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
     /tmp
     /var/log
     /var/log/supervisord
+    /tmp/runtime-kernel/dconf
+    /tmp/.chromium
   )
 
   for dir in "${dirs[@]}"; do
@@ -61,7 +72,7 @@ if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
   done
 
   # Ensure correct ownership (ignore errors if already correct)
-  chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+  chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache /tmp/runtime-kernel /tmp/.chromium 2>/dev/null || true
 else
   # When running as root, just create the necessary directories without ownership changes
   dirs=(
@@ -126,6 +137,7 @@ cleanup () {
   # Re-enable scale-to-zero if the script terminates early
   enable_scale_to_zero
   supervisorctl -c /etc/supervisor/supervisord.conf stop chromium || true
+  supervisorctl -c /etc/supervisor/supervisord.conf stop pulseaudio || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop kernel-images-api || true
   supervisorctl -c /etc/supervisor/supervisord.conf stop dbus || true
   # Stop log tailers
@@ -187,6 +199,22 @@ done
 # autolaunch attempts that failed and spammed logs.
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/dbus/system_bus_socket"
 
+# Start PulseAudio via supervisord (matches the architecture of all other services)
+echo "[wrapper] Starting PulseAudio daemon via supervisord"
+supervisorctl -c /etc/supervisor/supervisord.conf start pulseaudio
+echo "[wrapper] Waiting for PulseAudio server..."
+for i in $(seq 1 20); do
+  if runuser -u kernel -- pactl info >/dev/null 2>&1; then
+    echo "[wrapper] PulseAudio is ready"
+    break
+  fi
+  if [ "$i" -eq 20 ]; then
+    echo "[wrapper] ERROR: PulseAudio failed to start" >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+
 # Start Chromium with display :1 and remote debugging, loading our recorder extension.
 echo "[wrapper] Starting Chromium via supervisord on internal port $INTERNAL_PORT"
 supervisorctl -c /etc/supervisor/supervisord.conf start chromium
@@ -221,9 +249,6 @@ API_OUTPUT_DIR="${KERNEL_IMAGES_API_OUTPUT_DIR:-/recordings}"
 
 # Start via supervisord (env overrides are read by the service's command)
 supervisorctl -c /etc/supervisor/supervisord.conf start kernel-images-api
-
-echo "[wrapper] Starting PulseAudio daemon via supervisord"
-supervisorctl -c /etc/supervisor/supervisord.conf start pulseaudio
 
 # close the "--no-sandbox unsupported flag" warning when running as root
 # in the unikernel runtime we haven't been able to get chromium to launch as non-root without cryptic crashpad errors

@@ -224,7 +224,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-ap
     apt-get update; \
     apt-get --no-install-recommends -y install \
     wget ca-certificates python2 supervisor xclip xdotool \
-    pulseaudio dbus-x11 xserver-xorg-video-dummy \
+    pulseaudio dbus-x11 xserver-xorg-video-dummy rtkit upower \
     libcairo2 libxcb1 libxrandr2 libxv1 libopus0 libvpx7 \
     x11-xserver-utils \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
@@ -249,7 +249,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-ap
     /home/$USERNAME/.local/share/xorg; \
     chmod 1777 /var/log/neko; \
     chown $USERNAME /var/log/neko/ /tmp/runtime-$USERNAME; \
-    chown -R $USERNAME:$USERNAME /home/$USERNAME;
+    chown -R $USERNAME:$USERNAME /home/$USERNAME; \
+    chmod 777 /etc/pulse;
 
 # install chromium and sqlite3 for debugging the cookies file
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
@@ -287,6 +288,10 @@ ENV WITHDOCKER=true
 
 COPY images/chromium-headful/xorg.conf /etc/neko/xorg.conf
 COPY images/chromium-headful/neko.yaml /etc/neko/neko.yaml
+COPY images/chromium-headful/default.pa /etc/pulse/default.pa
+COPY images/chromium-headful/daemon.conf /etc/pulse/daemon.conf
+COPY images/chromium-headful/dbus-pulseaudio.conf /etc/dbus-1/system.d/pulseaudio.conf
+COPY images/chromium-headful/dbus-mpris.conf /etc/dbus-1/system.d/mpris.conf
 COPY --from=neko /usr/bin/neko /usr/bin/neko
 COPY --from=client /src/dist/ /var/www
 COPY --from=xorg-deps /usr/local/lib/xorg/modules/drivers/dummy_drv.so /usr/lib/xorg/modules/drivers/dummy_drv.so
@@ -306,6 +311,11 @@ COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launch
 # Copy the Playwright executor runtime
 COPY server/runtime/playwright-executor.ts /usr/local/lib/playwright-executor.ts
 
-RUN useradd -m -s /bin/bash kernel
+RUN useradd -m -s /bin/bash kernel && \
+    usermod -aG audio,video,pulse,pulse-access kernel
+
+# Environment variables for audio
+ENV XDG_RUNTIME_DIR=/tmp/runtime-kernel
+ENV PULSE_SERVER=unix:/tmp/runtime-kernel/pulse/native
 
 ENTRYPOINT [ "/wrapper.sh" ]
