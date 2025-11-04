@@ -61,4 +61,5 @@ jobs:
         run: make test
         working-directory: server
         env:
-          E2E_IMAGE_TAG: latest
+          E2E_CHROMIUM_HEADFUL_IMAGE: onkernel/chromium-headful-test:latest
+          E2E_CHROMIUM_HEADLESS_IMAGE: onkernel/chromium-headless-test:latest

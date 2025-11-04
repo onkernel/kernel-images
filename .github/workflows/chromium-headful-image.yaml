@@ -40,6 +40,8 @@ jobs:
 
       - name: Run container
         shell: bash
+        env:
+          ENABLE_WEBRTC: true
         run: |
           bash images/chromium-headful/run-docker.sh
 
