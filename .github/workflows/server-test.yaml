@@ -7,18 +7,14 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-headful:
-    uses: ./.github/workflows/chromium-headful-image.yaml
-    secrets: inherit
-
-  build-headless:
-    uses: ./.github/workflows/chromium-headless-image.yaml
-    secrets: inherit
-
   test:
     runs-on: ubuntu-latest
-    needs: [build-headful, build-headless]
+    timeout-minutes: 45
     permissions:
       contents: read
 
@@ -45,20 +41,24 @@ jobs:
           go-version-file: "server/go.mod"
           cache: true
 
-      - name: Compute short SHA for images
-        id: vars
+      - name: Build chromium-headless image
         shell: bash
-        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        env:
+          UKC_TOKEN: dummy
+          UKC_METRO: ci
+        run: |
+          bash images/chromium-headless/build-docker.sh
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build chromium-headful image
+        shell: bash
+        env:
+          UKC_TOKEN: dummy
+          UKC_METRO: ci
+        run: |
+          bash images/chromium-headful/build-docker.sh
 
       - name: Run server Makefile tests
         run: make test
         working-directory: server
         env:
-          # Prefer explicit images if passed from the caller; otherwise use the commit short sha
-          E2E_IMAGE_TAG: ${{ steps.vars.outputs.short_sha }}
+          E2E_IMAGE_TAG: latest
