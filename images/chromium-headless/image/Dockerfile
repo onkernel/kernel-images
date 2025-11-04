@@ -2,57 +2,60 @@ FROM docker.io/golang:1.25.0 AS server-builder
 WORKDIR /workspace/server
 
 # Allow cross-compilation when building with BuildKit platforms
-ARG TARGETOS
 ARG TARGETARCH
+ARG TARGETOS
+ARG CACHEIDPREFIX=${TARGETOS:-linux}-${TARGETARCH:-amd64}-golang1250
 ENV CGO_ENABLED=0
 
 # Go module dependencies first for better layer caching
 COPY server/go.mod ./
 COPY server/go.sum ./
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
+RUN --mount=type=cache,target=/root/.cache/go-build,id=$CACHEIDPREFIX-go-build \
+    --mount=type=cache,target=/go/pkg/mod,id=$CACHEIDPREFIX-go-pkg-mod \
     go mod download
 
 COPY server/ .
 
 # Build kernel-images API
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
+RUN --mount=type=cache,target=/root/.cache/go-build,id=$CACHEIDPREFIX-go-build \
+    --mount=type=cache,target=/go/pkg/mod,id=$CACHEIDPREFIX-go-pkg-mod \
     GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/kernel-images-api ./cmd/api
 
 # Build chromium launcher
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
+RUN --mount=type=cache,target=/root/.cache/go-build,id=$CACHEIDPREFIX-go-build \
+    --mount=type=cache,target=/go/pkg/mod,id=$CACHEIDPREFIX-go-pkg-mod \
     GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-s -w" -o /out/chromium-launcher ./cmd/chromium-launcher
 
 FROM docker.io/ubuntu:22.04 AS ffmpeg-downloader
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+
+# Allow cross-compilation when building with BuildKit platforms
+ARG TARGETARCH
+ARG TARGETOS
+ARG CACHEIDPREFIX=${TARGETOS:-linux}-${TARGETARCH:-amd64}-ubuntu2204
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=$CACHEIDPREFIX-apt-lib \
+    set -xe; \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
-    set -xe; \
     apt-get -yqq update; \
     apt-get -yqq --no-install-recommends install ca-certificates curl xz-utils;
 
 # Download FFmpeg (latest static build) for the recording server
-RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=private,id=ffmpeg \
+RUN --mount=type=cache,target=/tmp/cache/ffmpeg,sharing=locked,id=$CACHEIDPREFIX-ffmpeg \
     <<-'EOT'
     set -eux
     FFMPEG_CACHE_PATH="/tmp/cache/ffmpeg"
-
     case ${TARGETARCH:-amd64} in
         "amd64") FFMPEG_TARGET_ARCH="64" ;;
         "arm64") FFMPEG_TARGET_ARCH="arm64" ;;
     esac
     FFMPEG_TARGET=linux${FFMPEG_TARGET_ARCH:?}
-    echo Target Arch: $FFMPEG_TARGET_ARCH $FFMPEG_TARGET
-
     ARCHIVE_NAME="ffmpeg-n7.1-latest-${FFMPEG_TARGET}-gpl-7.1.tar.xz"
     FFMPEG_CACHED_ARCHIVE_PATH="$FFMPEG_CACHE_PATH/$ARCHIVE_NAME"
     FFMPEG_CACHED_ARCHIVE_CHECKSUM_PATH="$FFMPEG_CACHED_ARCHIVE_PATH.sha256"
-
     URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ARCHIVE_NAME"
     TEMPORARY_SHA256_CHECKSUM_PATH=$(mktemp /tmp/tmp_sha256.XXXXXXXXXX)
     CONTINUE="true"
@@ -93,11 +96,17 @@ EOT
 
 FROM node:22-bullseye-slim AS node-22
 FROM docker.io/ubuntu:22.04
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+
+# Allow cross-compilation when building with BuildKit platforms
+ARG TARGETARCH
+ARG TARGETOS
+ARG CACHEIDPREFIX=${TARGETOS:-linux}-${TARGETARCH:-amd64}-ubuntu2204
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=$CACHEIDPREFIX-apt-lib \
+    set -xe; \
     rm -f /etc/apt/apt.conf.d/docker-clean; \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache; \
-    set -xe; \
     apt-get -yqq update; \
     apt-get -yqq --no-install-recommends install \
     libcups2 \
@@ -137,11 +146,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptca
     fc-cache -f
 
 # install chromium and sqlite3 for debugging the cookies file
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=$CACHEIDPREFIX-apt-lib \
     add-apt-repository -y ppa:xtradeb/apps
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=$CACHEIDPREFIX-apt-lib \
     apt-get update -y && \
     apt-get -y install chromium && \
     apt-get --no-install-recommends -y install sqlite3;
@@ -155,8 +164,8 @@ COPY --from=ffmpeg-downloader /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-downloader /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
 # Remove upower to prevent spurious D-Bus activations and logs
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private,id=ubuntu2204-aptcache \
-    --mount=type=cache,target=/var/lib/apt,sharing=private,id=ubuntu2204-aptlib \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-apt-cache \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=$CACHEIDPREFIX-apt-lib \
     apt-get -yqq purge upower || true
 
 # install Node.js 22.x by copying from the node:22-bullseye-slim stage
@@ -171,7 +180,7 @@ RUN set -eux; \
     fi
 
 # Install TypeScript and Playwright globally
-RUN --mount=type=cache,target=/root/.npm npm install -g typescript playwright-core tsx
+RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core tsx
 
 ENV WITHDOCKER=true
 
