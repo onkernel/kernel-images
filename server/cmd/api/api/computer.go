@@ -62,7 +62,7 @@ func (s *ApiService) MoveMouse(ctx context.Context, request oapi.MoveMouseReques
 	}
 
 	// Move the cursor to the desired coordinates
-	args = append(args, "mousemove", "--sync", strconv.Itoa(body.X), strconv.Itoa(body.Y))
+	args = append(args, "mousemove", strconv.Itoa(body.X), strconv.Itoa(body.Y))
 
 	// Release modifier keys (keyup)
 	if body.HoldKeys != nil {
@@ -156,7 +156,7 @@ func (s *ApiService) ClickMouse(ctx context.Context, request oapi.ClickMouseRequ
 	}
 
 	// Move the cursor
-	args = append(args, "mousemove", "--sync", strconv.Itoa(body.X), strconv.Itoa(body.Y))
+	args = append(args, "mousemove", strconv.Itoa(body.X), strconv.Itoa(body.Y))
 
 	// click type defaults to click
 	clickType := oapi.Click
@@ -515,7 +515,7 @@ func (s *ApiService) Scroll(ctx context.Context, request oapi.ScrollRequestObjec
 			args = append(args, "keydown", key)
 		}
 	}
-	args = append(args, "mousemove", "--sync", strconv.Itoa(body.X), strconv.Itoa(body.Y))
+	args = append(args, "mousemove", strconv.Itoa(body.X), strconv.Itoa(body.Y))
 
 	// Apply vertical ticks first (sequential as specified)
 	if body.DeltaY != nil && *body.DeltaY != 0 {
@@ -626,7 +626,7 @@ func (s *ApiService) DragMouse(ctx context.Context, request oapi.DragMouseReques
 		}
 	}
 	start := body.Path[0]
-	args1 = append(args1, "mousemove", "--sync", strconv.Itoa(start[0]), strconv.Itoa(start[1]))
+	args1 = append(args1, "mousemove", strconv.Itoa(start[0]), strconv.Itoa(start[1]))
 	args1 = append(args1, "mousedown", btn)
 	log.Info("executing xdotool (drag start)", "args", args1)
 	if output, err := defaultXdoTool.Run(ctx, args1...); err != nil {
