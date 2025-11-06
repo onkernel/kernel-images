@@ -32,7 +32,7 @@ Port <port>
 - Set needed environment variables
 ```sh
 export UKC_TOKEN=<your-ukc-token>
-export UKC_METRO=https://api.dev-iad-unikraft-0.onkernel.run/v1 # example for dev
+export UKC_METRO=<ukc-metro> # example for dev
 ```
 - Run the `build-unikernel.sh`script with a custom image name to avoid being overwritten by someone else
 ```sh
