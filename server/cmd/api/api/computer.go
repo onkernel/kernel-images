@@ -406,12 +406,13 @@ func (s *ApiService) SetCursor(ctx context.Context, request oapi.SetCursorReques
 	}
 
 	if body.Hidden {
+		display := s.resolveDisplayFromEnv()
 		unclutterCmd := exec.CommandContext(context.Background(),
 			"unclutter",
 			"-idle", unclutterIdleSeconds,
 			"-jitter", unclutterJitterPixels,
 		)
-		unclutterCmd.Env = append(os.Environ(), "DISPLAY=:1")
+		unclutterCmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=%s", display))
 		unclutterCmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{Uid: 0, Gid: 0},
 		}
