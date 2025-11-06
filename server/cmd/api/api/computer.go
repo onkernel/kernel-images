@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -360,6 +361,70 @@ func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestO
 	}
 
 	return oapi.TypeText200Response{}, nil
+}
+
+const (
+
+	// Unclutter configuration for cursor hiding
+	// Setting idle to 0 hides the cursor immediately
+	unclutterIdleSeconds = "0"
+
+	// A very large jitter value (9 million pixels) ensures that all mouse
+	// movements are treated as "noise", keeping the cursor permanently hidden
+	// when combined with idle=0
+	unclutterJitterPixels = "9000000"
+)
+
+func (s *ApiService) SetCursor(ctx context.Context, request oapi.SetCursorRequestObject) (oapi.SetCursorResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	// serialize input operations to avoid overlapping commands
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+
+	// Validate request body
+	if request.Body == nil {
+		return oapi.SetCursor400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
+			Message: "request body is required"},
+		}, nil
+	}
+	body := *request.Body
+
+	// Kill any existing unclutter processes first
+	pkillCmd := exec.CommandContext(ctx, "pkill", "unclutter")
+	pkillCmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{Uid: 0, Gid: 0},
+	}
+
+	if err := pkillCmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+			log.Error("failed to kill existing unclutter processes", "err", err)
+			return oapi.SetCursor500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
+				Message: "failed to kill existing unclutter processes"},
+			}, nil
+		}
+	}
+
+	if body.Hidden {
+		unclutterCmd := exec.CommandContext(context.Background(),
+			"unclutter",
+			"-idle", unclutterIdleSeconds,
+			"-jitter", unclutterJitterPixels,
+		)
+		unclutterCmd.Env = append(os.Environ(), "DISPLAY=:1")
+		unclutterCmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{Uid: 0, Gid: 0},
+		}
+
+		if err := unclutterCmd.Start(); err != nil {
+			log.Error("failed to start unclutter", "err", err)
+			return oapi.SetCursor500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
+				Message: "failed to start unclutter"},
+			}, nil
+		}
+	}
+
+	return oapi.SetCursor200JSONResponse{Ok: true}, nil
 }
 
 func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestObject) (oapi.PressKeyResponseObject, error) {

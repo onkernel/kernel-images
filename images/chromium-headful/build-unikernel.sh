@@ -25,6 +25,8 @@ docker cp cnt-"$app_name":/ ./.rootfs
 rm -f initrd || true
 sudo mkfs.erofs --all-root -d2 -E noinline_data -b 4096 initrd ./.rootfs
 
+echo "Image index/name: $UKC_INDEX/$IMAGE"
+
 # Package the unikernel (and the new initrd) to KraftCloud
 kraft pkg \
   --name $UKC_INDEX/$IMAGE \

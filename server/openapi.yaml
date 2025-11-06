@@ -332,6 +332,27 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /computer/cursor:
+    post:
+      summary: Hide or show the cursor
+      operationId: setCursor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetCursorRequest"
+      responses:
+        "200":
+          description: Cursor visibility updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /computer/type:
     post:
       summary: Type text on the host computer
@@ -1087,6 +1108,15 @@ components:
       properties:
         region:
           $ref: "#/components/schemas/ScreenshotRegion"
+      additionalProperties: false
+    SetCursorRequest:
+      type: object
+      required:
+        - hidden
+      properties:
+        hidden:
+          type: boolean
+          description: Whether the cursor should be hidden
       additionalProperties: false
     TypeTextRequest:
       type: object
