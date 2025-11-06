@@ -18,14 +18,15 @@ curl -X POST localhost:444/computer/cursor \
 - Follow [this guide in Github](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) to add your ssh keys.
 - Add  the followin to your ~/.ssh/config file:
 ```sh
-Host prod-iad-unikraft-builder-1
-HostName 3.91.184.17
+# ask a colleage for <values>
+Host <host-name>
+HostName <host-ip>
 User <my-username>
 IdentityFile ~/.ssh/id_ed25519 # confirm this is same path 
-Port 22
+Port <port>
 ```
 - TODO Sayan did something on his side confirm with him this step
-- ssh into the VM builder machine with `ssh <my-username>@3.91.184.17`
+- ssh into the VM builder machine with `ssh <my-username>@<host-ip>`
 - git clone the kernel-images repo `git clone git@github.com:onkernel/kernel-images.git`
 - cd kernel-images/images/chromium-headful
 - Set needed environment variables
