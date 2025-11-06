@@ -18,7 +18,7 @@ curl -X POST localhost:444/computer/cursor \
 - Follow [this guide in Github](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account) to add your ssh keys.
 - Add  the followin to your ~/.ssh/config file:
 ```sh
-# ask a colleage for <values>
+# ask a colleague for <values>
 Host <host-name>
 HostName <host-ip>
 User <my-username>
