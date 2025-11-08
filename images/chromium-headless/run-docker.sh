@@ -19,6 +19,10 @@ RUN_ARGS=(
   -v "$HOST_RECORDINGS_DIR:/recordings"
 )
 
+if [[ -n "${PLAYWRIGHT_ENGINE:-}" ]]; then
+  RUN_ARGS+=( -e PLAYWRIGHT_ENGINE="$PLAYWRIGHT_ENGINE" )
+fi
+
 # If a positional argument is given, use it as the entrypoint
 ENTRYPOINT_ARG=()
 if [[ $# -ge 1 && -n "$1" ]]; then

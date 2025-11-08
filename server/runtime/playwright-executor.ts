@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
-import { chromium } from 'playwright-core';
+import { chromium as chromiumPW } from 'playwright-core';
+import { chromium as chromiumPR } from 'patchright';
 
 async function main() {
   const codeFilePath = process.argv[2];
@@ -24,6 +25,8 @@ async function main() {
   let result;
 
   try {
+    const chromium = process.env.PLAYWRIGHT_ENGINE === 'patchright' ? chromiumPR : chromiumPW;
+
     browser = await chromium.connectOverCDP('ws://127.0.0.1:9222');
     const contexts = browser.contexts();
     const context = contexts.length > 0 ? contexts[0] : await browser.newContext();

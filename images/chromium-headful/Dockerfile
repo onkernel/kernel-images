@@ -276,8 +276,8 @@ RUN set -eux; \
     ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack; \
     fi
 
-# Install TypeScript and Playwright globally
-RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core tsx
+# Install TypeScript, Playwright, Patchright globally
+RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core patchright tsx
 
 # setup desktop env & app
 ENV DISPLAY_NUM=1

@@ -66,6 +66,10 @@ RUN_ARGS=(
   --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
 )
 
+if [[ -n "${PLAYWRIGHT_ENGINE:-}" ]]; then
+  RUN_ARGS+=( -e PLAYWRIGHT_ENGINE="$PLAYWRIGHT_ENGINE" )
+fi
+
 # WebRTC port mapping
 if [[ "${ENABLE_WEBRTC:-}" == "true" ]]; then
   echo "Running container with WebRTC"
