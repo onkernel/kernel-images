@@ -30,6 +30,6 @@ if [ "$REQUIRE_UKC_VARS" == "require-ukc-vars" ]; then
     done
     if [ -n "$errormsg" ]; then
         echo "Required variables not set: $errormsg"
-        exit 1
+        return 1
     fi
 fi
