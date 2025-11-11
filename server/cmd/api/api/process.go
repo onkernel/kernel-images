@@ -26,6 +26,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"golang.org/x/sys/unix"
 )
 
 type processHandle struct {
@@ -650,31 +651,51 @@ func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request,
 	<-done
 }
 
-// copyPTYToConn copies from a PTY (os.File) to a net.Conn, using non-blocking
-// reads to allow early termination when stop is closed, avoiding goroutine leaks.
+// copyPTYToConn copies from a PTY (os.File) to a net.Conn without mutating the
+// PTY's file status flags. It uses readiness polling so we can wake up and exit
+// when stop is closed, avoiding goroutine leaks and preserving blocking mode.
 func copyPTYToConn(ptyFile *os.File, conn net.Conn, stop <-chan struct{}) {
-	_ = syscall.SetNonblock(int(ptyFile.Fd()), true)
+	fd := int(ptyFile.Fd())
 	buf := make([]byte, 32*1024)
+	// Poll in short intervals so we can react quickly to stop signal.
 	for {
+		// Check for stop first to avoid extra reads after shutdown.
 		select {
 		case <-stop:
 			return
 		default:
 		}
-		n, err := ptyFile.Read(buf)
+		pfds := []unix.PollFd{
+			{Fd: int32(fd), Events: unix.POLLIN},
+		}
+		_, perr := unix.Poll(pfds, 100) // 100ms
+		if perr != nil && perr != syscall.EINTR {
+			return
+		}
+		// If readable (or hangup/err), attempt a read.
+		if pfds[0].Revents&(unix.POLLIN|unix.POLLHUP|unix.POLLERR) == 0 {
+			// Not ready; loop around and re-check stop.
+			continue
+		}
+		n, rerr := ptyFile.Read(buf)
 		if n > 0 {
 			if _, werr := conn.Write(buf[:n]); werr != nil {
 				return
 			}
 		}
-		if err != nil {
-			if err == io.EOF {
+		if rerr != nil {
+			if rerr == io.EOF {
 				return
 			}
-			// EAGAIN/EWOULDBLOCK: no data available right now
-			if errno, ok := err.(syscall.Errno); ok && (errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK) {
-				time.Sleep(10 * time.Millisecond)
-				continue
+			if errno, ok := rerr.(syscall.Errno); ok {
+				// EIO is observed on PTY when the slave closes; treat as EOF.
+				if errno == syscall.EIO {
+					return
+				}
+				// Spurious would-block after poll; just continue.
+				if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
+					continue
+				}
 			}
 			return
 		}
