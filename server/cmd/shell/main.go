@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -68,34 +69,61 @@ func main() {
 	procID := resp.JSON200.ProcessId.String()
 
 	// Attach via HTTP hijack
-	addr := u.Host
-	if addr == "" {
-		// Fallback for URLs like http://localhost
-		addr = u.Hostname()
-		if port := u.Port(); port != "" {
-			addr = net.JoinHostPort(addr, port)
-		} else {
-			addr = net.JoinHostPort(addr, "80")
+	var (
+		rawConn net.Conn
+	)
+	{
+		addr := u.Host
+		if addr == "" {
+			// Fallback for URLs like http://localhost
+			addr = u.Hostname()
+			if port := u.Port(); port != "" {
+				addr = net.JoinHostPort(addr, port)
+			} else {
+				// Default ports by scheme
+				if u.Scheme == "https" {
+					addr = net.JoinHostPort(addr, "443")
+				} else {
+					addr = net.JoinHostPort(addr, "80")
+				}
+			}
+		}
+		// Dial based on scheme
+		switch u.Scheme {
+		case "https":
+			tlsConf := &tls.Config{
+				ServerName: u.Hostname(),
+				MinVersion: tls.VersionTLS12,
+			}
+			rc, err := tls.Dial("tcp", addr, tlsConf)
+			if err != nil {
+				log.Fatalf("failed to tls dial %s: %v", addr, err)
+			}
+			rawConn = rc
+		default:
+			rc, err := net.Dial("tcp", addr)
+			if err != nil {
+				log.Fatalf("failed to dial %s: %v", addr, err)
+			}
+			rawConn = rc
 		}
 	}
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		log.Fatalf("failed to dial %s: %v", addr, err)
-	}
-	defer conn.Close()
+	defer rawConn.Close()
 
 	pathPrefix := strings.TrimRight(u.Path, "/")
 	if pathPrefix == "/" {
 		pathPrefix = ""
 	}
 	path := fmt.Sprintf("%s/%s/%s/%s", pathPrefix, "process", procID, "attach")
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, u.Host)
-	if _, err := conn.Write([]byte(req)); err != nil {
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", path, u.Host)
+	// For TLS, ensure we speak HTTP/1.1 and not attempt an HTTP/2 preface
+	// by writing the raw bytes directly over the established connection.
+	if _, err := rawConn.Write([]byte(req)); err != nil {
 		log.Fatalf("failed to write attach request: %v", err)
 	}
 
 	// Read and consume HTTP response headers (until \r\n\r\n)
-	br := bufio.NewReader(conn)
+	br := bufio.NewReader(rawConn)
 	if err := readHTTPHeaders(br); err != nil {
 		log.Fatalf("failed to read attach response headers: %v", err)
 	}
@@ -142,7 +170,7 @@ func main() {
 	// Bi-directional piping
 	errCh := make(chan error, 2)
 	go func() {
-		_, err := io.Copy(conn, os.Stdin)
+		_, err := io.Copy(rawConn, os.Stdin)
 		errCh <- err
 	}()
 	go func() {

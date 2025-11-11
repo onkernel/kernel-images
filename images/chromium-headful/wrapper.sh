@@ -34,6 +34,22 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Ensure a sensible hostname ---------------------------------------------------
+# -----------------------------------------------------------------------------
+# Some environments boot with an empty or \"(none)\" hostname which shows up in
+# prompts. Best-effort set a friendly hostname early so services inherit it.
+if h=$(cat /proc/sys/kernel/hostname 2>/dev/null); then
+  if [ -z "$h" ] || [ "$h" = "(none)" ]; then
+    if command -v hostname >/dev/null 2>&1; then
+      hostname kernel-vm 2>/dev/null || true
+    fi
+    echo -n "kernel-vm" > /proc/sys/kernel/hostname 2>/dev/null || true
+  fi
+fi
+# Also export HOSTNAME so shells pick it up immediately.
+export HOSTNAME="${HOSTNAME:-kernel-vm}"
+
+# -----------------------------------------------------------------------------
 # House-keeping for the unprivileged "kernel" user --------------------------------
 # Some Chromium subsystems want to create files under $HOME (NSS cert DB, dconf
 # cache).  If those directories are missing or owned by root Chromium emits
