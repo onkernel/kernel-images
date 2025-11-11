@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -19,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -34,6 +37,8 @@ type processHandle struct {
 	stdin    io.WriteCloser
 	stdout   io.ReadCloser
 	stderr   io.ReadCloser
+	ptyFile  *os.File
+	isTTY    bool
 	outCh    chan oapi.ProcessStreamEvent
 	doneCh   chan struct{}
 	mu       sync.RWMutex
@@ -223,21 +228,64 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		return oapi.ProcessSpawn400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: err.Error()}}, nil
 	}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stdout"}}, nil
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stderr"}}, nil
-	}
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stdin"}}, nil
-	}
-	if err := cmd.Start(); err != nil {
-		log.Error("failed to start process", "err", err)
-		return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start process"}}, nil
+	var (
+		stdout  io.ReadCloser
+		stderr  io.ReadCloser
+		stdin   io.WriteCloser
+		ptyFile *os.File
+		isTTY   bool
+	)
+	// PTY mode when requested
+	if request.Body.AllocateTty != nil && *request.Body.AllocateTty {
+		// Ensure TERM and initial size env
+		hasTerm := false
+		for _, kv := range cmd.Env {
+			if strings.HasPrefix(kv, "TERM=") {
+				hasTerm = true
+				break
+			}
+		}
+		if !hasTerm {
+			cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+		}
+		// Start with PTY
+		var errStart error
+		ptyFile, errStart = pty.Start(cmd)
+		if errStart != nil {
+			log.Error("failed to start PTY process", "err", errStart)
+			return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start process"}}, nil
+		}
+		// Set initial size if provided
+		var rows, cols uint16
+		if request.Body.Rows != nil && *request.Body.Rows > 0 {
+			rows = uint16(*request.Body.Rows)
+		}
+		if request.Body.Cols != nil && *request.Body.Cols > 0 {
+			cols = uint16(*request.Body.Cols)
+		}
+		if rows > 0 && cols > 0 {
+			_ = pty.Setsize(ptyFile, &pty.Winsize{Rows: rows, Cols: cols})
+		}
+		stdout = ptyFile
+		stdin = ptyFile
+		isTTY = true
+	} else {
+		stdout, err = cmd.StdoutPipe()
+		if err != nil {
+			return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stdout"}}, nil
+		}
+		stderr, err = cmd.StderrPipe()
+		if err != nil {
+			return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stderr"}}, nil
+		}
+		stdin, err = cmd.StdinPipe()
+		if err != nil {
+			return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to open stdin"}}, nil
+		}
+		if err := cmd.Start(); err != nil {
+			log.Error("failed to start process", "err", err)
+			return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start process"}}, nil
+		}
 	}
 
 	id := openapi_types.UUID(uuid.New())
@@ -249,6 +297,8 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		stdin:   stdin,
 		stdout:  stdout,
 		stderr:  stderr,
+		ptyFile: ptyFile,
+		isTTY:   isTTY,
 		outCh:   make(chan oapi.ProcessStreamEvent, 256),
 		doneCh:  make(chan struct{}),
 	}
@@ -262,37 +312,40 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 	s.procMu.Unlock()
 
 	// Reader goroutines
-	go func() {
-		reader := bufio.NewReader(stdout)
-		buf := make([]byte, 4096)
-		for {
-			n, err := reader.Read(buf)
-			if n > 0 {
-				data := base64.StdEncoding.EncodeToString(buf[:n])
-				stream := oapi.ProcessStreamEventStream("stdout")
-				h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
+	// In PTY mode, do NOT read from the PTY here to avoid competing with the /attach endpoint.
+	// In non‑PTY mode, stdout and stderr are separate pipes, so we run two readers and tag chunks accordingly.
+	if !isTTY {
+		go func() {
+			reader := bufio.NewReader(stdout)
+			buf := make([]byte, 4096)
+			for {
+				n, err := reader.Read(buf)
+				if n > 0 {
+					data := base64.StdEncoding.EncodeToString(buf[:n])
+					stream := oapi.ProcessStreamEventStream("stdout")
+					h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
+				}
+				if err != nil {
+					break
+				}
 			}
-			if err != nil {
-				break
+		}()
+		go func() {
+			reader := bufio.NewReader(stderr)
+			buf := make([]byte, 4096)
+			for {
+				n, err := reader.Read(buf)
+				if n > 0 {
+					data := base64.StdEncoding.EncodeToString(buf[:n])
+					stream := oapi.ProcessStreamEventStream("stderr")
+					h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
+				}
+				if err != nil {
+					break
+				}
 			}
-		}
-	}()
-
-	go func() {
-		reader := bufio.NewReader(stderr)
-		buf := make([]byte, 4096)
-		for {
-			n, err := reader.Read(buf)
-			if n > 0 {
-				data := base64.StdEncoding.EncodeToString(buf[:n])
-				stream := oapi.ProcessStreamEventStream("stderr")
-				h.outCh <- oapi.ProcessStreamEvent{Stream: &stream, DataB64: &data}
-			}
-			if err != nil {
-				break
-			}
-		}
-	}()
+		}()
+	}
 
 	// Waiter goroutine
 	go func() {
@@ -490,3 +543,87 @@ func (s *ApiService) ProcessStdoutStream(ctx context.Context, request oapi.Proce
 }
 
 func ptrOf[T any](v T) *T { return &v }
+
+// Resize PTY-backed process
+// (POST /process/{process_id}/resize)
+func (s *ApiService) ProcessResize(ctx context.Context, request oapi.ProcessResizeRequestObject) (oapi.ProcessResizeResponseObject, error) {
+	id := request.ProcessId.String()
+	if request.Body == nil {
+		return oapi.ProcessResize400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+	rows := request.Body.Rows
+	cols := request.Body.Cols
+	if rows <= 0 || cols <= 0 {
+		return oapi.ProcessResize400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "rows and cols must be > 0"}}, nil
+	}
+	s.procMu.RLock()
+	h, ok := s.procs[id]
+	s.procMu.RUnlock()
+	if !ok {
+		return oapi.ProcessResize404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "process not found"}}, nil
+	}
+	if !h.isTTY || h.ptyFile == nil {
+		return oapi.ProcessResize400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "process is not PTY-backed"}}, nil
+	}
+	ws := &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)}
+	if err := pty.Setsize(h.ptyFile, ws); err != nil {
+		return oapi.ProcessResize500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to resize PTY"}}, nil
+	}
+	return oapi.ProcessResize200JSONResponse(oapi.OkResponse{Ok: true}), nil
+}
+
+// HandleProcessAttach performs a raw HTTP hijack and shuttles bytes between the client and the PTY.
+// This endpoint is intentionally not defined in OpenAPI.
+func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request, id string) {
+	s.procMu.RLock()
+	h, ok := s.procs[id]
+	s.procMu.RUnlock()
+	if !ok {
+		http.Error(w, "process not found", http.StatusNotFound)
+		return
+	}
+	if !h.isTTY || h.ptyFile == nil {
+		http.Error(w, "process is not PTY-backed", http.StatusBadRequest)
+		return
+	}
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+	conn, buf, err := hj.Hijack()
+	if err != nil {
+		http.Error(w, "failed to hijack connection", http.StatusInternalServerError)
+		return
+	}
+	// Write minimal HTTP response and switch to raw I/O
+	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+	_ = buf.Flush()
+
+	clientConn := conn
+	processRW := h.ptyFile
+
+	// Pipe: client -> process
+	go func() {
+		_, _ = io.Copy(processRW, clientConn)
+	}()
+	// Pipe: process -> client
+	go func() {
+		_, _ = io.Copy(clientConn, processRW)
+	}()
+
+	// Close when process exits or client disconnects
+	go func() {
+		<-h.doneCh
+		_ = clientConn.Close()
+	}()
+
+	// Keep the handler alive until client closes
+	_ = waitConnClose(clientConn)
+}
+
+func waitConnClose(c net.Conn) error {
+	buf := make([]byte, 1)
+	_, err := c.Read(buf)
+	return err
+}
