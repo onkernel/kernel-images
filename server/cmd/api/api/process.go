@@ -42,6 +42,8 @@ type processHandle struct {
 	outCh    chan oapi.ProcessStreamEvent
 	doneCh   chan struct{}
 	mu       sync.RWMutex
+	// attachActive guards PTY attach sessions; only one client may be attached at a time.
+	attachActive bool
 }
 
 func (h *processHandle) state() string {
@@ -586,6 +588,21 @@ func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "process is not PTY-backed", http.StatusBadRequest)
 		return
 	}
+	// Enforce single concurrent attach per PTY-backed process to avoid I/O corruption.
+	h.mu.Lock()
+	if h.attachActive {
+		h.mu.Unlock()
+		http.Error(w, "process already has an active attach session", http.StatusConflict)
+		return
+	}
+	h.attachActive = true
+	h.mu.Unlock()
+	// Ensure the flag is cleared when this handler exits (client disconnects or process ends).
+	defer func() {
+		h.mu.Lock()
+		h.attachActive = false
+		h.mu.Unlock()
+	}()
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
@@ -602,28 +619,64 @@ func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request,
 
 	clientConn := conn
 	processRW := h.ptyFile
+	// Coordinate shutdown so that both pumps exit when either side closes.
+	done := make(chan struct{})
+	var once sync.Once
+	shutdown := func() {
+		once.Do(func() {
+			_ = clientConn.Close()
+			close(done)
+		})
+	}
 
 	// Pipe: client -> process
 	go func() {
 		_, _ = io.Copy(processRW, clientConn)
+		shutdown()
 	}()
-	// Pipe: process -> client
+	// Pipe: process -> client (non-blocking reads to allow early shutdown)
 	go func() {
-		_, _ = io.Copy(clientConn, processRW)
+		copyPTYToConn(processRW, clientConn, done)
+		shutdown()
 	}()
 
-	// Close when process exits or client disconnects
+	// Close when process exits
 	go func() {
 		<-h.doneCh
-		_ = clientConn.Close()
+		shutdown()
 	}()
 
-	// Keep the handler alive until client closes
-	_ = waitConnClose(clientConn)
+	// Keep handler alive until shutdown triggered
+	<-done
 }
 
-func waitConnClose(c net.Conn) error {
-	buf := make([]byte, 1)
-	_, err := c.Read(buf)
-	return err
+// copyPTYToConn copies from a PTY (os.File) to a net.Conn, using non-blocking
+// reads to allow early termination when stop is closed, avoiding goroutine leaks.
+func copyPTYToConn(ptyFile *os.File, conn net.Conn, stop <-chan struct{}) {
+	_ = syscall.SetNonblock(int(ptyFile.Fd()), true)
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		n, err := ptyFile.Read(buf)
+		if n > 0 {
+			if _, werr := conn.Write(buf[:n]); werr != nil {
+				return
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			// EAGAIN/EWOULDBLOCK: no data available right now
+			if errno, ok := err.(syscall.Errno); ok && (errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK) {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			return
+		}
+	}
 }
