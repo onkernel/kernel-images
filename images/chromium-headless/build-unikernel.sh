@@ -3,7 +3,7 @@
 # Move to the script's directory so relative paths work regardless of the caller CWD
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 cd "$SCRIPT_DIR"
-source ../../shared/ensure-common-build-run-vars.sh chromium-headless
+source ../../shared/ensure-common-build-run-vars.sh chromium-headless require-ukc-vars
 source ../../shared/erofs-utils.sh
 
 # Ensure the mkfs.erofs tool is present
