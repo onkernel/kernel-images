@@ -366,6 +366,23 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 			}
 		}
 		h.setExited(code)
+		// Ensure all related FDs are closed to avoid leaking descriptors.
+		// In PTY mode, close the PTY master; in non-PTY mode, close individual pipes.
+		if h.isTTY {
+			if h.ptyFile != nil {
+				_ = h.ptyFile.Close()
+			}
+		} else {
+			if h.stdin != nil {
+				_ = h.stdin.Close()
+			}
+			if h.stdout != nil {
+				_ = h.stdout.Close()
+			}
+			if h.stderr != nil {
+				_ = h.stderr.Close()
+			}
+		}
 		// Send exit event
 		evt := oapi.ProcessStreamEventEvent("exit")
 		h.outCh <- oapi.ProcessStreamEvent{Event: &evt, ExitCode: &code}
