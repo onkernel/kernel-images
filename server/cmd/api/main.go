@@ -118,6 +118,11 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(jsonData)
 	})
+	// Raw attach endpoint (HTTP hijack) - not part of OpenAPI spec
+	r.Get("/process/{process_id}/attach", func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "process_id")
+		apiService.HandleProcessAttach(w, r, id)
+	})
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
