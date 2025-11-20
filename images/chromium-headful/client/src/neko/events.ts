@@ -67,6 +67,9 @@ export const EVENT = {
     RELEASE: 'admin/release',
     GIVE: 'admin/give',
   },
+  BENCHMARK: {
+    WEBRTC_STATS: 'benchmark/webrtc_stats',
+  },
 } as const
 
 export type Events = typeof EVENT
@@ -82,6 +85,7 @@ export type WebSocketEvents =
   | ScreenEvents
   | BroadcastEvents
   | AdminEvents
+  | BenchmarkEvents
 
 export type ControlEvents =
   | typeof EVENT.CONTROL.LOCKED
@@ -122,3 +126,5 @@ export type AdminEvents =
   | typeof EVENT.ADMIN.CONTROL
   | typeof EVENT.ADMIN.RELEASE
   | typeof EVENT.ADMIN.GIVE
+
+export type BenchmarkEvents = typeof EVENT.BENCHMARK.WEBRTC_STATS

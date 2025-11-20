@@ -9,7 +9,10 @@ import {
   SignalCandidatePayload,
   SignalOfferPayload,
   SignalAnswerMessage,
+  BenchmarkWebRTCStatsPayload,
 } from './messages'
+
+import { WebRTCStatsCollector } from './webrtc-stats-collector'
 
 export interface BaseEvents {
   info: (...message: any[]) => void
@@ -28,6 +31,22 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
   protected _state: RTCIceConnectionState = 'disconnected'
   protected _id = ''
   protected _candidates: RTCIceCandidate[] = []
+  protected _webrtcStatsCollector: WebRTCStatsCollector
+
+  constructor() {
+    super()
+
+    // Initialize WebRTC stats collector
+    this._webrtcStatsCollector = new WebRTCStatsCollector((stats: BenchmarkWebRTCStatsPayload) => {
+      // Send stats to server via WebSocket
+      if (this.connected) {
+        this._ws!.send(JSON.stringify({
+          event: EVENT.BENCHMARK.WEBRTC_STATS,
+          payload: stats,
+        }))
+      }
+    })
+  }
 
   get id() {
     return this._id
@@ -87,6 +106,9 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
       clearInterval(this._ws_heartbeat)
       this._ws_heartbeat = undefined
     }
+
+    // Stop WebRTC stats collection
+    this._webrtcStatsCollector.stop()
 
     if (this._ws) {
       // reset all events
@@ -241,18 +263,27 @@ export abstract class BaseClient extends EventEmitter<BaseEvents> {
           break
         case 'connected':
           this.onConnected()
+          // Start WebRTC stats collection
+          if (this._peer) {
+            this._webrtcStatsCollector.start(this._peer)
+            this.emit('debug', 'started WebRTC stats collection')
+          }
           break
         case 'disconnected':
           this[EVENT.RECONNECTING]()
+          // Stop stats collection on disconnection
+          this._webrtcStatsCollector.stop()
           break
         // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Signaling_and_video_calling#ice_connection_state
         // We don't watch the disconnected signaling state here as it can indicate temporary issues and may
         // go back to a connected state after some time. Watching it would close the video call on any temporary
         // network issue.
         case 'failed':
+          this._webrtcStatsCollector.stop()
           this.onDisconnected(new Error('peer failed'))
           break
         case 'closed':
+          this._webrtcStatsCollector.stop()
           this.onDisconnected(new Error('peer closed'))
           break
       }
