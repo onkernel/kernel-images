@@ -258,6 +258,7 @@
     private focused = false
     private fullscreen = false
     private mutedOverlay = true
+    private _clipboardPollInterval?: number
 
     get admin() {
       return this.$accessor.user.admin
@@ -533,12 +534,38 @@
         this.$client.sendData('keyup', { key: this.keyMap(key) })
       }
       this.keyboard.listenTo(this._overlay)
+
+      /* Chromium-specific clipboard synchronization */
+      // Sync clipboard when window gains focus
+      window.addEventListener('focus', () => {
+        this.syncClipboard()
+      })
+
+      // Sync clipboard on visibility change (when tab becomes active)
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          this.syncClipboard()
+        }
+      })
+
+      // Polling for clipboard changes while focused (Chromium fallback)
+      // This ensures clipboard syncs even when staying on the same tab
+      this._clipboardPollInterval = window.setInterval(() => {
+        if (this.hosting && this.focused && document.hasFocus()) {
+          this.syncClipboard()
+        }
+      }, 500) // Check every 500ms when active
     }
 
     beforeDestroy() {
       this.observer.disconnect()
       this.$accessor.video.setPlayable(false)
       /* Guacamole Keyboard does not provide destroy functions */
+      
+      // Clean up clipboard polling interval
+      if (this._clipboardPollInterval) {
+        window.clearInterval(this._clipboardPollInterval)
+      }
     }
 
     get hasMacOSKbd() {
