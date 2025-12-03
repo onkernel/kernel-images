@@ -206,17 +206,84 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Remux the fragmented MP4 to add proper duration metadata
+	return fr.finalizeRecording(ctx)
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
 	err := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Still try to finalize, though SIGKILL may have corrupted the last fragment
+	if finalizeErr := fr.finalizeRecording(ctx); finalizeErr != nil {
+		// Log but don't fail - the recording may still be partially usable
+		log.Warn("failed to finalize force-stopped recording", "err", finalizeErr)
+	}
+
+	return nil
+}
+
+// finalizeRecording remuxes the fragmented MP4 to create a standard MP4 with
+// proper duration metadata in the moov atom. This is necessary because fragmented
+// MP4 (used for data safety during recording) doesn't include duration in the header.
+func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
+	fr.mu.Lock()
+	outputPath := fr.outputPath
+	binaryPath := fr.binaryPath
+	fr.mu.Unlock()
+
+	// Check if the recording file exists
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		return fmt.Errorf("recording file does not exist: %w", err)
+	}
+
+	// Create temp file for the remuxed output
+	tempPath := outputPath + ".tmp"
+
+	// Remux: copy streams without re-encoding, move moov atom to start with faststart
+	args := []string{
+		"-i", outputPath,
+		"-c", "copy",
+		"-movflags", "+faststart",
+		"-y",
+		tempPath,
+	}
+
+	log.Info("finalizing recording", "cmd", fmt.Sprintf("%s %s", binaryPath, strings.Join(args, " ")))
+
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+
+	if err := cmd.Run(); err != nil {
+		// Clean up temp file on error
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to finalize recording: %w", err)
+	}
+
+	// Replace original with finalized version
+	if err := os.Rename(tempPath, outputPath); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("failed to replace recording with finalized version: %w", err)
+	}
+
+	log.Info("recording finalized with proper duration metadata")
+	return nil
 }
 
 // IsRecording returns true if a recording is currently in progress.
