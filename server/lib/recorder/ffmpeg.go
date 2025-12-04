@@ -200,17 +200,21 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
 	// the recording to complete than it is to quickly terminate. We intentionally detach the
 	// shutdown process from any inbound context
-	err := fr.shutdownInPhases(context.Background(), []shutdownPhase{
+	shutdownErr := fr.shutdownInPhases(context.Background(), []shutdownPhase{
 		{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
 		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	if err != nil {
-		return err
+	// Check if shutdown actually failed (process didn't exit) vs ffmpeg exiting with non-zero
+	// code due to signal termination (which is expected and normal)
+	if shutdownErr != nil && shutdownErr.Error() == "failed to shutdown ffmpeg" {
+		return shutdownErr
 	}
 
-	// Remux the fragmented MP4 to add proper duration metadata
+	// Remux the fragmented MP4 to add proper duration metadata.
+	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
+	// because the recording file is still valid and needs proper duration metadata.
 	return fr.finalizeRecording(ctx)
 }
 
@@ -219,12 +223,13 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
-	err := fr.shutdownInPhases(ctx, []shutdownPhase{
+	shutdownErr := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	if err != nil {
-		return err
+	// Check if shutdown actually failed (process didn't exit) vs ffmpeg exiting due to signal
+	if shutdownErr != nil && shutdownErr.Error() == "failed to shutdown ffmpeg" {
+		return shutdownErr
 	}
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
