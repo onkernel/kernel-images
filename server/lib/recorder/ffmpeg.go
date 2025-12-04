@@ -265,6 +265,7 @@ func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
 		"-i", outputPath,
 		"-c", "copy",
 		"-movflags", "+faststart",
+		"-f", "mp4", // Explicitly specify format since .tmp extension isn't recognized
 		"-y",
 		tempPath,
 	}
