@@ -206,10 +206,13 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	// Check if shutdown actually failed (process didn't exit) vs ffmpeg exiting with non-zero
-	// code due to signal termination (which is expected and normal)
-	if shutdownErr != nil && shutdownErr.Error() == "failed to shutdown ffmpeg" {
-		return shutdownErr
+	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
+	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
+	if shutdownErr != nil {
+		errMsg := shutdownErr.Error()
+		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
+			return shutdownErr
+		}
 	}
 
 	// Remux the fragmented MP4 to add proper duration metadata.
@@ -228,9 +231,13 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
-	// Check if shutdown actually failed (process didn't exit) vs ffmpeg exiting due to signal
-	if shutdownErr != nil && shutdownErr.Error() == "failed to shutdown ffmpeg" {
-		return shutdownErr
+	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
+	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
+	if shutdownErr != nil {
+		errMsg := shutdownErr.Error()
+		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
+			return shutdownErr
+		}
 	}
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
