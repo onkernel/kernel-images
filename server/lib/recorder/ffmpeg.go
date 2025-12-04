@@ -215,7 +215,8 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	// Remux the fragmented MP4 to add proper duration metadata.
 	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
 	// because the recording file is still valid and needs proper duration metadata.
-	return fr.finalizeRecording(ctx)
+	// Use WithoutCancel to preserve logger/values but ignore caller cancellation (matching shutdown design)
+	return fr.finalizeRecording(context.WithoutCancel(ctx))
 }
 
 // ForceStop immediately terminates the recording process.
@@ -233,7 +234,8 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 	}
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
-	if finalizeErr := fr.finalizeRecording(ctx); finalizeErr != nil {
+	// Use WithoutCancel to preserve logger but ignore caller cancellation
+	if finalizeErr := fr.finalizeRecording(context.WithoutCancel(ctx)); finalizeErr != nil {
 		// Log but don't fail - the recording may still be partially usable
 		log.Warn("failed to finalize force-stopped recording", "err", finalizeErr)
 	}
