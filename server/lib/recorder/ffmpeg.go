@@ -18,6 +18,7 @@ import (
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -53,6 +54,7 @@ type FFmpegRecorder struct {
 	deleted    bool
 	finalizing bool // true while finalizeRecording is running
 	stz        *scaletozero.Oncer
+	sf         singleflight.Group
 }
 
 type FFmpegRecordingParams struct {
@@ -199,32 +201,36 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
-	defer fr.stz.Enable(context.WithoutCancel(ctx))
-	// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
-	// be complex and we care more about the recording than performance. In cases where ffmpeg
-	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
-	// the recording to complete than it is to quickly terminate. We intentionally detach the
-	// shutdown process from any inbound context
-	shutdownErr := fr.shutdownInPhases(context.Background(), []shutdownPhase{
-		{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+	_, err, _ := fr.sf.Do("stop", func() (interface{}, error) {
+		defer fr.stz.Enable(context.WithoutCancel(ctx))
+		// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
+		// be complex and we care more about the recording than performance. In cases where ffmpeg
+		// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
+		// the recording to complete than it is to quickly terminate. We intentionally detach the
+		// shutdown process from any inbound context
+		shutdownErr := fr.shutdownInPhases(context.Background(), []shutdownPhase{
+			{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
+			{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
+			{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+		})
+
+		// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
+		// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
+		if shutdownErr != nil {
+			errMsg := shutdownErr.Error()
+			if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
+				return nil, shutdownErr
+			}
+		}
+
+		// Remux the fragmented MP4 to add proper duration metadata.
+		// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
+		// because the recording file is still valid and needs proper duration metadata.
+		// Use WithoutCancel to preserve logger/values but ignore caller cancellation (matching shutdown design)
+		return nil, fr.finalizeRecording(context.WithoutCancel(ctx))
 	})
 
-	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
-	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
-	if shutdownErr != nil {
-		errMsg := shutdownErr.Error()
-		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
-			return shutdownErr
-		}
-	}
-
-	// Remux the fragmented MP4 to add proper duration metadata.
-	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
-	// because the recording file is still valid and needs proper duration metadata.
-	// Use WithoutCancel to preserve logger/values but ignore caller cancellation (matching shutdown design)
-	return fr.finalizeRecording(context.WithoutCancel(ctx))
+	return err
 }
 
 // ForceStop immediately terminates the recording process.
@@ -259,58 +265,62 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 // proper duration metadata in the moov atom. This is necessary because fragmented
 // MP4 (used for data safety during recording) doesn't include duration in the header.
 func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
-	log := logger.FromContext(ctx)
+	_, err, _ := fr.sf.Do("finalize", func() (interface{}, error) {
+		log := logger.FromContext(ctx)
 
-	fr.mu.Lock()
-	fr.finalizing = true
-	outputPath := fr.outputPath
-	binaryPath := fr.binaryPath
-	fr.mu.Unlock()
-
-	defer func() {
 		fr.mu.Lock()
-		fr.finalizing = false
+		fr.finalizing = true
+		outputPath := fr.outputPath
+		binaryPath := fr.binaryPath
 		fr.mu.Unlock()
-	}()
 
-	// Check if the recording file exists
-	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-		return fmt.Errorf("recording file does not exist: %w", err)
-	}
+		defer func() {
+			fr.mu.Lock()
+			fr.finalizing = false
+			fr.mu.Unlock()
+		}()
 
-	// Create temp file for the remuxed output
-	tempPath := outputPath + ".tmp"
+		// Check if the recording file exists
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("recording file does not exist: %w", err)
+		}
 
-	// Remux: copy streams without re-encoding, move moov atom to start with faststart
-	args := []string{
-		"-i", outputPath,
-		"-c", "copy",
-		"-movflags", "+faststart",
-		"-f", "mp4", // Explicitly specify format since .tmp extension isn't recognized
-		"-y",
-		tempPath,
-	}
+		// Create temp file for the remuxed output
+		tempPath := outputPath + ".tmp"
 
-	log.Info("finalizing recording", "cmd", fmt.Sprintf("%s %s", binaryPath, strings.Join(args, " ")))
+		// Remux: copy streams without re-encoding, move moov atom to start with faststart
+		args := []string{
+			"-i", outputPath,
+			"-c", "copy",
+			"-movflags", "+faststart",
+			"-f", "mp4", // Explicitly specify format since .tmp extension isn't recognized
+			"-y",
+			tempPath,
+		}
 
-	cmd := exec.CommandContext(ctx, binaryPath, args...)
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+		log.Info("finalizing recording", "cmd", fmt.Sprintf("%s %s", binaryPath, strings.Join(args, " ")))
 
-	if err := cmd.Run(); err != nil {
-		// Clean up temp file on error
-		os.Remove(tempPath)
-		return fmt.Errorf("failed to finalize recording: %w", err)
-	}
+		cmd := exec.CommandContext(ctx, binaryPath, args...)
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
 
-	// Replace original with finalized version
-	if err := os.Rename(tempPath, outputPath); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("failed to replace recording with finalized version: %w", err)
-	}
+		if err := cmd.Run(); err != nil {
+			// Clean up temp file on error
+			os.Remove(tempPath)
+			return nil, fmt.Errorf("failed to finalize recording: %w", err)
+		}
 
-	log.Info("recording finalized with proper duration metadata")
-	return nil
+		// Replace original with finalized version
+		if err := os.Rename(tempPath, outputPath); err != nil {
+			os.Remove(tempPath)
+			return nil, fmt.Errorf("failed to replace recording with finalized version: %w", err)
+		}
+
+		log.Info("recording finalized with proper duration metadata")
+		return nil, nil
+	})
+
+	return err
 }
 
 // IsRecording returns true if a recording is currently in progress.
