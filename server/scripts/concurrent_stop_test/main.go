@@ -1,14 +1,6 @@
-// concurrent_stop_test tests the race condition when Stop is called concurrently.
-//
-// Usage:
-//
-//	go run main.go -url http://localhost:10001 -duration 3 -concurrency 2
-//
-// The test:
-// 1. Starts a recording
-// 2. Waits for the specified duration
-// 3. Calls POST /recording/stop concurrently from multiple goroutines
-// 4. Downloads the recording and validates it with ffprobe
+// Tool to reproduce Stop concurrency behavior: start a recording, trigger concurrent stops,
+// then download and validate the resulting video with ffprobe.
+// Usage: go run main.go -url http://localhost:10001 -duration 3 -concurrency 2
 package main
 
 import (
@@ -38,7 +30,6 @@ func main() {
 	fmt.Printf("  Duration: %ds\n", *duration)
 	fmt.Printf("  Concurrency: %d\n", *concurrency)
 	fmt.Printf("  Iterations: %d\n", *iterations)
-	fmt.Println()
 
 	passed := 0
 	failed := 0
@@ -70,23 +61,19 @@ func main() {
 func runTest(baseURL, replayID string, duration, concurrency int) error {
 	ctx := context.Background()
 
-	// Create oapi client
 	client, err := oapi.NewClientWithResponses(baseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
-	// 1. Start recording
 	fmt.Printf("  Starting recording...\n")
 	if err := startRecording(ctx, client, replayID); err != nil {
 		return fmt.Errorf("failed to start recording: %w", err)
 	}
 
-	// 2. Wait for recording to capture content
 	fmt.Printf("  Recording for %d seconds...\n", duration)
 	time.Sleep(time.Duration(duration) * time.Second)
 
-	// 3. Call stop concurrently
 	fmt.Printf("  Calling stop %d times concurrently...\n", concurrency)
 	stopResults := make(chan error, concurrency)
 	var wg sync.WaitGroup
@@ -107,7 +94,6 @@ func runTest(baseURL, replayID string, duration, concurrency int) error {
 	wg.Wait()
 	close(stopResults)
 
-	// Check stop results
 	var stopErrors []error
 	for err := range stopResults {
 		if err != nil {
@@ -116,10 +102,8 @@ func runTest(baseURL, replayID string, duration, concurrency int) error {
 	}
 	if len(stopErrors) > 0 {
 		fmt.Printf("  Stop errors: %v\n", stopErrors)
-		// Don't fail yet - the recording might still be valid
 	}
 
-	// 4. Download recording
 	fmt.Printf("  Downloading recording...\n")
 	data, err := downloadRecording(ctx, client, replayID)
 	if err != nil {
@@ -127,7 +111,6 @@ func runTest(baseURL, replayID string, duration, concurrency int) error {
 	}
 	fmt.Printf("  Downloaded %d bytes\n", len(data))
 
-	// 5. Save to temp file and validate with ffprobe
 	tmpFile, err := os.CreateTemp("", "race-test-*.mp4")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
@@ -145,7 +128,6 @@ func runTest(baseURL, replayID string, duration, concurrency int) error {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	// 6. Clean up - delete recording
 	fmt.Printf("  Cleaning up...\n")
 	_ = deleteRecording(ctx, client, replayID)
 
@@ -183,7 +165,6 @@ func stopRecording(ctx context.Context, client *oapi.ClientWithResponses, replay
 }
 
 func downloadRecording(ctx context.Context, client *oapi.ClientWithResponses, replayID string) ([]byte, error) {
-	// Retry a few times since the recording might still be finalizing
 	var lastErr error
 	for i := 0; i < 10; i++ {
 		resp, err := client.DownloadRecordingWithResponse(ctx, &oapi.DownloadRecordingParams{
@@ -196,7 +177,6 @@ func downloadRecording(ctx context.Context, client *oapi.ClientWithResponses, re
 		}
 
 		if resp.StatusCode() == http.StatusAccepted {
-			// Still processing, retry
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -229,7 +209,6 @@ func deleteRecording(ctx context.Context, client *oapi.ClientWithResponses, repl
 }
 
 func validateMP4(filePath string) error {
-	// Use ffprobe to validate the MP4 file
 	cmd := exec.Command("ffprobe",
 		"-v", "error",
 		"-show_format",
@@ -242,7 +221,6 @@ func validateMP4(filePath string) error {
 		return fmt.Errorf("ffprobe failed: %w\nOutput: %s", err, string(output))
 	}
 
-	// Parse the output to check for valid duration
 	var result struct {
 		Format struct {
 			Duration string `json:"duration"`
