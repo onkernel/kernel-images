@@ -232,15 +232,18 @@ func (s *ApiService) DeleteRecording(ctx context.Context, req oapi.DeleteRecordi
 		return oapi.DeleteRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording must be stopped first"}}, nil
 	}
 
-	// fine to do this async
-	go func() {
-		if err := rec.Delete(context.Background()); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
-		} else {
-			log.Info("recording deleted", "recorder_id", recorderID)
+	if err := rec.Delete(ctx); err != nil {
+		if errors.Is(err, recorder.ErrRecordingFinalizing) {
+			log.Info("recording is being finalized, client should retry", "recorder_id", recorderID)
+			return oapi.DeleteRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording is being finalized, please retry in a few seconds"}}, nil
 		}
-	}()
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
+			return oapi.DeleteRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to delete recording"}}, nil
+		}
+	}
 
+	log.Info("recording deleted", "recorder_id", recorderID)
 	return oapi.DeleteRecording200Response{}, nil
 }
 

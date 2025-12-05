@@ -372,12 +372,16 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 	}, nil
 }
 
-// Delete removes the recording file from disk
+// Delete removes the recording file from disk.
+// Returns ErrRecordingFinalizing if the recording is currently being finalized.
 func (fr *FFmpegRecorder) Delete(ctx context.Context) error {
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
 	if fr.deleted {
 		return nil // already deleted
+	}
+	if fr.finalizing {
+		return ErrRecordingFinalizing
 	}
 	if err := os.Remove(fr.outputPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete recording file: %w", err)
