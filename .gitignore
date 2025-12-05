@@ -188,3 +188,5 @@ infra/tests/*
 
 # mise-en-place
 .mise.toml
+
+recordings/
