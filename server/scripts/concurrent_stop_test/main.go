@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	retry "github.com/avast/retry-go/v5"
+	"github.com/nrednav/cuid2"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 )
 
@@ -22,7 +24,6 @@ func main() {
 	duration := flag.Int("duration", 3, "Recording duration in seconds before stopping")
 	concurrency := flag.Int("concurrency", 2, "Number of concurrent stop calls")
 	iterations := flag.Int("iterations", 5, "Number of test iterations")
-	replayID := flag.String("id", "", "Custom replay ID (default: auto-generated)")
 	flag.Parse()
 
 	fmt.Printf("Testing concurrent stop race condition\n")
@@ -35,10 +36,7 @@ func main() {
 	failed := 0
 
 	for i := 0; i < *iterations; i++ {
-		testID := *replayID
-		if testID == "" {
-			testID = fmt.Sprintf("race-test-%d-%d", time.Now().UnixNano(), i)
-		}
+		testID := fmt.Sprintf("race-test-%s-%d", cuid2.Generate(), i)
 
 		fmt.Printf("=== Iteration %d/%d (id=%s) ===\n", i+1, *iterations, testID)
 
@@ -165,32 +163,36 @@ func stopRecording(ctx context.Context, client *oapi.ClientWithResponses, replay
 }
 
 func downloadRecording(ctx context.Context, client *oapi.ClientWithResponses, replayID string) ([]byte, error) {
-	var lastErr error
-	for i := 0; i < 10; i++ {
+	var data []byte
+	err := retry.New(
+		retry.Attempts(10),
+		retry.Delay(500*time.Millisecond),
+		retry.DelayType(retry.FixedDelay),
+		retry.LastErrorOnly(true),
+		retry.Context(ctx),
+	).Do(func() error {
 		resp, err := client.DownloadRecordingWithResponse(ctx, &oapi.DownloadRecordingParams{
 			Id: &replayID,
 		})
 		if err != nil {
-			lastErr = err
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return err
 		}
 
 		if resp.StatusCode() == http.StatusAccepted {
-			time.Sleep(1 * time.Second)
-			continue
+			return fmt.Errorf("recording not ready yet")
 		}
 
 		if resp.StatusCode() != http.StatusOK {
-			lastErr = fmt.Errorf("unexpected status %d: %s", resp.StatusCode(), string(resp.Body))
-			time.Sleep(500 * time.Millisecond)
-			continue
+			return fmt.Errorf("unexpected status %d: %s", resp.StatusCode(), string(resp.Body))
 		}
 
-		return resp.Body, nil
+		data = resp.Body
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed after retries: %w", err)
 	}
-
-	return nil, fmt.Errorf("failed after retries: %w", lastErr)
+	return data, nil
 }
 
 func deleteRecording(ctx context.Context, client *oapi.ClientWithResponses, replayID string) error {
