@@ -31,6 +31,10 @@ const (
 	exitCodeProcessDoneMinValue = -1
 )
 
+// ErrRecordingFinalizing is returned when attempting to access a recording that is
+// currently being finalized (remuxed to add duration metadata).
+var ErrRecordingFinalizing = errors.New("recording is being finalized")
+
 // FFmpegRecorder encapsulates an FFmpeg recording session with platform-specific screen capture.
 // It manages the lifecycle of a single FFmpeg process and provides thread-safe operations.
 type FFmpegRecorder struct {
@@ -47,6 +51,7 @@ type FFmpegRecorder struct {
 	exitCode   int
 	exited     chan struct{}
 	deleted    bool
+	finalizing bool // true while finalizeRecording is running
 	stz        *scaletozero.Oncer
 }
 
@@ -257,9 +262,16 @@ func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
 	fr.mu.Lock()
+	fr.finalizing = true
 	outputPath := fr.outputPath
 	binaryPath := fr.binaryPath
 	fr.mu.Unlock()
+
+	defer func() {
+		fr.mu.Lock()
+		fr.finalizing = false
+		fr.mu.Unlock()
+	}()
 
 	// Check if the recording file exists
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
@@ -326,11 +338,16 @@ func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
 }
 
 // Recording returns the recording file as an io.ReadCloser.
+// Returns ErrRecordingFinalizing if the recording is currently being finalized.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
 	fr.mu.Lock()
 	if fr.deleted {
 		fr.mu.Unlock()
 		return nil, nil, fmt.Errorf("recording deleted: %w", os.ErrNotExist)
+	}
+	if fr.finalizing {
+		fr.mu.Unlock()
+		return nil, nil, ErrRecordingFinalizing
 	}
 	fr.mu.Unlock()
 

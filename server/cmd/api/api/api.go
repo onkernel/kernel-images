@@ -182,6 +182,14 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
+		if errors.Is(err, recorder.ErrRecordingFinalizing) {
+			log.Info("recording is being finalized, client should retry", "recorder_id", recorderID)
+			return oapi.DownloadRecording202Response{
+				Headers: oapi.DownloadRecording202ResponseHeaders{
+					RetryAfter: 5, // finalization is typically fast
+				},
+			}, nil
+		}
 		log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
 		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
 	}
