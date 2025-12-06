@@ -23,6 +23,66 @@ paths:
           $ref: "#/components/responses/ConflictError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /stream/start:
+    post:
+      summary: Start live streaming to an internal RTMP(S) server or a remote RTMP(S) endpoint.
+      description: |
+        Start streaming the display to either an internally hosted RTMP(S) server (default) or a remote RTMP/RTMPS URL.
+        When using the internal server the response includes playback URLs that can be used by viewers.
+      operationId: startStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartStreamRequest"
+      responses:
+        "201":
+          description: Stream started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamInfo"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /stream/stop:
+    post:
+      summary: Stop a live stream
+      operationId: stopStream
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StopStreamRequest"
+      responses:
+        "200":
+          description: Stream stopped
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /stream/list:
+    get:
+      summary: List active streams
+      operationId: listStreams
+      responses:
+        "200":
+          description: List of active streams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StreamInfo"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /process/exec:
     post:
       summary: Execute a command synchronously
@@ -978,6 +1038,66 @@ paths:
           $ref: "#/components/responses/InternalError"
 components:
   schemas:
+    StartStreamRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Optional identifier for the streaming session. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
+        mode:
+          type: string
+          description: |
+            Where to send the stream output. "internal" starts a local RTMP(S) server and streams to it.
+            "remote" pushes the stream to the provided RTMP/RTMPS target_url.
+          enum: [internal, remote]
+          default: internal
+        target_url:
+          type: string
+          description: RTMP or RTMPS URL to push the stream to when mode is "remote".
+          pattern: "^rtmps?://.+"
+        framerate:
+          type: integer
+          description: Streaming framerate in fps (overrides server default)
+          minimum: 1
+          maximum: 20
+      additionalProperties: false
+    StopStreamRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identifier of the stream to stop. Alphanumeric or hyphen.
+          pattern: "^[a-zA-Z0-9-]+$"
+      additionalProperties: false
+    StreamInfo:
+      type: object
+      required: [id, mode, ingest_url, is_streaming, started_at]
+      properties:
+        id:
+          type: string
+          description: Stream identifier
+        mode:
+          type: string
+          enum: [internal, remote]
+          description: Whether the stream is using the internal RTMP server or a remote endpoint
+        ingest_url:
+          type: string
+          description: URL ffmpeg is publishing to
+        playback_url:
+          type: [string, "null"]
+          description: RTMP playback URL if available (internal streams only)
+        secure_playback_url:
+          type: [string, "null"]
+          description: RTMPS playback URL when TLS is enabled for the internal server
+        started_at:
+          type: string
+          format: date-time
+          description: Timestamp when streaming started
+        is_streaming:
+          type: boolean
+          description: Whether the ffmpeg streaming process is currently running
+      additionalProperties: false
     StartRecordingRequest:
       type: object
       properties:

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -27,6 +28,7 @@ import (
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
+	"github.com/onkernel/kernel-images/server/lib/stream"
 )
 
 func main() {
@@ -72,6 +74,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	streamDefaults := stream.Params{
+		DisplayNum: &config.DisplayNum,
+		FrameRate:  &config.FrameRate,
+		Mode:       stream.ModeInternal,
+	}
+
+	var tlsConfig *tls.Config
+	if config.RTMPSCertPath != "" && config.RTMPSKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(config.RTMPSCertPath, config.RTMPSKeyPath)
+		if err != nil {
+			slogger.Error("failed to load RTMPS certificate", "err", err)
+		} else {
+			tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		}
+	}
+	if tlsConfig == nil && config.RTMPSListenAddr != "" {
+		cfg, err := stream.SelfSignedTLSConfig()
+		if err != nil {
+			slogger.Error("failed to generate self-signed RTMPS certificate", "err", err)
+		} else {
+			tlsConfig = cfg
+		}
+	}
+	rtmpServer := stream.NewRTMPServer(config.RTMPListenAddr, config.RTMPSListenAddr, tlsConfig, slogger)
+
 	// DevTools WebSocket upstream manager: tail Chromium supervisord log
 	const chromiumLogPath = "/var/log/supervisord/chromium"
 	upstreamMgr := devtoolsproxy.NewUpstreamManager(chromiumLogPath, slogger)
@@ -94,6 +121,10 @@ func main() {
 		upstreamMgr,
 		stz,
 		nekoAuthClient,
+		stream.NewStreamManager(),
+		stream.NewFFmpegStreamerFactory(config.PathToFFmpeg, streamDefaults, stz),
+		rtmpServer,
+		streamDefaults,
 	)
 	if err != nil {
 		slogger.Error("failed to create api service", "err", err)

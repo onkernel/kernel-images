@@ -13,6 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/m1k1o/neko/server v0.0.0-20251008185748-46e2fc7d3866
+	github.com/notedit/rtmp v0.0.2
 	github.com/nrednav/cuid2 v1.1.0
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/samber/lo v1.52.0
