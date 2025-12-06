@@ -181,7 +181,6 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=:%d", *fr.params.DisplayNum))
 	fr.cmd = cmd
 	fr.mu.Unlock()
 

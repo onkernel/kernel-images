@@ -21,10 +21,9 @@ import (
 
 func main() {
 	baseURL := flag.String("url", "http://localhost:444", "Base URL of the kernel-images API")
-	duration := flag.Int("duration", 6, "Recording duration in seconds before stopping")
+	duration := flag.Int("duration", 3, "Recording duration in seconds before stopping")
 	concurrency := flag.Int("concurrency", 2, "Number of concurrent stop calls")
 	iterations := flag.Int("iterations", 5, "Number of test iterations")
-	skipWarmup := flag.Bool("skip-warmup", false, "Skip warmup recording (useful if display is already warmed up)")
 	flag.Parse()
 
 	fmt.Printf("Testing concurrent stop race condition\n")
@@ -32,19 +31,6 @@ func main() {
 	fmt.Printf("  Duration: %ds\n", *duration)
 	fmt.Printf("  Concurrency: %d\n", *concurrency)
 	fmt.Printf("  Iterations: %d\n", *iterations)
-
-	// Warmup: run a throwaway recording to ensure X11 display is ready for capture.
-	// The first recording(s) after container start often fail because x11grab
-	// can't get frames from the display while it's still initializing.
-	if !*skipWarmup {
-		fmt.Printf("\n=== Warmup (ensuring X11 display is ready) ===\n")
-		if err := runWarmup(*baseURL); err != nil {
-			fmt.Printf("  Warmup failed: %v (continuing anyway)\n", err)
-		} else {
-			fmt.Printf("  Warmup complete\n")
-		}
-		fmt.Println()
-	}
 
 	passed := 0
 	failed := 0
@@ -68,36 +54,6 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
-}
-
-// runWarmup performs a throwaway recording to warm up the X11 display.
-// This ensures subsequent recordings can capture frames reliably.
-func runWarmup(baseURL string) error {
-	ctx := context.Background()
-	warmupID := fmt.Sprintf("warmup-%s", cuid2.Generate())
-
-	client, err := oapi.NewClientWithResponses(baseURL)
-	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
-	}
-
-	// Start warmup recording
-	if err := startRecording(ctx, client, warmupID); err != nil {
-		return fmt.Errorf("failed to start warmup recording: %w", err)
-	}
-
-	// Let it run for a few seconds to warm up the display
-	time.Sleep(5 * time.Second)
-
-	// Stop the warmup recording (single call, not concurrent)
-	if err := stopRecording(ctx, client, warmupID); err != nil {
-		// Ignore stop errors - we just need the warmup effect
-	}
-
-	// Clean up
-	_ = deleteRecording(ctx, client, warmupID)
-
-	return nil
 }
 
 func runTest(baseURL, replayID string, duration, concurrency int) error {
