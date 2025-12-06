@@ -129,10 +129,10 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	if !exists {
 		log.Error("attempted to stop recording when none is active", "recorder_id", recorderID)
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
-	} else if !rec.IsRecording(ctx) {
-		log.Warn("recording already stopped", "recorder_id", recorderID)
-		return oapi.StopRecording200Response{}, nil
 	}
+	// Always call Stop() even if IsRecording() is false to ensure finalization runs.
+	// Recordings that exit naturally (max duration, max file size, etc.) need Stop()
+	// to trigger finalization which adds proper duration metadata to the MP4.
 
 	// Check if force stop is requested
 	forceStop := false

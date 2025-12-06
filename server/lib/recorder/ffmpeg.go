@@ -638,11 +638,11 @@ func (fm *FFmpegManager) StopAll(ctx context.Context) error {
 
 	var errs []error
 	for id, recorder := range fm.recorders {
-		if recorder.IsRecording(ctx) {
-			if err := recorder.Stop(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("failed to stop recorder '%s': %w", id, err))
-				log.Error("failed to stop recorder during shutdown", "id", id, "err", err)
-			}
+		// Always call Stop() to ensure finalization runs, even for recordings that
+		// exited naturally. Stop() handles already-exited processes gracefully.
+		if err := recorder.Stop(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop recorder '%s': %w", id, err))
+			log.Error("failed to stop recorder during shutdown", "id", id, "err", err)
 		}
 	}
 
