@@ -53,6 +53,10 @@ type FFmpegRecorder struct {
 	deleted    bool
 	finalizing bool // true while finalizeRecording is running
 	stz        *scaletozero.Oncer
+
+	// finalizeOnce ensures finalization only runs once even with concurrent Stop() calls
+	finalizeOnce sync.Once
+	finalizeErr  error
 }
 
 type FFmpegRecordingParams struct {
@@ -224,7 +228,11 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
 	// because the recording file is still valid and needs proper duration metadata.
 	// Use WithoutCancel to preserve logger/values but ignore caller cancellation (matching shutdown design)
-	return fr.finalizeRecording(context.WithoutCancel(ctx))
+	// Use sync.Once to ensure finalization only runs once even with concurrent Stop() calls.
+	fr.finalizeOnce.Do(func() {
+		fr.finalizeErr = fr.finalizeRecording(context.WithoutCancel(ctx))
+	})
+	return fr.finalizeErr
 }
 
 // ForceStop immediately terminates the recording process.
@@ -247,9 +255,13 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
 	// Use WithoutCancel to preserve logger but ignore caller cancellation
-	if finalizeErr := fr.finalizeRecording(context.WithoutCancel(ctx)); finalizeErr != nil {
+	// Use sync.Once to ensure finalization only runs once even with concurrent Stop()/ForceStop() calls.
+	fr.finalizeOnce.Do(func() {
+		fr.finalizeErr = fr.finalizeRecording(context.WithoutCancel(ctx))
+	})
+	if fr.finalizeErr != nil {
 		// Log but don't fail - the recording may still be partially usable
-		log.Warn("failed to finalize force-stopped recording", "err", finalizeErr)
+		log.Warn("failed to finalize force-stopped recording", "err", fr.finalizeErr)
 	}
 
 	return nil
