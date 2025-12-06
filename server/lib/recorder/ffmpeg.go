@@ -54,6 +54,12 @@ type FFmpegRecorder struct {
 	finalizing bool // true while finalizeRecording is running
 	stz        *scaletozero.Oncer
 
+	// stopOnce ensures shutdown signals are only sent once even with concurrent Stop() calls.
+	// This prevents multiple SIGINTs from being sent to ffmpeg, which would cause immediate
+	// termination without proper buffer flushing.
+	stopOnce sync.Once
+	stopErr  error
+
 	// finalizeOnce ensures finalization only runs once even with concurrent Stop() calls
 	finalizeOnce sync.Once
 	finalizeErr  error
@@ -175,6 +181,7 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DISPLAY=:%d", *fr.params.DisplayNum))
 	fr.cmd = cmd
 	fr.mu.Unlock()
 
@@ -204,23 +211,35 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
-	// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
-	// be complex and we care more about the recording than performance. In cases where ffmpeg
-	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
-	// the recording to complete than it is to quickly terminate. We intentionally detach the
-	// shutdown process from any inbound context
-	shutdownErr := fr.shutdownInPhases(context.Background(), []shutdownPhase{
-		{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+
+	// Use sync.Once to ensure shutdown signals are only sent once.
+	// This prevents multiple SIGINTs from being sent to ffmpeg when Stop() is called
+	// concurrently, which would cause immediate termination without buffer flushing.
+	fr.stopOnce.Do(func() {
+		// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
+		// be complex and we care more about the recording than performance. In cases where ffmpeg
+		// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
+		// the recording to complete than it is to quickly terminate. We intentionally detach the
+		// shutdown process from any inbound context
+		fr.stopErr = fr.shutdownInPhases(context.Background(), []shutdownPhase{
+			{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
+			{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
+			{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+		})
 	})
+
+	// Wait for the process to exit (in case another goroutine is handling shutdown).
+	// This ensures we don't proceed to finalization while ffmpeg is still running.
+	if fr.exited != nil {
+		<-fr.exited
+	}
 
 	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
 	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
-	if shutdownErr != nil {
-		errMsg := shutdownErr.Error()
+	if fr.stopErr != nil {
+		errMsg := fr.stopErr.Error()
 		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
-			return shutdownErr
+			return fr.stopErr
 		}
 	}
 
