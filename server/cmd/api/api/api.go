@@ -196,6 +196,7 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 
 	// short-circuit if the recording is still in progress and the file is arbitrary small
 	if rec.IsRecording(ctx) && meta.Size <= minRecordingSizeInBytes {
+		out.Close() // Close the file handle to prevent descriptor leak
 		return oapi.DownloadRecording202Response{
 			Headers: oapi.DownloadRecording202ResponseHeaders{
 				RetryAfter: 300,
