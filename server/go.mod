@@ -3,6 +3,7 @@ module github.com/onkernel/kernel-images/server
 go 1.25.0
 
 require (
+	github.com/avast/retry-go/v5 v5.0.0
 	github.com/coder/websocket v1.8.14
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/getkin/kin-openapi v0.132.0
