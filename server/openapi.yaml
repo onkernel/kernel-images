@@ -179,6 +179,36 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /process/{process_id}/resize:
+    post:
+      summary: Resize a PTY-backed process
+      operationId: processResize
+      parameters:
+        - name: process_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessResizeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /recording/stop:
     post:
       summary: Stop the recording
@@ -1403,6 +1433,20 @@ components:
     ProcessSpawnRequest:
       allOf:
         - $ref: "#/components/schemas/ProcessExecRequest"
+        - type: object
+          properties:
+            allocate_tty:
+              type: boolean
+              description: Allocate a pseudo-terminal (PTY) for the process to enable interactive shells.
+              default: false
+            rows:
+              type: integer
+              description: Initial terminal rows when allocate_tty is true.
+              minimum: 1
+            cols:
+              type: integer
+              description: Initial terminal columns when allocate_tty is true.
+              minimum: 1
     ProcessSpawnResult:
       type: object
       description: Information about a spawned process.
@@ -1418,6 +1462,20 @@ components:
           type: string
           format: date-time
           description: Timestamp when the process started.
+      additionalProperties: false
+    ProcessResizeRequest:
+      type: object
+      description: Resize a PTY-backed process.
+      required: [rows, cols]
+      properties:
+        rows:
+          type: integer
+          minimum: 1
+          description: New terminal rows.
+        cols:
+          type: integer
+          minimum: 1
+          description: New terminal columns.
       additionalProperties: false
     ProcessStatus:
       type: object

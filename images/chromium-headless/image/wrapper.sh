@@ -30,6 +30,19 @@ if [[ -z "${WITHDOCKER:-}" ]]; then
   disable_scale_to_zero
 fi
 
+# -----------------------------------------------------------------------------
+# Ensure a sensible hostname ---------------------------------------------------
+# -----------------------------------------------------------------------------
+if h=$(cat /proc/sys/kernel/hostname 2>/dev/null); then
+  if [ -z "$h" ] || [ "$h" = "(none)" ]; then
+    if command -v hostname >/dev/null 2>&1; then
+      hostname kernel-vm 2>/dev/null || true
+    fi
+    echo -n "kernel-vm" > /proc/sys/kernel/hostname 2>/dev/null || true
+  fi
+fi
+export HOSTNAME="${HOSTNAME:-kernel-vm}"
+
 # if CHROMIUM_FLAGS is not set, default to the flags used in playwright_stealth
 if [ -z "${CHROMIUM_FLAGS:-}" ]; then
   CHROMIUM_FLAGS="--accept-lang=en-US,en \
