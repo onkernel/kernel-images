@@ -47,6 +47,7 @@ export type WebSocketPayloads =
   | BroadcastStatusPayload
   | BroadcastCreatePayload
   | SystemPongPayload
+  | BenchmarkWebRTCStatsPayload
 
 export interface WebSocketMessage {
   event: WebSocketEvents | string
@@ -277,4 +278,62 @@ export type AdminLockResource = 'login' | 'control' | 'file_transfer'
 
 export interface AdminLockPayload {
   resource: AdminLockResource
+}
+
+/*
+  BENCHMARK PAYLOADS
+*/
+export interface BenchmarkWebRTCStatsPayload {
+  timestamp: string
+  connection_state: string
+  ice_connection_state: string
+  frame_rate_fps: {
+    target: number
+    achieved: number
+    min: number
+    max: number
+  }
+  frame_latency_ms: {
+    p50: number
+    p95: number
+    p99: number
+  }
+  bitrate_kbps: {
+    video: number
+    audio: number
+    total: number
+  }
+  packets: {
+    video_received: number
+    video_lost: number
+    audio_received: number
+    audio_lost: number
+    loss_percent: number
+  }
+  frames: {
+    received: number
+    dropped: number
+    decoded: number
+    corrupted: number
+    key_frames_decoded: number
+  }
+  jitter_ms: {
+    video: number
+    audio: number
+  }
+  network: {
+    rtt_ms: number
+    available_outgoing_bitrate_kbps: number
+    bytes_received: number
+    bytes_sent: number
+  }
+  codecs: {
+    video: string
+    audio: string
+  }
+  resolution: {
+    width: number
+    height: number
+  }
+  concurrent_viewers: number
 }
