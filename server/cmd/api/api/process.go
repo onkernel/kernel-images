@@ -240,6 +240,11 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		return oapi.ProcessSpawn500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to start process"}}, nil
 	}
 
+	// Disable scale-to-zero while the process is running
+	if err := s.stz.Disable(ctx); err != nil {
+		log.Error("failed to disable scale-to-zero", "err", err)
+	}
+
 	id := openapi_types.UUID(uuid.New())
 	h := &processHandle{
 		id:      id,
@@ -294,7 +299,9 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 		}
 	}()
 
-	// Waiter goroutine
+	// Waiter goroutine - use context without cancel since HTTP request may complete
+	// before the process exits
+	stzCtx := context.WithoutCancel(ctx)
 	go func() {
 		err := cmd.Wait()
 		code := 0
@@ -310,6 +317,12 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 			}
 		}
 		h.setExited(code)
+
+		// Re-enable scale-to-zero now that the process has exited
+		if err := s.stz.Enable(stzCtx); err != nil {
+			log.Error("failed to enable scale-to-zero", "err", err)
+		}
+
 		// Send exit event
 		evt := oapi.ProcessStreamEventEvent("exit")
 		h.outCh <- oapi.ProcessStreamEvent{Event: &evt, ExitCode: &code}
