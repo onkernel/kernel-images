@@ -18,6 +18,7 @@ import (
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -54,15 +55,17 @@ type FFmpegRecorder struct {
 	finalizing bool // true while finalizeRecording is running
 	stz        *scaletozero.Oncer
 
-	// stopOnce ensures shutdown signals are only sent once even with concurrent Stop() calls.
-	// This prevents multiple SIGINTs from being sent to ffmpeg, which would cause immediate
-	// termination without proper buffer flushing.
-	stopOnce sync.Once
-	stopErr  error
+	// stopFlight coordinates concurrent Stop() calls. All callers block until shutdown
+	// completes and receive the same result.
+	stopFlight    singleflight.Group
+	stopComplete  bool
+	stopResultErr error
 
-	// finalizeOnce ensures finalization only runs once even with concurrent Stop() calls
-	finalizeOnce sync.Once
-	finalizeErr  error
+	// finalizeFlight coordinates finalization across Stop(), ForceStop(), and waitForCommand().
+	// All callers block until finalization completes and receive the same result.
+	finalizeFlight    singleflight.Group
+	finalizeComplete  bool
+	finalizeResultErr error
 }
 
 type FFmpegRecordingParams struct {
@@ -211,21 +214,39 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
 
-	// Use sync.Once to ensure shutdown signals are only sent once.
-	// This prevents multiple SIGINTs from being sent to ffmpeg when Stop() is called
-	// concurrently, which would cause immediate termination without buffer flushing.
-	fr.stopOnce.Do(func() {
+	// Use singleflight to coordinate concurrent Stop() calls. All callers block until
+	// shutdown completes and receive the same result. This prevents multiple SIGINTs
+	// from being sent to ffmpeg, which would cause immediate termination.
+	var shutdownErr error
+
+	fr.mu.Lock()
+	if !fr.stopComplete {
+		fr.mu.Unlock()
+
 		// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
 		// be complex and we care more about the recording than performance. In cases where ffmpeg
 		// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
 		// the recording to complete than it is to quickly terminate. We intentionally detach the
 		// shutdown process from any inbound context
-		fr.stopErr = fr.shutdownInPhases(context.Background(), []shutdownPhase{
-			{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
-			{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-			{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+		_, err, _ := fr.stopFlight.Do("stop", func() (any, error) {
+			result := fr.shutdownInPhases(context.Background(), []shutdownPhase{
+				{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
+				{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
+				{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+			})
+
+			fr.mu.Lock()
+			fr.stopComplete = true
+			fr.stopResultErr = result
+			fr.mu.Unlock()
+
+			return nil, result
 		})
-	})
+		shutdownErr = err
+	} else {
+		shutdownErr = fr.stopResultErr
+		fr.mu.Unlock()
+	}
 
 	// Wait for the process to exit (in case another goroutine is handling shutdown).
 	// This ensures we don't proceed to finalization while ffmpeg is still running.
@@ -235,22 +256,50 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 
 	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
 	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
-	if fr.stopErr != nil {
-		errMsg := fr.stopErr.Error()
+	if shutdownErr != nil {
+		errMsg := shutdownErr.Error()
 		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
-			return fr.stopErr
+			return shutdownErr
 		}
 	}
 
 	// Remux the fragmented MP4 to add proper duration metadata.
 	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
 	// because the recording file is still valid and needs proper duration metadata.
-	// Use WithoutCancel to preserve logger/values but ignore caller cancellation (matching shutdown design)
-	// Use sync.Once to ensure finalization only runs once even with concurrent Stop() calls.
-	fr.finalizeOnce.Do(func() {
-		fr.finalizeErr = fr.finalizeRecording(context.WithoutCancel(ctx))
+	return fr.triggerFinalization(context.WithoutCancel(ctx))
+}
+
+// triggerFinalization coordinates finalization using singleflight. All concurrent callers
+// block until finalization completes and receive the same result. Subsequent calls after
+// completion return the cached result without re-running finalization.
+func (fr *FFmpegRecorder) triggerFinalization(ctx context.Context) error {
+	fr.mu.Lock()
+	if fr.finalizeComplete {
+		err := fr.finalizeResultErr
+		fr.mu.Unlock()
+		return err
+	}
+	fr.mu.Unlock()
+
+	_, err, _ := fr.finalizeFlight.Do("finalize", func() (any, error) {
+		result := fr.finalizeRecording(ctx)
+
+		fr.mu.Lock()
+		fr.finalizeComplete = true
+		fr.finalizeResultErr = result
+		fr.mu.Unlock()
+
+		return nil, result
 	})
-	return fr.finalizeErr
+	return err
+}
+
+// WaitForFinalization blocks until finalization completes and returns the result.
+// If finalization hasn't started, it will be triggered. If already complete, returns
+// the cached result immediately. This is useful for callers like the download handler
+// that need to wait for finalization before accessing the recording.
+func (fr *FFmpegRecorder) WaitForFinalization(ctx context.Context) error {
+	return fr.triggerFinalization(ctx)
 }
 
 // ForceStop immediately terminates the recording process.
@@ -273,13 +322,9 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
 	// Use WithoutCancel to preserve logger but ignore caller cancellation
-	// Use sync.Once to ensure finalization only runs once even with concurrent Stop()/ForceStop() calls.
-	fr.finalizeOnce.Do(func() {
-		fr.finalizeErr = fr.finalizeRecording(context.WithoutCancel(ctx))
-	})
-	if fr.finalizeErr != nil {
+	if err := fr.triggerFinalization(context.WithoutCancel(ctx)); err != nil {
 		// Log but don't fail - the recording may still be partially usable
-		log.Warn("failed to finalize force-stopped recording", "err", fr.finalizeErr)
+		log.Warn("failed to finalize force-stopped recording", "err", err)
 	}
 
 	return nil
@@ -479,7 +524,8 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 }
 
 // waitForCommand should be run in the background to wait for the ffmpeg process to complete and
-// update the internal state accordingly.
+// update the internal state accordingly. It also triggers finalization to add proper duration
+// metadata for recordings that exit naturally (max duration, max file size, etc.).
 func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
 
@@ -490,7 +536,6 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 
 	// update internal state and cleanup
 	fr.mu.Lock()
-	defer fr.mu.Unlock()
 	fr.ffmpegErr = err
 	fr.exitCode = fr.cmd.ProcessState.ExitCode()
 	fr.endTime = time.Now()
@@ -500,6 +545,14 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 		log.Info("ffmpeg process completed with error", "err", err, "exitCode", fr.exitCode)
 	} else {
 		log.Info("ffmpeg process completed successfully", "exitCode", fr.exitCode)
+	}
+	fr.mu.Unlock()
+
+	// Finalize the recording to add proper duration metadata.
+	// This handles natural exits (max duration, max file size) without requiring Stop().
+	// triggerFinalization uses singleflight so concurrent Stop() calls will coordinate.
+	if err := fr.triggerFinalization(context.WithoutCancel(ctx)); err != nil {
+		log.Error("failed to finalize recording", "err", err)
 	}
 }
 

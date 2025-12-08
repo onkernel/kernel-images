@@ -130,9 +130,9 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 		log.Error("attempted to stop recording when none is active", "recorder_id", recorderID)
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
 	}
-	// Always call Stop() even if IsRecording() is false to ensure finalization runs.
-	// Recordings that exit naturally (max duration, max file size, etc.) need Stop()
-	// to trigger finalization which adds proper duration metadata to the MP4.
+	// Always call Stop() even if IsRecording() is false. Recordings that exit naturally
+	// (max duration, max file size, etc.) finalize automatically, but Stop() is still
+	// needed to update scale-to-zero state and ensure clean shutdown.
 
 	// Check if force stop is requested
 	forceStop := false
@@ -183,15 +183,28 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
 		if errors.Is(err, recorder.ErrRecordingFinalizing) {
-			log.Info("recording is being finalized, client should retry", "recorder_id", recorderID)
-			return oapi.DownloadRecording202Response{
-				Headers: oapi.DownloadRecording202ResponseHeaders{
-					RetryAfter: 5, // finalization is typically fast
-				},
-			}, nil
+			// Wait for finalization to complete instead of asking client to retry
+			log.Info("waiting for recording finalization", "recorder_id", recorderID)
+			ffmpegRec, ok := rec.(*recorder.FFmpegRecorder)
+			if !ok {
+				log.Error("failed to cast recorder to FFmpegRecorder", "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+			}
+			// WaitForFinalization blocks until finalization completes and returns the result
+			if finalizeErr := ffmpegRec.WaitForFinalization(ctx); finalizeErr != nil {
+				log.Error("finalization failed", "err", finalizeErr, "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to finalize recording"}}, nil
+			}
+			// Finalization complete, retry getting the recording
+			out, meta, err = rec.Recording(ctx)
+			if err != nil {
+				log.Error("failed to get recording after finalization", "err", err, "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+			}
+		} else {
+			log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
+			return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
 		}
-		log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
-		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
 	}
 
 	// short-circuit if the recording is still in progress and the file is arbitrary small
