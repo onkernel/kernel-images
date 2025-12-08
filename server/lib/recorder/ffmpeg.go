@@ -282,12 +282,19 @@ func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
 	_, err, _ := fr.flight.Do("finalize", func() (any, error) {
 		log := logger.FromContext(ctx)
 
-		// Check if already complete (handles callers after previous singleflight completed)
 		fr.mu.Lock()
+		// Check if already complete (handles callers after previous singleflight completed)
 		if fr.finalizeComplete {
 			result := fr.finalizeResultErr
 			fr.mu.Unlock()
 			return nil, result
+		}
+		// Guard: finalization requires the recording to have exited.
+		// Finalizing an active recording would corrupt it (remux reads partial file,
+		// then os.Rename orphans the inode ffmpeg is writing to).
+		if fr.exitCode < exitCodeProcessDoneMinValue {
+			fr.mu.Unlock()
+			return nil, fmt.Errorf("cannot finalize: recording is still in progress")
 		}
 		outputPath := fr.outputPath
 		binaryPath := fr.binaryPath
