@@ -266,32 +266,7 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	// Remux the fragmented MP4 to add proper duration metadata.
 	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
 	// because the recording file is still valid and needs proper duration metadata.
-	return fr.triggerFinalization(context.WithoutCancel(ctx))
-}
-
-// triggerFinalization coordinates finalization using singleflight. All concurrent callers
-// block until finalization completes and receive the same result. Subsequent calls after
-// completion return the cached result without re-running finalization.
-func (fr *FFmpegRecorder) triggerFinalization(ctx context.Context) error {
-	fr.mu.Lock()
-	if fr.finalizeComplete {
-		err := fr.finalizeResultErr
-		fr.mu.Unlock()
-		return err
-	}
-	fr.mu.Unlock()
-
-	_, err, _ := fr.finalizeFlight.Do("finalize", func() (any, error) {
-		result := fr.finalizeRecording(ctx)
-
-		fr.mu.Lock()
-		fr.finalizeComplete = true
-		fr.finalizeResultErr = result
-		fr.mu.Unlock()
-
-		return nil, result
-	})
-	return err
+	return fr.finalizeRecording(context.WithoutCancel(ctx))
 }
 
 // WaitForFinalization blocks until finalization completes and returns the result.
@@ -299,7 +274,7 @@ func (fr *FFmpegRecorder) triggerFinalization(ctx context.Context) error {
 // the cached result immediately. This is useful for callers like the download handler
 // that need to wait for finalization before accessing the recording.
 func (fr *FFmpegRecorder) WaitForFinalization(ctx context.Context) error {
-	return fr.triggerFinalization(ctx)
+	return fr.finalizeRecording(ctx)
 }
 
 // ForceStop immediately terminates the recording process.
@@ -322,7 +297,7 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 
 	// Still try to finalize, though SIGKILL may have corrupted the last fragment
 	// Use WithoutCancel to preserve logger but ignore caller cancellation
-	if err := fr.triggerFinalization(context.WithoutCancel(ctx)); err != nil {
+	if err := fr.finalizeRecording(context.WithoutCancel(ctx)); err != nil {
 		// Log but don't fail - the recording may still be partially usable
 		log.Warn("failed to finalize force-stopped recording", "err", err)
 	}
@@ -333,7 +308,34 @@ func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 // finalizeRecording remuxes the fragmented MP4 to create a standard MP4 with
 // proper duration metadata in the moov atom. This is necessary because fragmented
 // MP4 (used for data safety during recording) doesn't include duration in the header.
+//
+// This method is safe for concurrent calls - it uses singleflight internally to ensure
+// finalization runs exactly once, with all callers receiving the same result.
 func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
+	_, err, _ := fr.finalizeFlight.Do("finalize", func() (any, error) {
+		// Check if already complete (handles callers after previous singleflight completed)
+		fr.mu.Lock()
+		if fr.finalizeComplete {
+			result := fr.finalizeResultErr
+			fr.mu.Unlock()
+			return nil, result
+		}
+		fr.mu.Unlock()
+
+		result := fr.doFinalize(ctx)
+
+		fr.mu.Lock()
+		fr.finalizeComplete = true
+		fr.finalizeResultErr = result
+		fr.mu.Unlock()
+
+		return nil, result
+	})
+	return err
+}
+
+// doFinalize performs the actual remuxing work.
+func (fr *FFmpegRecorder) doFinalize(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 
 	fr.mu.Lock()
@@ -550,8 +552,8 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 
 	// Finalize the recording to add proper duration metadata.
 	// This handles natural exits (max duration, max file size) without requiring Stop().
-	// triggerFinalization uses singleflight so concurrent Stop() calls will coordinate.
-	if err := fr.triggerFinalization(context.WithoutCancel(ctx)); err != nil {
+	// finalizeRecording uses singleflight internally so concurrent Stop() calls will coordinate.
+	if err := fr.finalizeRecording(context.WithoutCancel(ctx)); err != nil {
 		log.Error("failed to finalize recording", "err", err)
 	}
 }
