@@ -249,7 +249,7 @@ func (s *ApiService) DeleteRecording(ctx context.Context, req oapi.DeleteRecordi
 	if err := rec.Delete(ctx); err != nil {
 		if errors.Is(err, recorder.ErrRecordingFinalizing) {
 			log.Info("recording is being finalized, client should retry", "recorder_id", recorderID)
-			return oapi.DeleteRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording is being finalized, please retry in a few seconds"}}, nil
+			return oapi.DeleteRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording is being finalized, please retry in a few seconds"}}, nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
