@@ -426,6 +426,13 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 		fr.mu.Unlock()
 		return nil, nil, ErrRecordingFinalizing
 	}
+	// If recording has exited but finalization hasn't completed yet, treat as finalizing.
+	// This closes the race window between waitForCommand releasing the lock and
+	// doFinalize setting finalizing = true.
+	if fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete {
+		fr.mu.Unlock()
+		return nil, nil, ErrRecordingFinalizing
+	}
 	fr.mu.Unlock()
 
 	file, err := os.Open(fr.outputPath)
