@@ -248,19 +248,19 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 		fr.mu.Unlock()
 	}
 
-	// Wait for the process to exit (in case another goroutine is handling shutdown).
-	// This ensures we don't proceed to finalization while ffmpeg is still running.
-	if fr.exited != nil {
-		<-fr.exited
-	}
-
-	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
-	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
+	// Check if shutdown failed completely - return early to avoid blocking forever
+	// on a channel that will never close.
 	if shutdownErr != nil {
 		errMsg := shutdownErr.Error()
 		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
 			return shutdownErr
 		}
+	}
+
+	// Wait for the process to exit (in case another goroutine is handling shutdown).
+	// This ensures we don't proceed to finalization while ffmpeg is still running.
+	if fr.exited != nil {
+		<-fr.exited
 	}
 
 	// Remux the fragmented MP4 to add proper duration metadata.
