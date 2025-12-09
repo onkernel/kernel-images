@@ -32,10 +32,6 @@ const (
 	exitCodeProcessDoneMinValue = -1
 )
 
-// ErrRecordingFinalizing is returned when attempting to access a recording that is
-// currently being finalized (remuxed to add duration metadata).
-var ErrRecordingFinalizing = errors.New("recording is being finalized")
-
 // FFmpegRecorder encapsulates an FFmpeg recording session with platform-specific screen capture.
 // It manages the lifecycle of a single FFmpeg process and provides thread-safe operations.
 type FFmpegRecorder struct {
@@ -237,14 +233,6 @@ func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	return fr.finalizeRecording(ctx)
 }
 
-// WaitForFinalization blocks until finalization completes and returns the result.
-// If finalization hasn't started, it will be triggered. If already complete, returns
-// the cached result immediately. This is useful for callers like the download handler
-// that need to wait for finalization before accessing the recording.
-func (fr *FFmpegRecorder) WaitForFinalization(ctx context.Context) error {
-	return fr.finalizeRecording(ctx)
-}
-
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
 	log := logger.FromContext(ctx)
@@ -378,21 +366,24 @@ func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
 }
 
 // Recording returns the recording file as an io.ReadCloser.
-// Returns ErrRecordingFinalizing if the recording is currently being finalized.
+// If the recording has exited but finalization is pending, this method blocks
+// until finalization completes.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
 	fr.mu.Lock()
 	if fr.deleted {
 		fr.mu.Unlock()
 		return nil, nil, fmt.Errorf("recording deleted: %w", os.ErrNotExist)
 	}
-	// Block access while finalization is pending or in progress.
-	// This covers both the race window (after process exit, before finalization starts)
-	// and during active finalization.
-	if fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete {
-		fr.mu.Unlock()
-		return nil, nil, ErrRecordingFinalizing
-	}
+	// If recording has exited but finalization is pending or in progress, wait for it.
+	// This hides finalization as an implementation detail from callers.
+	needsFinalization := fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete
 	fr.mu.Unlock()
+
+	if needsFinalization {
+		if err := fr.finalizeRecording(ctx); err != nil {
+			return nil, nil, fmt.Errorf("failed to finalize recording: %w", err)
+		}
+	}
 
 	file, err := os.Open(fr.outputPath)
 	if err != nil {
@@ -416,18 +407,29 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 }
 
 // Delete removes the recording file from disk.
-// Returns ErrRecordingFinalizing if the recording is currently being finalized.
+// If the recording has exited but finalization is pending, this method blocks
+// until finalization completes before deleting.
 func (fr *FFmpegRecorder) Delete(ctx context.Context) error {
+	fr.mu.Lock()
+	if fr.deleted {
+		fr.mu.Unlock()
+		return nil // already deleted
+	}
+	// If recording has exited but finalization is pending or in progress, wait for it.
+	// We need to wait because deleting during finalization would corrupt the remux operation.
+	needsFinalization := fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete
+	fr.mu.Unlock()
+
+	if needsFinalization {
+		// Wait for finalization to complete. We don't fail the delete if finalization
+		// fails - the caller wants the file gone regardless.
+		_ = fr.finalizeRecording(ctx)
+	}
+
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
 	if fr.deleted {
-		return nil // already deleted
-	}
-	// Block deletion while finalization is pending or in progress.
-	// This covers both the race window (after process exit, before finalization starts)
-	// and during active finalization.
-	if fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete {
-		return ErrRecordingFinalizing
+		return nil // deleted while we were waiting
 	}
 	if err := os.Remove(fr.outputPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete recording file: %w", err)
