@@ -70,7 +70,6 @@ if [ -z "${CHROMIUM_FLAGS:-}" ]; then
     --no-first-run \
     --no-sandbox \
     --no-service-autorun \
-    --no-startup-window \
     --ozone-platform=headless \
     --password-store=basic \
     --unsafely-disable-devtools-self-xss-warnings \

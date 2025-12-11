@@ -810,3 +810,77 @@ func TestPlaywrightExecuteAPI(t *testing.T) {
 
 	logger.Info("[test]", "result", "playwright execute API test passed")
 }
+
+// TestCDPTargetCreation tests that headless browsers can create new targets via CDP.
+func TestCDPTargetCreation(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-cdp-target"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		require.NoError(t, err, "docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	// Start container
+	width, height := 1024, 768
+	_, exitCh, err := runContainer(baseCtx, image, name, map[string]string{"WIDTH": strconv.Itoa(width), "HEIGHT": strconv.Itoa(height)})
+	require.NoError(t, err, "failed to start container: %v", err)
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
+	defer cancel()
+
+	logger.Info("[test]", "action", "waiting for API")
+	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready")
+
+	// Wait for CDP endpoint to be ready (via the devtools proxy)
+	logger.Info("[test]", "action", "waiting for CDP endpoint")
+	require.NoError(t, waitTCP(ctx, "127.0.0.1:9222"), "CDP endpoint not ready")
+
+	// Wait for Chromium to be fully initialized by checking if CDP responds
+	logger.Info("[test]", "action", "waiting for Chromium to be fully ready")
+	var initialTargets []map[string]interface{}
+	targets, err := listCDPTargets(ctx)
+	if err == nil {
+		initialTargets = targets
+	}
+
+	// Use CDP HTTP API to list targets (avoids Playwright's implicit page creation)
+	logger.Info("[test]", "action", "listing initial targets via CDP HTTP API")
+	initialPageCount := 0
+	for _, target := range initialTargets {
+		if targetType, ok := target["type"].(string); ok && targetType == "page" {
+			initialPageCount++
+		}
+	}
+	logger.Info("[test]", "initial_page_count", initialPageCount, "total_targets", len(initialTargets))
+
+	// Headless browser should start with at least 1 page target.
+	// If --no-startup-window is enabled, the browser will start with 0 pages,
+	// which will cause Target.createTarget to fail with "no browser is open (-32000)".
+	require.GreaterOrEqual(t, initialPageCount, 1,
+		"headless browser should start with at least 1 page target (got %d). "+
+			"This usually means --no-startup-window flag is enabled in wrapper.sh, "+
+			"which causes browsers to start without any pages.", initialPageCount)
+}
+
+// listCDPTargets lists all CDP targets via the HTTP API (inside the container)
+func listCDPTargets(ctx context.Context) ([]map[string]interface{}, error) {
+	// Use the internal CDP HTTP endpoint (port 9223) inside the container
+	stdout, err := execCombinedOutput(ctx, "curl", []string{"-s", "http://localhost:9223/json/list"})
+	if err != nil {
+		return nil, fmt.Errorf("curl failed: %w, output: %s", err, stdout)
+	}
+
+	var targets []map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		return nil, fmt.Errorf("failed to parse targets JSON: %w, output: %s", err, stdout)
+	}
+
+	return targets, nil
+}
