@@ -844,21 +844,21 @@ func TestCDPTargetCreation(t *testing.T) {
 
 	// Wait for Chromium to be fully initialized by checking if CDP responds
 	logger.Info("[test]", "action", "waiting for Chromium to be fully ready")
-	var initialTargets []map[string]interface{}
 	targets, err := listCDPTargets(ctx)
-	if err == nil {
-		initialTargets = targets
+	if err != nil {
+		logger.Error("[test]", "error", err.Error())
+		require.Fail(t, "failed to list CDP targets")
 	}
 
 	// Use CDP HTTP API to list targets (avoids Playwright's implicit page creation)
 	logger.Info("[test]", "action", "listing initial targets via CDP HTTP API")
 	initialPageCount := 0
-	for _, target := range initialTargets {
+	for _, target := range targets {
 		if targetType, ok := target["type"].(string); ok && targetType == "page" {
 			initialPageCount++
 		}
 	}
-	logger.Info("[test]", "initial_page_count", initialPageCount, "total_targets", len(initialTargets))
+	logger.Info("[test]", "initial_page_count", initialPageCount, "total_targets", len(targets))
 
 	// Headless browser should start with at least 1 page target.
 	// If --no-startup-window is enabled, the browser will start with 0 pages,
