@@ -13,10 +13,11 @@ const PolicyPath = "/etc/chromium/policies/managed/policy.json"
 type Policy struct {
 	mu sync.Mutex
 
-	PasswordManagerEnabled    bool                        `json:"PasswordManagerEnabled"`
-	AutofillCreditCardEnabled bool                        `json:"AutofillCreditCardEnabled"`
-	TranslateEnabled          bool                        `json:"TranslateEnabled"`
-	ExtensionSettings         map[string]ExtensionSetting `json:"ExtensionSettings"`
+	PasswordManagerEnabled      bool                        `json:"PasswordManagerEnabled"`
+	AutofillCreditCardEnabled   bool                        `json:"AutofillCreditCardEnabled"`
+	TranslateEnabled            bool                        `json:"TranslateEnabled"`
+	DefaultNotificationsSetting int                         `json:"DefaultNotificationsSetting"`
+	ExtensionSettings           map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
 
 // ExtensionSetting represents settings for a specific extension
@@ -29,23 +30,19 @@ type ExtensionSetting struct {
 	RuntimeAllowedHosts []string `json:"runtime_allowed_hosts,omitempty"`
 }
 
-var (
-)
-
-// ReadPolicy reads the current enterprise policy from disk
-func (p *Policy) ReadPolicy() (*Policy, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
+// readPolicyUnlocked reads the current enterprise policy from disk without locking
+// This is an internal helper for use within already-locked operations
+func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 	data, err := os.ReadFile(PolicyPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Return default policy if file doesn't exist
 			return &Policy{
-				PasswordManagerEnabled:    false,
-				AutofillCreditCardEnabled: false,
-				TranslateEnabled:          false,
-				ExtensionSettings:         make(map[string]ExtensionSetting),
+				PasswordManagerEnabled:      false,
+				AutofillCreditCardEnabled:   false,
+				TranslateEnabled:            false,
+				DefaultNotificationsSetting: 2,
+				ExtensionSettings:           make(map[string]ExtensionSetting),
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read policy file: %w", err)
@@ -56,14 +53,25 @@ func (p *Policy) ReadPolicy() (*Policy, error) {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
 	}
 
+	// Initialize ExtensionSettings map if it's nil to prevent panic on write
+	if policy.ExtensionSettings == nil {
+		policy.ExtensionSettings = make(map[string]ExtensionSetting)
+	}
+
 	return &policy, nil
 }
 
-// WritePolicy writes the policy to disk
-func (p *Policy) WritePolicy(policy *Policy) error {
+// ReadPolicy reads the current enterprise policy from disk
+func (p *Policy) ReadPolicy() (*Policy, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	return p.readPolicyUnlocked()
+}
+
+// writePolicyUnlocked writes the policy to disk without locking
+// This is an internal helper for use within already-locked operations
+func (p *Policy) writePolicyUnlocked(policy *Policy) error {
 	data, err := json.MarshalIndent(policy, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal policy: %w", err)
@@ -76,10 +84,22 @@ func (p *Policy) WritePolicy(policy *Policy) error {
 	return nil
 }
 
+// WritePolicy writes the policy to disk
+func (p *Policy) WritePolicy(policy *Policy) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.writePolicyUnlocked(policy)
+}
+
 // AddExtension adds or updates an extension in the policy
 // extensionID should be a stable identifier (can be derived from extension path)
-func (p *Policy)	AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
-	policy, err := p.ReadPolicy()
+func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
+	// Lock for the entire read-modify-write cycle to prevent race conditions
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	policy, err := p.readPolicyUnlocked()
 	if err != nil {
 		return err
 	}
@@ -109,7 +129,7 @@ func (p *Policy)	AddExtension(extensionID, extensionPath string, requiresEnterpr
 
 	policy.ExtensionSettings[extensionID] = setting
 
-	return p.WritePolicy(policy)
+	return p.writePolicyUnlocked(policy)
 }
 
 // GenerateExtensionID returns a stable identifier for the extension policy.
