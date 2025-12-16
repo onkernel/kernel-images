@@ -15,7 +15,7 @@ deploy_args=(
   --scale-to-zero idle
   --scale-to-zero-cooldown 3000ms
   --scale-to-zero-stateful
-  --vcpus 1
+  --vcpus ${VCPUS:-1}
   -M 3072
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
   -e LOG_CDP_MESSAGES=true

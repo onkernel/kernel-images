@@ -66,7 +66,7 @@ trap 'rm -rf "$FLAGS_DIR"' EXIT
 
 
 deploy_args=(
-  --vcpus 4
+  --vcpus ${VCPUS:-4}
   -M 4096
   -p 9222:9222/tls
   -p 444:10001/tls
