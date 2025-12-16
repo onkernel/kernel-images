@@ -58,13 +58,16 @@ Alternatively, you can run the browser on a Unikraft unikernel.
 `curl -sSfL https://get.kraftkit.sh | sh`
 
 ### 2. Add Unikraft Secret to Your CLI
-`export UKC_METRO=<region> and UKC_TOKEN=<secret>`
+`export UKC_METRO=<region>`
+`export UKC_TOKEN=<secret>`
 
 ### 3. Build the image
-`./build-unikernel.sh`
+`IMAGE=YOUR_UKC_USERNAME/chromium-headless-test:latest images/chromium-headless/build-unikernel.sh`
 
 ### 4. Run it
-`./run-unikernel.sh`
+`IMAGE=YOUR_UKC_USERNAME/chromium-headless-test:latest images/chromium-headless/run-unikernel.sh`
+or
+`IMAGE=YOUR_UKC_USERNAME/chromium-headful-test:latest VOLIMPORT_PREFIX=official images/chromium-headful/run-unikernel.sh`
 
 When the deployment finishes successfully, the Kraft CLI will print out something like this:
 ```
@@ -91,6 +94,7 @@ Deployed successfully!
 - Various services (mutter, tint) take a few seconds to start-up. Once they do, the standby and restart time is extremely fast.
 - The Unikraft deployment generates a url. This url is public, meaning _anyone_ can access the remote GUI if they have the url. Only use this for non-sensitive browser interactions, and delete the unikernel instance when you're done.
 - You can call `browser.close()` to disconnect to the browser, and the unikernel will go into standby after network activity ends. You can then reconnect to the instance using CDP. `browser.close()` ends the websocket connection but doesn't actually close the browser.
+- VCPUS value can be adjusted using the variable: `VCPUS=8`
 
 ## Connect to the browser via Chrome DevTools Protocol
 
