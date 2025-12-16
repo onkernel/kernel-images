@@ -308,4 +308,7 @@ COPY server/runtime/playwright-executor.ts /usr/local/lib/playwright-executor.ts
 
 RUN useradd -m -s /bin/bash kernel
 
+# Make policy directory writable for runtime updates
+RUN chown -R kernel:kernel /etc/chromium/policies
+
 ENTRYPOINT [ "/wrapper.sh" ]

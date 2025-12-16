@@ -187,6 +187,9 @@ ENV WITHDOCKER=true
 # Create a non-root user with a home directory
 RUN useradd -m -s /bin/bash kernel
 
+# Make policy directory writable for runtime updates
+RUN chown -R kernel:kernel /etc/chromium/policies
+
 # supervisor  start scripts
 COPY images/chromium-headless/image/start-xvfb.sh /images/chromium-headless/image/start-xvfb.sh
 RUN chmod +x /images/chromium-headless/image/start-xvfb.sh
