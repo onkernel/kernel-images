@@ -2,5 +2,11 @@
   "PasswordManagerEnabled": false,
   "AutofillCreditCardEnabled": false,
   "TranslateEnabled": false,
-  "DefaultNotificationsSetting": 2
+  "DefaultNotificationsSetting": 2,
+  "ExtensionSettings": {
+    "*": {
+      "allowed_types": ["extension"],
+      "install_sources": ["*"]
+    }
+  }
 }
