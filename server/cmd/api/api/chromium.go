@@ -15,7 +15,6 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/chromiumflags"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
-	"github.com/onkernel/kernel-images/server/lib/policy"
 	"github.com/onkernel/kernel-images/server/lib/ziputil"
 )
 
@@ -164,11 +163,11 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	// Update enterprise policy for extensions that require it
 	for _, p := range items {
 		extensionPath := filepath.Join(extBase, p.name)
-		extensionID := policy.GenerateExtensionID(p.name)
+		extensionID := s.policy.GenerateExtensionID(p.name)
 		manifestPath := filepath.Join(extensionPath, "manifest.json")
 
 		// Check if this extension requires enterprise policy
-		requiresEntPolicy, err := policy.RequiresEnterprisePolicy(manifestPath)
+		requiresEntPolicy, err := s.policy.RequiresEnterprisePolicy(manifestPath)
 		if err != nil {
 			log.Warn("failed to read manifest for policy check", "error", err, "extension", p.name)
 			// Continue with requiresEntPolicy = false
@@ -179,7 +178,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		}
 
 		// Add to enterprise policy
-		if err := policy.AddExtension(extensionID, extensionPath, requiresEntPolicy); err != nil {
+		if err := s.policy.AddExtension(extensionID, extensionPath, requiresEntPolicy); err != nil {
 			log.Error("failed to update enterprise policy", "error", err, "extension", p.name)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{
 				InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{

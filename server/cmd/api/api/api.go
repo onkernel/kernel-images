@@ -12,6 +12,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/policy"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
@@ -42,6 +43,9 @@ type ApiService struct {
 
 	// playwrightMu serializes Playwright code execution (only one execution at a time)
 	playwrightMu sync.Mutex
+
+	// policy management
+	policy *policy.Policy
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -67,6 +71,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		upstreamMgr:       upstreamMgr,
 		stz:               stz,
 		nekoAuthClient:    nekoAuthClient,
+		policy:            &policy.Policy{},
 	}, nil
 }
 

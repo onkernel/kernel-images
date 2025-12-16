@@ -11,6 +11,8 @@ const PolicyPath = "/etc/chromium/policies/managed/policy.json"
 
 // Policy represents the Chrome enterprise policy structure
 type Policy struct {
+	mu sync.Mutex
+
 	PasswordManagerEnabled    bool                        `json:"PasswordManagerEnabled"`
 	AutofillCreditCardEnabled bool                        `json:"AutofillCreditCardEnabled"`
 	TranslateEnabled          bool                        `json:"TranslateEnabled"`
@@ -28,13 +30,12 @@ type ExtensionSetting struct {
 }
 
 var (
-	policyMutex sync.Mutex
 )
 
 // ReadPolicy reads the current enterprise policy from disk
-func ReadPolicy() (*Policy, error) {
-	policyMutex.Lock()
-	defer policyMutex.Unlock()
+func (p *Policy) ReadPolicy() (*Policy, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	data, err := os.ReadFile(PolicyPath)
 	if err != nil {
@@ -59,9 +60,9 @@ func ReadPolicy() (*Policy, error) {
 }
 
 // WritePolicy writes the policy to disk
-func WritePolicy(policy *Policy) error {
-	policyMutex.Lock()
-	defer policyMutex.Unlock()
+func (p *Policy) WritePolicy(policy *Policy) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	data, err := json.MarshalIndent(policy, "", "  ")
 	if err != nil {
@@ -77,8 +78,8 @@ func WritePolicy(policy *Policy) error {
 
 // AddExtension adds or updates an extension in the policy
 // extensionID should be a stable identifier (can be derived from extension path)
-func AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
-	policy, err := ReadPolicy()
+func (p *Policy)	AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
+	policy, err := p.ReadPolicy()
 	if err != nil {
 		return err
 	}
@@ -108,19 +109,19 @@ func AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bo
 
 	policy.ExtensionSettings[extensionID] = setting
 
-	return WritePolicy(policy)
+	return p.WritePolicy(policy)
 }
 
 // GenerateExtensionID returns a stable identifier for the extension policy.
 // For ExtensionSettings with local paths, Chrome allows custom identifiers.
 // We use the extension name because it's stable, readable, and matches the directory.
-func GenerateExtensionID(extensionName string) string {
+func (p *Policy) GenerateExtensionID(extensionName string) string {
 	return extensionName
 }
 
 // RequiresEnterprisePolicy checks if an extension requires enterprise policy
 // by examining its manifest.json for webRequestBlocking or webRequest permissions
-func RequiresEnterprisePolicy(manifestPath string) (bool, error) {
+func (p *Policy) RequiresEnterprisePolicy(manifestPath string) (bool, error) {
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return false, err
