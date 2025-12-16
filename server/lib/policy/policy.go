@@ -117,3 +117,33 @@ func AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bo
 func GenerateExtensionID(extensionName string) string {
 	return extensionName
 }
+
+// RequiresEnterprisePolicy checks if an extension requires enterprise policy
+// by examining its manifest.json for webRequestBlocking or webRequest permissions
+func RequiresEnterprisePolicy(manifestPath string) (bool, error) {
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return false, err
+	}
+
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return false, err
+	}
+
+	// Check if permissions include webRequestBlocking or webRequest
+	perms, ok := manifest["permissions"].([]interface{})
+	if !ok {
+		return false, nil
+	}
+
+	for _, perm := range perms {
+		if permStr, ok := perm.(string); ok {
+			if permStr == "webRequestBlocking" || permStr == "webRequest" {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
