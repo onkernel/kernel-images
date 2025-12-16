@@ -31,6 +31,7 @@ echo "Image index/name: $UKC_INDEX/$IMAGE"
 kraft pkg \
   --name $UKC_INDEX/$IMAGE \
   --plat kraftcloud \
+  --rootfs-type erofs \
   --arch x86_64 \
   --strategy overwrite \
   --push \
