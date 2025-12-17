@@ -62,6 +62,8 @@ if [[ "${RUN_AS_ROOT:-}" != "true" ]]; then
 
   # Ensure correct ownership (ignore errors if already correct)
   chown -R kernel:kernel /home/kernel /home/kernel/user-data /home/kernel/.config /home/kernel/.pki /home/kernel/.cache 2>/dev/null || true
+  # Make policy directory writable for runtime updates
+  chown -R kernel:kernel /etc/chromium/policies 2>/dev/null || true
 else
   # When running as root, just create the necessary directories without ownership changes
   dirs=(
