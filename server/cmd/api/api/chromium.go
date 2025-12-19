@@ -157,10 +157,34 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			log.Error("failed to chown extension dir", "error", err)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
 		}
+
+		// Check if the zip contains update.xml and .crx files (for policy-installed extensions)
+		// If they exist, they'll be extracted; if not, they need to be generated separately
+		updateXMLPath := filepath.Join(dest, "update.xml")
+		crxPath := filepath.Join(dest, p.name+".crx")
+		hasUpdateXML := false
+		hasCRX := false
+
+		if _, err := os.Stat(updateXMLPath); err == nil {
+			hasUpdateXML = true
+			log.Info("found update.xml in extension zip", "name", p.name)
+		}
+		if _, err := os.Stat(crxPath); err == nil {
+			hasCRX = true
+			log.Info("found .crx file in extension zip", "name", p.name)
+		}
+
+		if !hasUpdateXML || !hasCRX {
+			log.Info("extension zip missing update.xml or .crx - these files should be included for policy-installed extensions", "name", p.name, "hasUpdateXML", hasUpdateXML, "hasCRX", hasCRX)
+		}
+
 		log.Info("installed extension", "name", p.name)
 	}
 
 	// Update enterprise policy for extensions that require it
+	// Track which extensions need --load-extension flags (those NOT using policy installation)
+	var pathsNeedingFlags []string
+
 	for _, p := range items {
 		extensionPath := filepath.Join(extBase, p.name)
 		extensionID := s.policy.GenerateExtensionID(p.name)
@@ -175,6 +199,9 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 
 		if requiresEntPolicy {
 			log.Info("extension requires enterprise policy", "name", p.name)
+		} else {
+			// Only add --load-extension flags for non-policy extensions
+			pathsNeedingFlags = append(pathsNeedingFlags, extensionPath)
 		}
 
 		// Add to enterprise policy
@@ -191,15 +218,13 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 	}
 
 	// Build flags overlay file in /chromium/flags, merging with existing flags
-	var paths []string
-	for _, p := range items {
-		paths = append(paths, filepath.Join(extBase, p.name))
-	}
-
-	// Create new flags for the uploaded extensions
-	newTokens := []string{
-		fmt.Sprintf("--disable-extensions-except=%s", strings.Join(paths, ",")),
-		fmt.Sprintf("--load-extension=%s", strings.Join(paths, ",")),
+	// Only add --load-extension flags for extensions that don't use policy installation
+	var newTokens []string
+	if len(pathsNeedingFlags) > 0 {
+		newTokens = []string{
+			fmt.Sprintf("--disable-extensions-except=%s", strings.Join(pathsNeedingFlags, ",")),
+			fmt.Sprintf("--load-extension=%s", strings.Join(pathsNeedingFlags, ",")),
+		}
 	}
 
 	// Merge and write flags
