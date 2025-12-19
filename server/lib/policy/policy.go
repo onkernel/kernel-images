@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 )
 
@@ -17,13 +18,14 @@ type Policy struct {
 	AutofillCreditCardEnabled   bool                        `json:"AutofillCreditCardEnabled"`
 	TranslateEnabled            bool                        `json:"TranslateEnabled"`
 	DefaultNotificationsSetting int                         `json:"DefaultNotificationsSetting"`
+	ExtensionInstallForcelist   []string                    `json:"ExtensionInstallForcelist,omitempty"`
 	ExtensionSettings           map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
 
 // ExtensionSetting represents settings for a specific extension
 type ExtensionSetting struct {
 	InstallationMode    string   `json:"installation_mode,omitempty"`
-	Path                string   `json:"path,omitempty"`
+	UpdateUrl           string   `json:"update_url,omitempty"`
 	AllowedTypes        []string `json:"allowed_types,omitempty"`
 	InstallSources      []string `json:"install_sources,omitempty"`
 	RuntimeBlockedHosts []string `json:"runtime_blocked_hosts,omitempty"`
@@ -42,6 +44,7 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 				AutofillCreditCardEnabled:   false,
 				TranslateEnabled:            false,
 				DefaultNotificationsSetting: 2,
+				ExtensionInstallForcelist:   []string{},
 				ExtensionSettings:           make(map[string]ExtensionSetting),
 			}, nil
 		}
@@ -56,6 +59,11 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 	// Initialize ExtensionSettings map if it's nil to prevent panic on write
 	if policy.ExtensionSettings == nil {
 		policy.ExtensionSettings = make(map[string]ExtensionSetting)
+	}
+
+	// Initialize ExtensionInstallForcelist if it's nil
+	if policy.ExtensionInstallForcelist == nil {
+		policy.ExtensionInstallForcelist = []string{}
 	}
 
 	return &policy, nil
@@ -93,7 +101,8 @@ func (p *Policy) WritePolicy(policy *Policy) error {
 }
 
 // AddExtension adds or updates an extension in the policy
-// extensionID should be a stable identifier (can be derived from extension path)
+// extensionID should be the extension name for ExtensionSettings
+// extensionPath is the full path to the unpacked extension directory
 func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
 	// Lock for the entire read-modify-write cycle to prevent race conditions
 	p.mu.Lock()
@@ -114,20 +123,35 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 
 	// Add the specific extension
 	setting := ExtensionSetting{
-		Path: extensionPath,
+		UpdateUrl: "http://127.0.0.1:10001/update.xml",
 	}
 
 	// If the extension requires enterprise policy (like webRequestBlocking),
-	// set it as force_installed https://github.com/cloudflare/web-bot-auth/blob/main/examples/browser-extension/policy/policy.json.templ
+	// we need special handling for unpacked extensions loaded via --load-extension
+	// https://github.com/cloudflare/web-bot-auth/blob/main/examples/browser-extension/policy/policy.json.templ
 	if requiresEnterprisePolicy {
+		// For unpacked extensions with webRequestBlocking:
+		// Chrome requires the extension to be in ExtensionInstallForcelist
+		// Format: "extension_id;update_url" per https://chromeenterprise.google/intl/en_ca/policies/#ExtensionInstallForcelist
 		setting.InstallationMode = "force_installed"
-		// Allow all hosts for webRequest APIs
-		setting.RuntimeAllowedHosts = []string{"*://*/*"}
-	} else {
-		setting.InstallationMode = "normal_installed"
-	}
 
-	policy.ExtensionSettings[extensionID] = setting
+		// Add to ExtensionInstallForcelist using the format: extension_id;update_url
+		forcelistEntry := fmt.Sprintf("%s;%s", extensionID, setting.UpdateUrl)
+
+		// Check if already in forcelist
+		found := slices.Contains(policy.ExtensionInstallForcelist, forcelistEntry)
+		if !found {
+			if policy.ExtensionInstallForcelist == nil {
+				policy.ExtensionInstallForcelist = []string{}
+			}
+			policy.ExtensionInstallForcelist = append(policy.ExtensionInstallForcelist, forcelistEntry)
+		}
+
+		policy.ExtensionSettings[extensionID] = setting
+	} else {
+		// For normal extensions, use the custom ID
+		policy.ExtensionSettings[extensionID] = setting
+	}
 
 	return p.writePolicyUnlocked(policy)
 }
