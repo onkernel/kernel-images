@@ -80,7 +80,7 @@ func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.Exe
 			}, nil
 		}
 
-		log.Error("playwright execution failed", "error", err, "output", string(output))
+		log.Error("playwright execution failed", "error", err)
 
 		// Try to parse the error output as JSON
 		var result struct {
@@ -117,7 +117,7 @@ func (s *ApiService) ExecutePlaywrightCode(ctx context.Context, request oapi.Exe
 		Result  interface{} `json:"result,omitempty"`
 	}
 	if err := json.Unmarshal(output, &result); err != nil {
-		log.Error("failed to parse playwright output", "error", err, "output", string(output))
+		log.Error("failed to parse playwright output", "error", err)
 		success := false
 		errorMsg := fmt.Sprintf("failed to parse output: %v", err)
 		stdout := string(output)
