@@ -240,6 +240,14 @@ func (s *ApiService) ProcessSpawn(ctx context.Context, request oapi.ProcessSpawn
 	)
 	// PTY mode when requested
 	if request.Body.AllocateTty != nil && *request.Body.AllocateTty {
+		// Validate rows/cols before starting the process
+		const maxUint16 = 65535
+		if request.Body.Rows != nil && *request.Body.Rows > maxUint16 {
+			return oapi.ProcessSpawn400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "rows must be <= 65535"}}, nil
+		}
+		if request.Body.Cols != nil && *request.Body.Cols > maxUint16 {
+			return oapi.ProcessSpawn400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "cols must be <= 65535"}}, nil
+		}
 		// Ensure TERM and initial size env
 		hasTerm := false
 		for _, kv := range cmd.Env {
@@ -596,6 +604,10 @@ func (s *ApiService) ProcessResize(ctx context.Context, request oapi.ProcessResi
 	if rows <= 0 || cols <= 0 {
 		return oapi.ProcessResize400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "rows and cols must be > 0"}}, nil
 	}
+	const maxUint16 = 65535
+	if rows > maxUint16 || cols > maxUint16 {
+		return oapi.ProcessResize400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "rows and cols must be <= 65535"}}, nil
+	}
 	s.procMu.RLock()
 	h, ok := s.procs[id]
 	s.procMu.RUnlock()
@@ -655,26 +667,27 @@ func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request,
 	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
 	_ = buf.Flush()
 
-	clientConn := conn
 	processRW := h.ptyFile
 	// Coordinate shutdown so that both pumps exit when either side closes.
 	done := make(chan struct{})
 	var once sync.Once
 	shutdown := func() {
 		once.Do(func() {
-			_ = clientConn.Close()
+			_ = conn.Close()
 			close(done)
 		})
 	}
 
 	// Pipe: client -> process
+	// Use buf.Reader to consume any buffered data that was read ahead before the hijack,
+	// then continue reading from the underlying connection.
 	go func() {
-		_, _ = io.Copy(processRW, clientConn)
+		_, _ = io.Copy(processRW, buf.Reader)
 		shutdown()
 	}()
 	// Pipe: process -> client (non-blocking reads to allow early shutdown)
 	go func() {
-		copyPTYToConn(processRW, clientConn, done)
+		copyPTYToConn(processRW, conn, done)
 		shutdown()
 	}()
 
