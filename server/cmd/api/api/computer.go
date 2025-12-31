@@ -350,8 +350,6 @@ func (s *ApiService) TypeText(ctx context.Context, request oapi.TypeTextRequestO
 	// Use "--" to terminate options and pass raw text
 	args = append(args, "--", body.Text)
 
-	log.Info("executing xdotool", "args", args)
-
 	output, err := defaultXdoTool.Run(ctx, args...)
 	if err != nil {
 		log.Error("xdotool command failed", "err", err, "output", string(output))
@@ -465,7 +463,6 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 			argsDown = append(argsDown, "keydown", key)
 		}
 
-		log.Info("executing xdotool (keydown phase)", "args", argsDown)
 		if output, err := defaultXdoTool.Run(ctx, argsDown...); err != nil {
 			log.Error("xdotool keydown failed", "err", err, "output", string(output))
 			// Best-effort release any keys that may be down (primary and modifiers)
@@ -497,7 +494,6 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 			}
 		}
 
-		log.Info("executing xdotool (keyup phase)", "args", argsUp)
 		if output, err := defaultXdoTool.Run(ctx, argsUp...); err != nil {
 			log.Error("xdotool keyup failed", "err", err, "output", string(output))
 			return oapi.PressKey500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
@@ -524,7 +520,6 @@ func (s *ApiService) PressKey(ctx context.Context, request oapi.PressKeyRequestO
 		}
 	}
 
-	log.Info("executing xdotool", "args", args)
 	output, err := defaultXdoTool.Run(ctx, args...)
 	if err != nil {
 		log.Error("xdotool command failed", "err", err, "output", string(output))

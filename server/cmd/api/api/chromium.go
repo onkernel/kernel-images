@@ -160,6 +160,36 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		log.Info("installed extension", "name", p.name)
 	}
 
+	// Update enterprise policy for extensions that require it
+	for _, p := range items {
+		extensionPath := filepath.Join(extBase, p.name)
+		extensionID := s.policy.GenerateExtensionID(p.name)
+		manifestPath := filepath.Join(extensionPath, "manifest.json")
+
+		// Check if this extension requires enterprise policy
+		requiresEntPolicy, err := s.policy.RequiresEnterprisePolicy(manifestPath)
+		if err != nil {
+			log.Warn("failed to read manifest for policy check", "error", err, "extension", p.name)
+			// Continue with requiresEntPolicy = false
+		}
+
+		if requiresEntPolicy {
+			log.Info("extension requires enterprise policy", "name", p.name)
+		}
+
+		// Add to enterprise policy
+		if err := s.policy.AddExtension(extensionID, extensionPath, requiresEntPolicy); err != nil {
+			log.Error("failed to update enterprise policy", "error", err, "extension", p.name)
+			return oapi.UploadExtensionsAndRestart500JSONResponse{
+				InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
+					Message: fmt.Sprintf("failed to update enterprise policy for %s: %v", p.name, err),
+				},
+			}, nil
+		}
+
+		log.Info("updated enterprise policy", "extension", p.name, "id", extensionID, "requiresEnterprisePolicy", requiresEntPolicy)
+	}
+
 	// Build flags overlay file in /chromium/flags, merging with existing flags
 	var paths []string
 	for _, p := range items {

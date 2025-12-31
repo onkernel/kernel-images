@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +44,7 @@ func TestProcessExec(t *testing.T) {
 func TestProcessSpawnStatusAndStream(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	svc := &ApiService{procs: make(map[string]*processHandle)}
+	svc := &ApiService{procs: make(map[string]*processHandle), stz: scaletozero.NewNoopController()}
 
 	// Spawn a short-lived process that emits stdout and stderr then exits
 	cmd := "sh"
@@ -111,7 +112,7 @@ func TestProcessSpawnStatusAndStream(t *testing.T) {
 func TestProcessStdinAndExit(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	svc := &ApiService{procs: make(map[string]*processHandle)}
+	svc := &ApiService{procs: make(map[string]*processHandle), stz: scaletozero.NewNoopController()}
 
 	// Spawn a process that reads exactly 3 bytes then exits
 	cmd := "sh"
@@ -150,7 +151,7 @@ func TestProcessStdinAndExit(t *testing.T) {
 func TestProcessKill(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	svc := &ApiService{procs: make(map[string]*processHandle)}
+	svc := &ApiService{procs: make(map[string]*processHandle), stz: scaletozero.NewNoopController()}
 
 	cmd := "sh"
 	args := []string{"-c", "sleep 5"}

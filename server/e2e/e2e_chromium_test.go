@@ -810,3 +810,189 @@ func TestPlaywrightExecuteAPI(t *testing.T) {
 
 	logger.Info("[test]", "result", "playwright execute API test passed")
 }
+
+// TestCDPTargetCreation tests that headless browsers can create new targets via CDP.
+func TestCDPTargetCreation(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-cdp-target"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		require.NoError(t, err, "docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	// Start container
+	width, height := 1024, 768
+	_, exitCh, err := runContainer(baseCtx, image, name, map[string]string{"WIDTH": strconv.Itoa(width), "HEIGHT": strconv.Itoa(height)})
+	require.NoError(t, err, "failed to start container: %v", err)
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
+	defer cancel()
+
+	logger.Info("[test]", "action", "waiting for API")
+	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready")
+
+	// Wait for CDP endpoint to be ready (via the devtools proxy)
+	logger.Info("[test]", "action", "waiting for CDP endpoint")
+	require.NoError(t, waitTCP(ctx, "127.0.0.1:9222"), "CDP endpoint not ready")
+
+	// Wait for Chromium to be fully initialized by checking if CDP responds
+	logger.Info("[test]", "action", "waiting for Chromium to be fully ready")
+	targets, err := listCDPTargets(ctx)
+	if err != nil {
+		logger.Error("[test]", "error", err.Error())
+		require.Fail(t, "failed to list CDP targets")
+	}
+
+	// Use CDP HTTP API to list targets (avoids Playwright's implicit page creation)
+	logger.Info("[test]", "action", "listing initial targets via CDP HTTP API")
+	initialPageCount := 0
+	for _, target := range targets {
+		if targetType, ok := target["type"].(string); ok && targetType == "page" {
+			initialPageCount++
+		}
+	}
+	logger.Info("[test]", "initial_page_count", initialPageCount, "total_targets", len(targets))
+
+	// Headless browser should start with at least 1 page target.
+	// If --no-startup-window is enabled, the browser will start with 0 pages,
+	// which will cause Target.createTarget to fail with "no browser is open (-32000)".
+	require.GreaterOrEqual(t, initialPageCount, 1,
+		"headless browser should start with at least 1 page target (got %d). "+
+			"This usually means --no-startup-window flag is enabled in wrapper.sh, "+
+			"which causes browsers to start without any pages.", initialPageCount)
+}
+
+// listCDPTargets lists all CDP targets via the HTTP API (inside the container)
+func listCDPTargets(ctx context.Context) ([]map[string]interface{}, error) {
+	// Use the internal CDP HTTP endpoint (port 9223) inside the container
+	stdout, err := execCombinedOutput(ctx, "curl", []string{"-s", "http://localhost:9223/json/list"})
+	if err != nil {
+		return nil, fmt.Errorf("curl failed: %w, output: %s", err, stdout)
+	}
+
+	var targets []map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &targets); err != nil {
+		return nil, fmt.Errorf("failed to parse targets JSON: %w, output: %s", err, stdout)
+	}
+
+	return targets, nil
+}
+
+func TestWebBotAuthInstallation(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-web-bot-auth"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		require.NoError(t, err, "docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	env := map[string]string{}
+
+	// Start container
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	require.NoError(t, err, "failed to start container: %v", err)
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Minute)
+	defer cancel()
+
+	logger.Info("[setup]", "action", "waiting for API", "url", apiBaseURL+"/spec.yaml")
+	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready: %v", err)
+
+	// Build mock web-bot-auth extension zip in-memory
+	extDir := t.TempDir()
+	manifest := `{
+  "manifest_version": 3,
+  "version": "1.0.0",
+  "name": "Web Bot Auth Mock",
+  "description": "Mock web-bot-auth extension for testing",
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ]
+}`
+	err = os.WriteFile(filepath.Join(extDir, "manifest.json"), []byte(manifest), 0600)
+	require.NoError(t, err, "write manifest: %v", err)
+
+	extZip, err := zipDirToBytes(extDir)
+	require.NoError(t, err, "zip ext: %v", err)
+
+	// Upload extension using the API
+	{
+		client, err := apiClient()
+		require.NoError(t, err)
+		var body bytes.Buffer
+		w := multipart.NewWriter(&body)
+		fw, err := w.CreateFormFile("extensions.zip_file", "web-bot-auth.zip")
+		require.NoError(t, err)
+		_, err = io.Copy(fw, bytes.NewReader(extZip))
+		require.NoError(t, err)
+		err = w.WriteField("extensions.name", "web-bot-auth")
+		require.NoError(t, err)
+		err = w.Close()
+		require.NoError(t, err)
+
+		logger.Info("[test]", "action", "uploading web-bot-auth extension")
+		start := time.Now()
+		rsp, err := client.UploadExtensionsAndRestartWithBodyWithResponse(ctx, w.FormDataContentType(), &body)
+		elapsed := time.Since(start)
+		require.NoError(t, err, "uploadExtensionsAndRestart request error: %v", err)
+		require.Equal(t, http.StatusCreated, rsp.StatusCode(), "unexpected status: %s body=%s", rsp.Status(), string(rsp.Body))
+		logger.Info("[test]", "action", "extension uploaded", "elapsed", elapsed.String())
+	}
+
+	// Verify the policy.json file contains the correct web-bot-auth configuration
+	{
+		logger.Info("[test]", "action", "reading policy.json")
+		policyContent, err := execCombinedOutput(ctx, "cat", []string{"/etc/chromium/policies/managed/policy.json"})
+		require.NoError(t, err, "failed to read policy.json: %v", err)
+
+		logger.Info("[test]", "policy_content", policyContent)
+
+		var policy map[string]interface{}
+		err = json.Unmarshal([]byte(policyContent), &policy)
+		require.NoError(t, err, "failed to parse policy.json: %v", err)
+
+		// Check ExtensionSettings exists
+		extensionSettings, ok := policy["ExtensionSettings"].(map[string]interface{})
+		require.True(t, ok, "ExtensionSettings not found in policy.json")
+
+		// Check web-bot-auth entry exists
+		webBotAuth, ok := extensionSettings["web-bot-auth"].(map[string]interface{})
+		require.True(t, ok, "web-bot-auth entry not found in ExtensionSettings")
+
+		// Verify installation_mode is force_installed
+		installationMode, ok := webBotAuth["installation_mode"].(string)
+		require.True(t, ok, "installation_mode not found in web-bot-auth entry")
+		require.Equal(t, "force_installed", installationMode, "expected installation_mode to be force_installed")
+
+		// Verify path
+		path, ok := webBotAuth["path"].(string)
+		require.True(t, ok, "path not found in web-bot-auth entry")
+		require.Equal(t, "/home/kernel/extensions/web-bot-auth", path, "expected path to be /home/kernel/extensions/web-bot-auth")
+
+		// Verify runtime_allowed_hosts
+		runtimeAllowedHosts, ok := webBotAuth["runtime_allowed_hosts"].([]interface{})
+		require.True(t, ok, "runtime_allowed_hosts not found in web-bot-auth entry")
+		require.Len(t, runtimeAllowedHosts, 1, "expected runtime_allowed_hosts to have 1 entry")
+		require.Equal(t, "*://*/*", runtimeAllowedHosts[0].(string), "expected runtime_allowed_hosts to contain *://*/*")
+
+		logger.Info("[test]", "result", "web-bot-auth policy verified successfully")
+	}
+}

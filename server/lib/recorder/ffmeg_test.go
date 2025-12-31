@@ -27,10 +27,12 @@ func defaultParams(tempDir string) FFmpegRecordingParams {
 }
 
 func TestFFmpegRecorder_StartAndStop(t *testing.T) {
+	tempDir := t.TempDir()
 	rec := &FFmpegRecorder{
 		id:         "startstop",
 		binaryPath: mockBin,
-		params:     defaultParams(t.TempDir()),
+		params:     defaultParams(tempDir),
+		outputPath: filepath.Join(tempDir, "startstop.mp4"),
 		stz:        scaletozero.NewOncer(scaletozero.NewNoopController()),
 	}
 	require.NoError(t, rec.Start(t.Context()))
@@ -38,19 +40,23 @@ func TestFFmpegRecorder_StartAndStop(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
+	// Stop proceeds even when ffmpeg exits with non-zero code (e.g., from signal),
+	// then attempts finalization which will fail because mock doesn't create a file
 	err := rec.Stop(t.Context())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "exit status 101")
+	assert.Contains(t, err.Error(), "recording file does not exist")
 
 	<-rec.exited
 	require.False(t, rec.IsRecording(t.Context()))
 }
 
 func TestFFmpegRecorder_ForceStop(t *testing.T) {
+	tempDir := t.TempDir()
 	rec := &FFmpegRecorder{
-		id:         "startstop",
+		id:         "forcestop",
 		binaryPath: mockBin,
-		params:     defaultParams(t.TempDir()),
+		params:     defaultParams(tempDir),
+		outputPath: filepath.Join(tempDir, "forcestop.mp4"),
 		stz:        scaletozero.NewOncer(scaletozero.NewNoopController()),
 	}
 	require.NoError(t, rec.Start(t.Context()))
@@ -58,8 +64,9 @@ func TestFFmpegRecorder_ForceStop(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
+	// ForceStop logs a warning on finalization failure but doesn't return error
 	err := rec.ForceStop(t.Context())
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	<-rec.exited
 	require.False(t, rec.IsRecording(t.Context()))

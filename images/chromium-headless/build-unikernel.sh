@@ -32,5 +32,6 @@ kraft pkg \
   --plat kraftcloud \
   --arch x86_64 \
   --strategy overwrite \
+  --rootfs-type erofs \
   --push \
   .

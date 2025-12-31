@@ -12,6 +12,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/nekoclient"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/policy"
 	"github.com/onkernel/kernel-images/server/lib/recorder"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
 )
@@ -42,6 +43,9 @@ type ApiService struct {
 
 	// playwrightMu serializes Playwright code execution (only one execution at a time)
 	playwrightMu sync.Mutex
+
+	// policy management
+	policy *policy.Policy
 }
 
 var _ oapi.StrictServerInterface = (*ApiService)(nil)
@@ -67,6 +71,7 @@ func New(recordManager recorder.RecordManager, factory recorder.FFmpegRecorderFa
 		upstreamMgr:       upstreamMgr,
 		stz:               stz,
 		nekoAuthClient:    nekoAuthClient,
+		policy:            &policy.Policy{},
 	}, nil
 }
 
@@ -129,10 +134,10 @@ func (s *ApiService) StopRecording(ctx context.Context, req oapi.StopRecordingRe
 	if !exists {
 		log.Error("attempted to stop recording when none is active", "recorder_id", recorderID)
 		return oapi.StopRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "no active recording to stop"}}, nil
-	} else if !rec.IsRecording(ctx) {
-		log.Warn("recording already stopped", "recorder_id", recorderID)
-		return oapi.StopRecording200Response{}, nil
 	}
+	// Always call Stop() even if IsRecording() is false. Recordings that exit naturally
+	// (max duration, max file size, etc.) finalize automatically, but Stop() is still
+	// needed to update scale-to-zero state and ensure clean shutdown.
 
 	// Check if force stop is requested
 	forceStop := false
@@ -182,12 +187,34 @@ func (s *ApiService) DownloadRecording(ctx context.Context, req oapi.DownloadRec
 
 	out, meta, err := rec.Recording(ctx)
 	if err != nil {
-		log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
-		return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+		if errors.Is(err, recorder.ErrRecordingFinalizing) {
+			// Wait for finalization to complete instead of asking client to retry
+			log.Info("waiting for recording finalization", "recorder_id", recorderID)
+			ffmpegRec, ok := rec.(*recorder.FFmpegRecorder)
+			if !ok {
+				log.Error("failed to cast recorder to FFmpegRecorder", "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+			}
+			// WaitForFinalization blocks until finalization completes and returns the result
+			if finalizeErr := ffmpegRec.WaitForFinalization(ctx); finalizeErr != nil {
+				log.Error("finalization failed", "err", finalizeErr, "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to finalize recording"}}, nil
+			}
+			// Finalization complete, retry getting the recording
+			out, meta, err = rec.Recording(ctx)
+			if err != nil {
+				log.Error("failed to get recording after finalization", "err", err, "recorder_id", recorderID)
+				return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+			}
+		} else {
+			log.Error("failed to get recording", "err", err, "recorder_id", recorderID)
+			return oapi.DownloadRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to get recording"}}, nil
+		}
 	}
 
 	// short-circuit if the recording is still in progress and the file is arbitrary small
 	if rec.IsRecording(ctx) && meta.Size <= minRecordingSizeInBytes {
+		out.Close() // Close the file handle to prevent descriptor leak
 		return oapi.DownloadRecording202Response{
 			Headers: oapi.DownloadRecording202ResponseHeaders{
 				RetryAfter: 300,
@@ -224,15 +251,18 @@ func (s *ApiService) DeleteRecording(ctx context.Context, req oapi.DeleteRecordi
 		return oapi.DeleteRecording400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "recording must be stopped first"}}, nil
 	}
 
-	// fine to do this async
-	go func() {
-		if err := rec.Delete(context.Background()); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
-		} else {
-			log.Info("recording deleted", "recorder_id", recorderID)
+	if err := rec.Delete(ctx); err != nil {
+		if errors.Is(err, recorder.ErrRecordingFinalizing) {
+			log.Info("recording is being finalized, client should retry", "recorder_id", recorderID)
+			return oapi.DeleteRecording409JSONResponse{ConflictErrorJSONResponse: oapi.ConflictErrorJSONResponse{Message: "recording is being finalized, please retry in a few seconds"}}, nil
 		}
-	}()
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Error("failed to delete recording", "err", err, "recorder_id", recorderID)
+			return oapi.DeleteRecording500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to delete recording"}}, nil
+		}
+	}
 
+	log.Info("recording deleted", "recorder_id", recorderID)
 	return oapi.DeleteRecording200Response{}, nil
 }
 

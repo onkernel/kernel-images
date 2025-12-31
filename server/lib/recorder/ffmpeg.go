@@ -18,6 +18,7 @@ import (
 
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	"github.com/onkernel/kernel-images/server/lib/scaletozero"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -30,6 +31,10 @@ const (
 	// >0 if the process exited with a non-zero exit code
 	exitCodeProcessDoneMinValue = -1
 )
+
+// ErrRecordingFinalizing is returned when attempting to access a recording that is
+// currently being finalized (remuxed to add duration metadata).
+var ErrRecordingFinalizing = errors.New("recording is being finalized")
 
 // FFmpegRecorder encapsulates an FFmpeg recording session with platform-specific screen capture.
 // It manages the lifecycle of a single FFmpeg process and provides thread-safe operations.
@@ -48,6 +53,13 @@ type FFmpegRecorder struct {
 	exited     chan struct{}
 	deleted    bool
 	stz        *scaletozero.Oncer
+
+	// flight coordinates concurrent operations using different keys:
+	// - "stop": prevents multiple SIGINTs from being sent to ffmpeg
+	// - "finalize": ensures finalization runs exactly once across Stop(), ForceStop(), and waitForCommand()
+	flight            singleflight.Group
+	finalizeComplete  bool
+	finalizeResultErr error
 }
 
 type FFmpegRecordingParams struct {
@@ -195,27 +207,149 @@ func (fr *FFmpegRecorder) Start(ctx context.Context) error {
 // Stop gracefully stops the recording using a multi-phase shutdown process.
 func (fr *FFmpegRecorder) Stop(ctx context.Context) error {
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
+
+	// Use singleflight to prevent concurrent Stop() calls from sending multiple SIGINTs
+	// to ffmpeg, which causes immediate abort without proper file closure.
 	// This isn't scientific - give ffmpeg a long time to complete since encoding pipelines can
 	// be complex and we care more about the recording than performance. In cases where ffmpeg
 	// "falls behind" (e.g. it's resource constrained) it's better for our use case to wait for
 	// the recording to complete than it is to quickly terminate. We intentionally detach the
-	// shutdown process from any inbound context
-	err := fr.shutdownInPhases(context.Background(), []shutdownPhase{
-		{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
-		{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
-		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+	// shutdown process from any inbound context.
+	_, shutdownErr, _ := fr.flight.Do("stop", func() (any, error) {
+		return nil, fr.shutdownInPhases(context.Background(), []shutdownPhase{
+			{"wake_and_interrupt", []syscall.Signal{syscall.SIGINT}, time.Minute, "graceful stop"},
+			{"terminate", []syscall.Signal{syscall.SIGTERM}, 2 * time.Second, "forceful termination"},
+			{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
+		})
 	})
 
-	return err
+	// Check if shutdown failed completely - don't proceed to finalization.
+	if shutdownErr != nil {
+		errMsg := shutdownErr.Error()
+		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
+			return shutdownErr
+		}
+	}
+
+	// Remux the fragmented MP4 to add proper duration metadata.
+	// We proceed with finalization even if ffmpeg exited with a non-zero code (e.g., 255 from SIGINT)
+	// because the recording file is still valid and needs proper duration metadata.
+	return fr.finalizeRecording(ctx)
+}
+
+// WaitForFinalization blocks until finalization completes and returns the result.
+// If finalization hasn't started, it will be triggered. If already complete, returns
+// the cached result immediately. This is useful for callers like the download handler
+// that need to wait for finalization before accessing the recording.
+func (fr *FFmpegRecorder) WaitForFinalization(ctx context.Context) error {
+	return fr.finalizeRecording(ctx)
 }
 
 // ForceStop immediately terminates the recording process.
 func (fr *FFmpegRecorder) ForceStop(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
-	err := fr.shutdownInPhases(ctx, []shutdownPhase{
+	shutdownErr := fr.shutdownInPhases(ctx, []shutdownPhase{
 		{"kill", []syscall.Signal{syscall.SIGKILL}, 100 * time.Millisecond, "immediate kill"},
 	})
 
+	// Check if shutdown actually failed (process didn't exit) or there was no recording to stop.
+	// We only proceed to finalization when ffmpeg exited (even with non-zero code from signal).
+	if shutdownErr != nil {
+		errMsg := shutdownErr.Error()
+		if errMsg == "failed to shutdown ffmpeg" || errMsg == "no recording to stop" {
+			return shutdownErr
+		}
+	}
+
+	// Still try to finalize, though SIGKILL may have corrupted the last fragment
+	if err := fr.finalizeRecording(ctx); err != nil {
+		// Log but don't fail - the recording may still be partially usable
+		log.Warn("failed to finalize force-stopped recording", "err", err)
+	}
+
+	return nil
+}
+
+// finalizeRecording remuxes the fragmented MP4 to create a standard MP4 with
+// proper duration metadata in the moov atom. This is necessary because fragmented
+// MP4 (used for data safety during recording) doesn't include duration in the header.
+//
+// This method is safe for concurrent calls - it uses singleflight internally to ensure
+// finalization runs exactly once, with all callers receiving the same result.
+func (fr *FFmpegRecorder) finalizeRecording(ctx context.Context) error {
+	_, err, _ := fr.flight.Do("finalize", func() (any, error) {
+		log := logger.FromContext(ctx)
+
+		fr.mu.Lock()
+		// Check if already complete (handles callers after previous singleflight completed)
+		if fr.finalizeComplete {
+			result := fr.finalizeResultErr
+			fr.mu.Unlock()
+			return nil, result
+		}
+		// Guard: finalization requires the recording to have exited.
+		// Finalizing an active recording would corrupt it (remux reads partial file,
+		// then os.Rename orphans the inode ffmpeg is writing to).
+		if fr.exitCode < exitCodeProcessDoneMinValue {
+			fr.mu.Unlock()
+			return nil, fmt.Errorf("cannot finalize: recording is still in progress")
+		}
+		outputPath := fr.outputPath
+		binaryPath := fr.binaryPath
+		fr.mu.Unlock()
+
+		// Check if the recording file exists
+		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+			result := fmt.Errorf("recording file does not exist: %w", err)
+			fr.mu.Lock()
+			fr.finalizeComplete = true
+			fr.finalizeResultErr = result
+			fr.mu.Unlock()
+			return nil, result
+		}
+
+		// Create temp file for the remuxed output
+		tempPath := outputPath + ".tmp"
+
+		// Remux: copy streams without re-encoding, move moov atom to start with faststart
+		args := []string{
+			"-i", outputPath,
+			"-c", "copy",
+			"-movflags", "+faststart",
+			"-f", "mp4", // Explicitly specify format since .tmp extension isn't recognized
+			"-y",
+			tempPath,
+		}
+
+		log.Info("finalizing recording", "cmd", fmt.Sprintf("%s %s", binaryPath, strings.Join(args, " ")))
+
+		// Use WithoutCancel to prevent context cancellation from aborting finalization,
+		// which would leave the recording in a corrupted/incomplete state.
+		cmd := exec.CommandContext(context.WithoutCancel(ctx), binaryPath, args...)
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
+
+		var result error
+		if err := cmd.Run(); err != nil {
+			// Clean up temp file on error
+			os.Remove(tempPath)
+			result = fmt.Errorf("failed to finalize recording: %w", err)
+		} else if err := os.Rename(tempPath, outputPath); err != nil {
+			os.Remove(tempPath)
+			result = fmt.Errorf("failed to replace recording with finalized version: %w", err)
+		} else {
+			log.Info("recording finalized with proper duration metadata")
+		}
+
+		fr.mu.Lock()
+		fr.finalizeComplete = true
+		fr.finalizeResultErr = result
+		fr.mu.Unlock()
+
+		return nil, result
+	})
 	return err
 }
 
@@ -244,11 +378,19 @@ func (fr *FFmpegRecorder) Metadata() *RecordingMetadata {
 }
 
 // Recording returns the recording file as an io.ReadCloser.
+// Returns ErrRecordingFinalizing if the recording is currently being finalized.
 func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *RecordingMetadata, error) {
 	fr.mu.Lock()
 	if fr.deleted {
 		fr.mu.Unlock()
 		return nil, nil, fmt.Errorf("recording deleted: %w", os.ErrNotExist)
+	}
+	// Block access while finalization is pending or in progress.
+	// This covers both the race window (after process exit, before finalization starts)
+	// and during active finalization.
+	if fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete {
+		fr.mu.Unlock()
+		return nil, nil, ErrRecordingFinalizing
 	}
 	fr.mu.Unlock()
 
@@ -273,12 +415,19 @@ func (fr *FFmpegRecorder) Recording(ctx context.Context) (io.ReadCloser, *Record
 	}, nil
 }
 
-// Delete removes the recording file from disk
+// Delete removes the recording file from disk.
+// Returns ErrRecordingFinalizing if the recording is currently being finalized.
 func (fr *FFmpegRecorder) Delete(ctx context.Context) error {
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
 	if fr.deleted {
 		return nil // already deleted
+	}
+	// Block deletion while finalization is pending or in progress.
+	// This covers both the race window (after process exit, before finalization starts)
+	// and during active finalization.
+	if fr.exitCode >= exitCodeProcessDoneMinValue && !fr.finalizeComplete {
+		return ErrRecordingFinalizing
 	}
 	if err := os.Remove(fr.outputPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete recording file: %w", err)
@@ -346,7 +495,8 @@ func ffmpegArgs(params FFmpegRecordingParams, outputPath string) ([]string, erro
 }
 
 // waitForCommand should be run in the background to wait for the ffmpeg process to complete and
-// update the internal state accordingly.
+// update the internal state accordingly. It also triggers finalization to add proper duration
+// metadata for recordings that exit naturally (max duration, max file size, etc.).
 func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 	defer fr.stz.Enable(context.WithoutCancel(ctx))
 
@@ -357,7 +507,6 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 
 	// update internal state and cleanup
 	fr.mu.Lock()
-	defer fr.mu.Unlock()
 	fr.ffmpegErr = err
 	fr.exitCode = fr.cmd.ProcessState.ExitCode()
 	fr.endTime = time.Now()
@@ -367,6 +516,14 @@ func (fr *FFmpegRecorder) waitForCommand(ctx context.Context) {
 		log.Info("ffmpeg process completed with error", "err", err, "exitCode", fr.exitCode)
 	} else {
 		log.Info("ffmpeg process completed successfully", "exitCode", fr.exitCode)
+	}
+	fr.mu.Unlock()
+
+	// Finalize the recording to add proper duration metadata.
+	// This handles natural exits (max duration, max file size) without requiring Stop().
+	// finalizeRecording uses singleflight internally so concurrent Stop() calls will coordinate.
+	if err := fr.finalizeRecording(ctx); err != nil {
+		log.Error("failed to finalize recording", "err", err)
 	}
 }
 
@@ -505,11 +662,11 @@ func (fm *FFmpegManager) StopAll(ctx context.Context) error {
 
 	var errs []error
 	for id, recorder := range fm.recorders {
-		if recorder.IsRecording(ctx) {
-			if err := recorder.Stop(ctx); err != nil {
-				errs = append(errs, fmt.Errorf("failed to stop recorder '%s': %w", id, err))
-				log.Error("failed to stop recorder during shutdown", "id", id, "err", err)
-			}
+		// Stop() signals running recordings and updates scale-to-zero state.
+		// Safe to call on already-exited recordings (handled gracefully via singleflight).
+		if err := recorder.Stop(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("failed to stop recorder '%s': %w", id, err))
+			log.Error("failed to stop recorder during shutdown", "id", id, "err", err)
 		}
 	}
 
