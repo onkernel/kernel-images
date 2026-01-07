@@ -17,7 +17,7 @@ import { chromium as chromiumPR } from 'patchright';
 
 const SOCKET_PATH = process.env.PLAYWRIGHT_DAEMON_SOCKET || '/tmp/playwright-daemon.sock';
 const CDP_ENDPOINT = process.env.CDP_ENDPOINT || 'ws://127.0.0.1:9222';
-const USE_PATCHRIGHT = process.env.PLAYWRIGHT_ENGINE === 'patchright';
+const USE_PATCHRIGHT = process.env.PLAYWRIGHT_ENGINE !== 'playwright-core';
 const RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
