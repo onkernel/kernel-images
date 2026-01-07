@@ -180,7 +180,7 @@ RUN set -eux; \
     fi
 
 # Install TypeScript, Playwright, Patchright, esbuild globally
-RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core patchright tsx esbuild
+RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core patchright esbuild
 
 ENV WITHDOCKER=true
 
