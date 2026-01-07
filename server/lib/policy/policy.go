@@ -122,8 +122,9 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 	}
 
 	// Add the specific extension
+	// Use extension-specific update URL to support multiple policy-installed extensions
 	setting := ExtensionSetting{
-		UpdateUrl: "http://127.0.0.1:10001/update.xml",
+		UpdateUrl: fmt.Sprintf("http://127.0.0.1:10001/extensions/%s/update.xml", extensionID),
 	}
 
 	// If the extension requires enterprise policy (like webRequestBlocking),
