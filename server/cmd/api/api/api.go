@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sync"
 	"time"
 
@@ -43,6 +44,12 @@ type ApiService struct {
 
 	// playwrightMu serializes Playwright code execution (only one execution at a time)
 	playwrightMu sync.Mutex
+
+	// playwrightDaemonStarting is an atomic flag to prevent concurrent daemon starts
+	playwrightDaemonStarting int32
+
+	// playwrightDaemonCmd holds the daemon process for cleanup
+	playwrightDaemonCmd *exec.Cmd
 
 	// policy management
 	policy *policy.Policy

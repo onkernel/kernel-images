@@ -179,8 +179,8 @@ RUN set -eux; \
     ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack; \
     fi
 
-# Install TypeScript, Playwright, Patchright globally
-RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core patchright tsx
+# Install TypeScript, Playwright, Patchright, esbuild globally
+RUN --mount=type=cache,target=/root/.npm,id=$CACHEIDPREFIX-npm npm install -g typescript playwright-core patchright tsx esbuild
 
 ENV WITHDOCKER=true
 
@@ -202,7 +202,17 @@ COPY images/chromium-headless/image/supervisor/services/ /etc/supervisor/conf.d/
 COPY --from=server-builder /out/kernel-images-api /usr/local/bin/kernel-images-api
 COPY --from=server-builder /out/chromium-launcher /usr/local/bin/chromium-launcher
 
-# Copy the Playwright executor runtime
-COPY server/runtime/playwright-executor.ts /usr/local/lib/playwright-executor.ts
+# Copy and compile the Playwright daemon
+COPY server/runtime/playwright-daemon.ts /tmp/playwright-daemon.ts
+RUN esbuild /tmp/playwright-daemon.ts \
+    --bundle \
+    --platform=node \
+    --target=node22 \
+    --format=esm \
+    --outfile=/usr/local/lib/playwright-daemon.js \
+    --external:playwright-core \
+    --external:patchright \
+    --external:esbuild \
+    && rm /tmp/playwright-daemon.ts
 
 ENTRYPOINT [ "/usr/bin/wrapper.sh" ]
