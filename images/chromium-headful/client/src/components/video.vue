@@ -1,6 +1,6 @@
 <template>
   <div ref="component" class="video">
-    <div ref="player" class="player">
+    <div ref="player" class="player" :class="{ 'is-muted': muted }">
       <div ref="container" class="player-container">
         <video ref="video" playsinline />
         <div class="emotes">
@@ -85,6 +85,19 @@
 </template>
 
 <style lang="scss" scoped>
+  /* KERNEL MODIFICATION: Keyframes for the mute indicator pulse effect */
+  @keyframes mute-pulse {
+    0% {
+      box-shadow: inset 0 0 0 2px rgba(255, 80, 80, 0.2);
+    }
+    50% {
+      box-shadow: inset 0 0 0 2px rgba(255, 80, 80, 0.4);
+    }
+    100% {
+      box-shadow: inset 0 0 0 2px rgba(255, 80, 80, 0.2);
+    }
+  }
+
   .video {
     width: 100%;
     height: 100%;
@@ -95,6 +108,11 @@
       justify-content: center;
       align-items: center;
       background: #000;
+
+      /* KERNEL MODIFICATION: Style for the mute indicator */
+      &.is-muted {
+        animation: mute-pulse 2s infinite;
+      }
 
       .video-menu {
         position: absolute;
@@ -258,6 +276,10 @@
     private focused = false
     private fullscreen = false
     private mutedOverlay = true
+
+    /* KERNEL MODIFICATION: State flag to ensure unmute happens only once. */
+    private hasInteracted = false
+    private unmuteHandler: (() => void) | null = null
 
     get admin() {
       return this.$accessor.user.admin
@@ -470,6 +492,23 @@
       }
     }
 
+    /* KERNEL MODIFICATION: Centralized one-time unmute logic. */
+    _unmuteOnFirstInteraction() {
+      if (this.hasInteracted || !this.muted) {
+        return
+      }
+
+      this.hasInteracted = true
+      this.unmute()
+      this.$accessor.video.setVolume(100)
+
+      // Clean up global listeners if they were set
+      if (this.unmuteHandler) {
+        document.documentElement.removeEventListener('mousedown', this.unmuteHandler)
+        document.documentElement.removeEventListener('keydown', this.unmuteHandler)
+      }
+    }
+
     mounted() {
       this._container.addEventListener('resize', this.onResize)
       this.onVolumeChanged(this.volume)
@@ -533,12 +572,23 @@
         this.$client.sendData('keyup', { key: this.keyMap(key) })
       }
       this.keyboard.listenTo(this._overlay)
+
+      /* KERNEL MODIFICATION: Set up listeners for the first interaction. */
+      this.unmuteHandler = this._unmuteOnFirstInteraction.bind(this)
+      document.documentElement.addEventListener('mousedown', this.unmuteHandler, { once: true })
+      document.documentElement.addEventListener('keydown', this.unmuteHandler, { once: true })
     }
 
     beforeDestroy() {
       this.observer.disconnect()
       this.$accessor.video.setPlayable(false)
       /* Guacamole Keyboard does not provide destroy functions */
+
+      /* KERNEL MODIFICATION: Clean up listeners on component destruction. */
+      if (this.unmuteHandler) {
+        document.documentElement.removeEventListener('mousedown', this.unmuteHandler)
+        document.documentElement.removeEventListener('keydown', this.unmuteHandler)
+      }
     }
 
     get hasMacOSKbd() {
@@ -761,6 +811,9 @@
     }
 
     onMouseDown(e: MouseEvent) {
+      /* KERNEL MODIFICATION: Trigger unmute on first video click. */
+      this._unmuteOnFirstInteraction()
+
       if (!this.hosting) {
         this.$emit('control-attempt', e)
       }
