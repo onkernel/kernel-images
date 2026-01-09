@@ -15,6 +15,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/chromiumflags"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
+	"github.com/onkernel/kernel-images/server/lib/policy"
 	"github.com/onkernel/kernel-images/server/lib/ziputil"
 )
 
@@ -157,49 +158,106 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			log.Error("failed to chown extension dir", "error", err)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil
 		}
+
 		log.Info("installed extension", "name", p.name)
 	}
 
 	// Update enterprise policy for extensions that require it
+	// Track which extensions need --load-extension flags (those NOT using policy installation)
+	var pathsNeedingFlags []string
+
 	for _, p := range items {
 		extensionPath := filepath.Join(extBase, p.name)
-		extensionID := s.policy.GenerateExtensionID(p.name)
+		extensionName := p.name
 		manifestPath := filepath.Join(extensionPath, "manifest.json")
+		updateXMLPath := filepath.Join(extensionPath, "update.xml")
 
 		// Check if this extension requires enterprise policy
 		requiresEntPolicy, err := s.policy.RequiresEnterprisePolicy(manifestPath)
 		if err != nil {
-			log.Warn("failed to read manifest for policy check", "error", err, "extension", p.name)
+			log.Warn("failed to read manifest for policy check", "error", err, "extension", extensionName)
 			// Continue with requiresEntPolicy = false
 		}
 
+		// Try to extract Chrome extension ID from update.xml
+		chromeExtensionID := extensionName
+		extractionErr := error(nil)
+		if extractedID, err := policy.ExtractExtensionIDFromUpdateXML(updateXMLPath); err == nil {
+			chromeExtensionID = extractedID
+			log.Info("extracted Chrome extension ID from update.xml", "name", extensionName, "chromeExtensionID", chromeExtensionID)
+		} else {
+			extractionErr = err
+			log.Info("no Chrome extension ID in update.xml, using name as ID", "name", extensionName, "error", err)
+		}
+
 		if requiresEntPolicy {
-			log.Info("extension requires enterprise policy", "name", p.name)
+			log.Info("extension requires enterprise policy", "name", extensionName)
+
+			// Validate that update.xml and .crx files are present for policy-installed extensions
+			// These files are required for ExtensionInstallForcelist to work
+			hasUpdateXML := false
+			hasCRX := false
+
+			if _, err := os.Stat(updateXMLPath); err == nil {
+				// For policy extensions, update.xml must exist AND be parseable
+				if extractionErr != nil {
+					return oapi.UploadExtensionsAndRestart400JSONResponse{
+						BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
+							Message: fmt.Sprintf("extension %s requires enterprise policy but update.xml is invalid: %v", extensionName, extractionErr),
+						},
+					}, nil
+				}
+				hasUpdateXML = true
+				log.Info("found update.xml in extension zip", "name", extensionName)
+			}
+
+			// Look for any .crx file in the directory
+			entries, err := os.ReadDir(extensionPath)
+			if err == nil {
+				for _, entry := range entries {
+					if !entry.IsDir() && filepath.Ext(entry.Name()) == ".crx" {
+						hasCRX = true
+						log.Info("found .crx file in extension zip", "name", extensionName, "crx_file", entry.Name())
+						break
+					}
+				}
+			}
+
+			// Fail if policy extension is missing required files
+			if !hasUpdateXML || !hasCRX {
+				return oapi.UploadExtensionsAndRestart400JSONResponse{
+					BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
+						Message: fmt.Sprintf("extension %s requires enterprise policy (ExtensionInstallForcelist) but is missing required files: update.xml (present: %v), .crx file (present: %v). These files are required for Chrome to install the extension.", extensionName, hasUpdateXML, hasCRX),
+					},
+				}, nil
+			}
+		} else {
+			// Only add --load-extension flags for non-policy extensions
+			pathsNeedingFlags = append(pathsNeedingFlags, extensionPath)
 		}
 
 		// Add to enterprise policy
-		if err := s.policy.AddExtension(extensionID, extensionPath, requiresEntPolicy); err != nil {
-			log.Error("failed to update enterprise policy", "error", err, "extension", p.name)
+		// Pass both extensionName (for URL paths) and chromeExtensionID (for policy entries)
+		if err := s.policy.AddExtension(extensionName, chromeExtensionID, extensionPath, requiresEntPolicy); err != nil {
+			log.Error("failed to update enterprise policy", "error", err, "extension", extensionName)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{
 				InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{
-					Message: fmt.Sprintf("failed to update enterprise policy for %s: %v", p.name, err),
+					Message: fmt.Sprintf("failed to update enterprise policy for %s: %v", extensionName, err),
 				},
 			}, nil
 		}
 
-		log.Info("updated enterprise policy", "extension", p.name, "id", extensionID, "requiresEnterprisePolicy", requiresEntPolicy)
+		log.Info("updated enterprise policy", "extension", extensionName, "chromeExtensionID", chromeExtensionID, "requiresEnterprisePolicy", requiresEntPolicy)
 	}
 
 	// Build flags overlay file in /chromium/flags, merging with existing flags
-	var paths []string
-	for _, p := range items {
-		paths = append(paths, filepath.Join(extBase, p.name))
-	}
-
-	// Create new flags for the uploaded extensions
-	newTokens := []string{
-		fmt.Sprintf("--disable-extensions-except=%s", strings.Join(paths, ",")),
-		fmt.Sprintf("--load-extension=%s", strings.Join(paths, ",")),
+	// Only add --load-extension flags for extensions that don't use policy installation
+	var newTokens []string
+	if len(pathsNeedingFlags) > 0 {
+		newTokens = []string{
+			fmt.Sprintf("--disable-extensions-except=%s", strings.Join(pathsNeedingFlags, ",")),
+			fmt.Sprintf("--load-extension=%s", strings.Join(pathsNeedingFlags, ",")),
+		}
 	}
 
 	// Merge and write flags

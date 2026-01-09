@@ -2,8 +2,11 @@ package policy
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
+	"regexp"
+	"slices"
 	"sync"
 )
 
@@ -17,13 +20,14 @@ type Policy struct {
 	AutofillCreditCardEnabled   bool                        `json:"AutofillCreditCardEnabled"`
 	TranslateEnabled            bool                        `json:"TranslateEnabled"`
 	DefaultNotificationsSetting int                         `json:"DefaultNotificationsSetting"`
+	ExtensionInstallForcelist   []string                    `json:"ExtensionInstallForcelist,omitempty"`
 	ExtensionSettings           map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
 
 // ExtensionSetting represents settings for a specific extension
 type ExtensionSetting struct {
 	InstallationMode    string   `json:"installation_mode,omitempty"`
-	Path                string   `json:"path,omitempty"`
+	UpdateUrl           string   `json:"update_url,omitempty"`
 	AllowedTypes        []string `json:"allowed_types,omitempty"`
 	InstallSources      []string `json:"install_sources,omitempty"`
 	RuntimeBlockedHosts []string `json:"runtime_blocked_hosts,omitempty"`
@@ -42,6 +46,7 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 				AutofillCreditCardEnabled:   false,
 				TranslateEnabled:            false,
 				DefaultNotificationsSetting: 2,
+				ExtensionInstallForcelist:   []string{},
 				ExtensionSettings:           make(map[string]ExtensionSetting),
 			}, nil
 		}
@@ -56,6 +61,11 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 	// Initialize ExtensionSettings map if it's nil to prevent panic on write
 	if policy.ExtensionSettings == nil {
 		policy.ExtensionSettings = make(map[string]ExtensionSetting)
+	}
+
+	// Initialize ExtensionInstallForcelist if it's nil
+	if policy.ExtensionInstallForcelist == nil {
+		policy.ExtensionInstallForcelist = []string{}
 	}
 
 	return &policy, nil
@@ -93,8 +103,10 @@ func (p *Policy) WritePolicy(policy *Policy) error {
 }
 
 // AddExtension adds or updates an extension in the policy
-// extensionID should be a stable identifier (can be derived from extension path)
-func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
+// extensionName is the user-provided name used for the directory and URL paths
+// chromeExtensionID is the actual Chrome extension ID (from update.xml appid) used in policy entries
+// extensionPath is the full path to the unpacked extension directory
+func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath string, requiresEnterprisePolicy bool) error {
 	// Lock for the entire read-modify-write cycle to prevent race conditions
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -113,21 +125,45 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 	}
 
 	// Add the specific extension
+	// Use extension name for the URL path (where files are served)
+	// Use Chrome extension ID for the policy key (what Chrome expects)
 	setting := ExtensionSetting{
-		Path: extensionPath,
+		UpdateUrl: fmt.Sprintf("http://127.0.0.1:10001/extensions/%s/update.xml", extensionName),
 	}
 
 	// If the extension requires enterprise policy (like webRequestBlocking),
-	// set it as force_installed https://github.com/cloudflare/web-bot-auth/blob/main/examples/browser-extension/policy/policy.json.templ
+	// we need special handling for unpacked extensions loaded via --load-extension
+	// https://github.com/cloudflare/web-bot-auth/blob/main/examples/browser-extension/policy/policy.json.templ
 	if requiresEnterprisePolicy {
+		// For unpacked extensions with webRequestBlocking:
+		// Chrome requires the extension to be in ExtensionInstallForcelist
+		// Format: "extension_id;update_url" per https://chromeenterprise.google/intl/en_ca/policies/#ExtensionInstallForcelist
 		setting.InstallationMode = "force_installed"
-		// Allow all hosts for webRequest APIs
 		setting.RuntimeAllowedHosts = []string{"*://*/*"}
-	} else {
-		setting.InstallationMode = "normal_installed"
-	}
 
-	policy.ExtensionSettings[extensionID] = setting
+		// Add to ExtensionInstallForcelist using the Chrome extension ID and update URL
+		forcelistEntry := fmt.Sprintf("%s;%s", chromeExtensionID, setting.UpdateUrl)
+
+		// Remove any existing entries with the same extension ID (different URLs)
+		if policy.ExtensionInstallForcelist == nil {
+			policy.ExtensionInstallForcelist = []string{}
+		}
+
+		// Filter out entries that start with the same extension ID
+		extensionIDPrefix := chromeExtensionID + ";"
+		policy.ExtensionInstallForcelist = slices.DeleteFunc(policy.ExtensionInstallForcelist, func(entry string) bool {
+			return len(entry) >= len(extensionIDPrefix) && entry[:len(extensionIDPrefix)] == extensionIDPrefix
+		})
+
+		// Add the new entry
+		policy.ExtensionInstallForcelist = append(policy.ExtensionInstallForcelist, forcelistEntry)
+
+		// Use Chrome extension ID as the key in ExtensionSettings
+		policy.ExtensionSettings[chromeExtensionID] = setting
+	} else {
+		// For normal extensions, use the extension name as the key
+		policy.ExtensionSettings[extensionName] = setting
+	}
 
 	return p.writePolicyUnlocked(policy)
 }
@@ -167,4 +203,46 @@ func (p *Policy) RequiresEnterprisePolicy(manifestPath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// updateManifest represents the Chrome extension update manifest XML structure
+type updateManifest struct {
+	XMLName xml.Name  `xml:"gupdate"`
+	Apps    []appNode `xml:"app"`
+}
+
+type appNode struct {
+	AppID string `xml:"appid,attr"`
+}
+
+// ExtractExtensionIDFromUpdateXML reads update.xml and extracts the appid attribute
+// from the <app> element. Returns the appid or an error if the file doesn't exist
+// or the appid cannot be found.
+func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
+	data, err := os.ReadFile(updateXMLPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read update.xml: %w", err)
+	}
+
+	var manifest updateManifest
+	if err := xml.Unmarshal(data, &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse update.xml: %w", err)
+	}
+
+	if len(manifest.Apps) == 0 {
+		return "", fmt.Errorf("no <app> element found in update.xml")
+	}
+
+	appID := manifest.Apps[0].AppID
+	if appID == "" {
+		return "", fmt.Errorf("appid attribute is empty in update.xml")
+	}
+
+	// Validate extension ID format: Chrome extension IDs are 32 lowercase hex characters
+	// This prevents injection attacks via semicolons or other special characters
+	if !regexp.MustCompile(`^[a-p]{32}$`).MatchString(appID) {
+		return "", fmt.Errorf("invalid Chrome extension ID format in update.xml: %s", appID)
+	}
+
+	return appID, nil
 }

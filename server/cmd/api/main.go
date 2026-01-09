@@ -124,6 +124,64 @@ func main() {
 		apiService.HandleProcessAttach(w, r, id)
 	})
 
+	// Serve extension files for Chrome policy-installed extensions
+	// This allows Chrome to download .crx and update.xml files via HTTP
+	extensionsDir := "/home/kernel/extensions"
+	r.Get("/extensions/*", func(w http.ResponseWriter, r *http.Request) {
+		// Serve files from /home/kernel/extensions/
+		fs := http.StripPrefix("/extensions/", http.FileServer(http.Dir(extensionsDir)))
+		fs.ServeHTTP(w, r)
+	})
+
+	// Serve update.xml at root for Chrome enterprise policy
+	// This serves the first update.xml found in any extension directory
+	r.Get("/update.xml", func(w http.ResponseWriter, r *http.Request) {
+		// Try to find update.xml in the first extension directory
+		entries, err := os.ReadDir(extensionsDir)
+		if err != nil {
+			http.Error(w, "extensions directory not found", http.StatusNotFound)
+			return
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				updateXMLPath := fmt.Sprintf("%s/%s/update.xml", extensionsDir, entry.Name())
+				if _, err := os.Stat(updateXMLPath); err == nil {
+					http.ServeFile(w, r, updateXMLPath)
+					return
+				}
+			}
+		}
+
+		http.Error(w, "update.xml not found", http.StatusNotFound)
+	})
+
+	// Serve CRX files at root for Chrome enterprise policy
+	// This allows simple codebase URLs like http://host:port/extension-name.crx
+	r.Get("/{filename}.crx", func(w http.ResponseWriter, r *http.Request) {
+		// Extract the filename from the URL path
+		filename := chi.URLParam(r, "filename") + ".crx"
+
+		// Search for the CRX file in all extension directories
+		entries, err := os.ReadDir(extensionsDir)
+		if err != nil {
+			http.Error(w, "extensions directory not found", http.StatusNotFound)
+			return
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() {
+				crxPath := fmt.Sprintf("%s/%s/%s", extensionsDir, entry.Name(), filename)
+				if _, err := os.Stat(crxPath); err == nil {
+					http.ServeFile(w, r, crxPath)
+					return
+				}
+			}
+		}
+
+		http.Error(w, "crx file not found", http.StatusNotFound)
+	})
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: r,

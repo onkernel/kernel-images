@@ -63,7 +63,7 @@ RUN_ARGS=(
   -e WIDTH=1920
   -e TZ=${TZ:-'America/Los_Angeles'}
   -e RUN_AS_ROOT="$RUN_AS_ROOT"
-  --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags,ro
+  --mount type=bind,src="$FLAGS_FILE",dst=/chromium/flags
 )
 
 if [[ -n "${PLAYWRIGHT_ENGINE:-}" ]]; then
