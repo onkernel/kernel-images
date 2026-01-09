@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"sync"
 )
@@ -142,14 +143,19 @@ func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath st
 		// Add to ExtensionInstallForcelist using the Chrome extension ID and update URL
 		forcelistEntry := fmt.Sprintf("%s;%s", chromeExtensionID, setting.UpdateUrl)
 
-		// Check if already in forcelist
-		found := slices.Contains(policy.ExtensionInstallForcelist, forcelistEntry)
-		if !found {
-			if policy.ExtensionInstallForcelist == nil {
-				policy.ExtensionInstallForcelist = []string{}
-			}
-			policy.ExtensionInstallForcelist = append(policy.ExtensionInstallForcelist, forcelistEntry)
+		// Remove any existing entries with the same extension ID (different URLs)
+		if policy.ExtensionInstallForcelist == nil {
+			policy.ExtensionInstallForcelist = []string{}
 		}
+
+		// Filter out entries that start with the same extension ID
+		extensionIDPrefix := chromeExtensionID + ";"
+		policy.ExtensionInstallForcelist = slices.DeleteFunc(policy.ExtensionInstallForcelist, func(entry string) bool {
+			return len(entry) >= len(extensionIDPrefix) && entry[:len(extensionIDPrefix)] == extensionIDPrefix
+		})
+
+		// Add the new entry
+		policy.ExtensionInstallForcelist = append(policy.ExtensionInstallForcelist, forcelistEntry)
 
 		// Use Chrome extension ID as the key in ExtensionSettings
 		policy.ExtensionSettings[chromeExtensionID] = setting
@@ -229,6 +235,12 @@ func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
 	appID := manifest.Apps[0].AppID
 	if appID == "" {
 		return "", fmt.Errorf("appid attribute is empty in update.xml")
+	}
+
+	// Validate extension ID format: Chrome extension IDs are 32 lowercase hex characters
+	// This prevents injection attacks via semicolons or other special characters
+	if !regexp.MustCompile(`^[a-p]{32}$`).MatchString(appID) {
+		return "", fmt.Errorf("invalid Chrome extension ID format in update.xml: %s", appID)
 	}
 
 	return appID, nil

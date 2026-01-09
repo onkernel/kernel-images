@@ -172,21 +172,22 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 		manifestPath := filepath.Join(extensionPath, "manifest.json")
 		updateXMLPath := filepath.Join(extensionPath, "update.xml")
 
-		// Try to extract Chrome extension ID from update.xml
-		// If update.xml exists and contains an appid, use it; otherwise fall back to extension name
-		chromeExtensionID := extensionName
-		if extractedID, err := policy.ExtractExtensionIDFromUpdateXML(updateXMLPath); err == nil {
-			chromeExtensionID = extractedID
-			log.Info("extracted Chrome extension ID from update.xml", "name", extensionName, "chromeExtensionID", chromeExtensionID)
-		} else {
-			log.Info("no Chrome extension ID in update.xml, using name as ID", "name", extensionName, "error", err)
-		}
-
 		// Check if this extension requires enterprise policy
 		requiresEntPolicy, err := s.policy.RequiresEnterprisePolicy(manifestPath)
 		if err != nil {
 			log.Warn("failed to read manifest for policy check", "error", err, "extension", extensionName)
 			// Continue with requiresEntPolicy = false
+		}
+
+		// Try to extract Chrome extension ID from update.xml
+		chromeExtensionID := extensionName
+		extractionErr := error(nil)
+		if extractedID, err := policy.ExtractExtensionIDFromUpdateXML(updateXMLPath); err == nil {
+			chromeExtensionID = extractedID
+			log.Info("extracted Chrome extension ID from update.xml", "name", extensionName, "chromeExtensionID", chromeExtensionID)
+		} else {
+			extractionErr = err
+			log.Info("no Chrome extension ID in update.xml, using name as ID", "name", extensionName, "error", err)
 		}
 
 		if requiresEntPolicy {
@@ -198,6 +199,14 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			hasCRX := false
 
 			if _, err := os.Stat(updateXMLPath); err == nil {
+				// For policy extensions, update.xml must exist AND be parseable
+				if extractionErr != nil {
+					return oapi.UploadExtensionsAndRestart400JSONResponse{
+						BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
+							Message: fmt.Sprintf("extension %s requires enterprise policy but update.xml is invalid: %v", extensionName, extractionErr),
+						},
+					}, nil
+				}
 				hasUpdateXML = true
 				log.Info("found update.xml in extension zip", "name", extensionName)
 			}
