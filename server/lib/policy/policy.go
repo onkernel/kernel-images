@@ -139,6 +139,7 @@ func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath st
 		// Chrome requires the extension to be in ExtensionInstallForcelist
 		// Format: "extension_id;update_url" per https://chromeenterprise.google/intl/en_ca/policies/#ExtensionInstallForcelist
 		setting.InstallationMode = "force_installed"
+		setting.RuntimeAllowedHosts = []string{"*://*/*"}
 
 		// Add to ExtensionInstallForcelist using the Chrome extension ID and update URL
 		forcelistEntry := fmt.Sprintf("%s;%s", chromeExtensionID, setting.UpdateUrl)
