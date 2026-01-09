@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"slices"
@@ -101,9 +102,10 @@ func (p *Policy) WritePolicy(policy *Policy) error {
 }
 
 // AddExtension adds or updates an extension in the policy
-// extensionID should be the extension name for ExtensionSettings
+// extensionName is the user-provided name used for the directory and URL paths
+// chromeExtensionID is the actual Chrome extension ID (from update.xml appid) used in policy entries
 // extensionPath is the full path to the unpacked extension directory
-func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterprisePolicy bool) error {
+func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath string, requiresEnterprisePolicy bool) error {
 	// Lock for the entire read-modify-write cycle to prevent race conditions
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -122,9 +124,10 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 	}
 
 	// Add the specific extension
-	// Use extension-specific update URL to support multiple policy-installed extensions
+	// Use extension name for the URL path (where files are served)
+	// Use Chrome extension ID for the policy key (what Chrome expects)
 	setting := ExtensionSetting{
-		UpdateUrl: fmt.Sprintf("http://127.0.0.1:10001/extensions/%s/update.xml", extensionID),
+		UpdateUrl: fmt.Sprintf("http://127.0.0.1:10001/extensions/%s/update.xml", extensionName),
 	}
 
 	// If the extension requires enterprise policy (like webRequestBlocking),
@@ -136,8 +139,8 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 		// Format: "extension_id;update_url" per https://chromeenterprise.google/intl/en_ca/policies/#ExtensionInstallForcelist
 		setting.InstallationMode = "force_installed"
 
-		// Add to ExtensionInstallForcelist using the format: extension_id;update_url
-		forcelistEntry := fmt.Sprintf("%s;%s", extensionID, setting.UpdateUrl)
+		// Add to ExtensionInstallForcelist using the Chrome extension ID and update URL
+		forcelistEntry := fmt.Sprintf("%s;%s", chromeExtensionID, setting.UpdateUrl)
 
 		// Check if already in forcelist
 		found := slices.Contains(policy.ExtensionInstallForcelist, forcelistEntry)
@@ -148,10 +151,11 @@ func (p *Policy) AddExtension(extensionID, extensionPath string, requiresEnterpr
 			policy.ExtensionInstallForcelist = append(policy.ExtensionInstallForcelist, forcelistEntry)
 		}
 
-		policy.ExtensionSettings[extensionID] = setting
+		// Use Chrome extension ID as the key in ExtensionSettings
+		policy.ExtensionSettings[chromeExtensionID] = setting
 	} else {
-		// For normal extensions, use the custom ID
-		policy.ExtensionSettings[extensionID] = setting
+		// For normal extensions, use the extension name as the key
+		policy.ExtensionSettings[extensionName] = setting
 	}
 
 	return p.writePolicyUnlocked(policy)
@@ -192,4 +196,40 @@ func (p *Policy) RequiresEnterprisePolicy(manifestPath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// updateManifest represents the Chrome extension update manifest XML structure
+type updateManifest struct {
+	XMLName xml.Name  `xml:"gupdate"`
+	Apps    []appNode `xml:"app"`
+}
+
+type appNode struct {
+	AppID string `xml:"appid,attr"`
+}
+
+// ExtractExtensionIDFromUpdateXML reads update.xml and extracts the appid attribute
+// from the <app> element. Returns the appid or an error if the file doesn't exist
+// or the appid cannot be found.
+func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
+	data, err := os.ReadFile(updateXMLPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read update.xml: %w", err)
+	}
+
+	var manifest updateManifest
+	if err := xml.Unmarshal(data, &manifest); err != nil {
+		return "", fmt.Errorf("failed to parse update.xml: %w", err)
+	}
+
+	if len(manifest.Apps) == 0 {
+		return "", fmt.Errorf("no <app> element found in update.xml")
+	}
+
+	appID := manifest.Apps[0].AppID
+	if appID == "" {
+		return "", fmt.Errorf("appid attribute is empty in update.xml")
+	}
+
+	return appID, nil
 }
