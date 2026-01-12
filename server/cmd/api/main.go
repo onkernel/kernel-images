@@ -133,32 +133,6 @@ func main() {
 		fs.ServeHTTP(w, r)
 	})
 
-	// Serve CRX files at root for Chrome enterprise policy
-	// This allows simple codebase URLs like http://host:port/extension-name.crx
-	r.Get("/{filename}.crx", func(w http.ResponseWriter, r *http.Request) {
-		// Extract the filename from the URL path
-		filename := chi.URLParam(r, "filename") + ".crx"
-
-		// Search for the CRX file in all extension directories
-		entries, err := os.ReadDir(extensionsDir)
-		if err != nil {
-			http.Error(w, "extensions directory not found", http.StatusNotFound)
-			return
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				crxPath := fmt.Sprintf("%s/%s/%s", extensionsDir, entry.Name(), filename)
-				if _, err := os.Stat(crxPath); err == nil {
-					http.ServeFile(w, r, crxPath)
-					return
-				}
-			}
-		}
-
-		http.Error(w, "crx file not found", http.StatusNotFound)
-	})
-
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", config.Port),
 		Handler: r,
