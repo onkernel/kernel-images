@@ -181,7 +181,7 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 
 		// Try to extract Chrome extension ID from update.xml
 		chromeExtensionID := extensionName
-		extractionErr := error(nil)
+		var extractionErr error
 		if extractedID, err := policy.ExtractExtensionIDFromUpdateXML(updateXMLPath); err == nil {
 			chromeExtensionID = extractedID
 			log.Info("extracted Chrome extension ID from update.xml", "name", extensionName, "chromeExtensionID", chromeExtensionID)

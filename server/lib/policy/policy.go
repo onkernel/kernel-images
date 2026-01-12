@@ -7,10 +7,14 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 )
 
 const PolicyPath = "/etc/chromium/policies/managed/policy.json"
+
+// Chrome extension IDs are 32 lowercase a-p characters
+var extensionIDRegex = regexp.MustCompile(`^[a-p]{32}$`)
 
 // Policy represents the Chrome enterprise policy structure
 type Policy struct {
@@ -139,7 +143,6 @@ func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath st
 		// Chrome requires the extension to be in ExtensionInstallForcelist
 		// Format: "extension_id;update_url" per https://chromeenterprise.google/intl/en_ca/policies/#ExtensionInstallForcelist
 		setting.InstallationMode = "force_installed"
-		setting.RuntimeAllowedHosts = []string{"*://*/*"}
 
 		// Add to ExtensionInstallForcelist using the Chrome extension ID and update URL
 		forcelistEntry := fmt.Sprintf("%s;%s", chromeExtensionID, setting.UpdateUrl)
@@ -152,7 +155,7 @@ func (p *Policy) AddExtension(extensionName, chromeExtensionID, extensionPath st
 		// Filter out entries that start with the same extension ID
 		extensionIDPrefix := chromeExtensionID + ";"
 		policy.ExtensionInstallForcelist = slices.DeleteFunc(policy.ExtensionInstallForcelist, func(entry string) bool {
-			return len(entry) >= len(extensionIDPrefix) && entry[:len(extensionIDPrefix)] == extensionIDPrefix
+			return strings.HasPrefix(entry, extensionIDPrefix)
 		})
 
 		// Add the new entry
@@ -238,9 +241,9 @@ func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
 		return "", fmt.Errorf("appid attribute is empty in update.xml")
 	}
 
-	// Validate extension ID format: Chrome extension IDs are 32 lowercase hex characters
+	// Validate extension ID format: Chrome extension IDs are 32 lowercase a-p characters
 	// This prevents injection attacks via semicolons or other special characters
-	if !regexp.MustCompile(`^[a-p]{32}$`).MatchString(appID) {
+	if !extensionIDRegex.MatchString(appID) {
 		return "", fmt.Errorf("invalid Chrome extension ID format in update.xml: %s", appID)
 	}
 

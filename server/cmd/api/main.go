@@ -133,29 +133,6 @@ func main() {
 		fs.ServeHTTP(w, r)
 	})
 
-	// Serve update.xml at root for Chrome enterprise policy
-	// This serves the first update.xml found in any extension directory
-	r.Get("/update.xml", func(w http.ResponseWriter, r *http.Request) {
-		// Try to find update.xml in the first extension directory
-		entries, err := os.ReadDir(extensionsDir)
-		if err != nil {
-			http.Error(w, "extensions directory not found", http.StatusNotFound)
-			return
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				updateXMLPath := fmt.Sprintf("%s/%s/update.xml", extensionsDir, entry.Name())
-				if _, err := os.Stat(updateXMLPath); err == nil {
-					http.ServeFile(w, r, updateXMLPath)
-					return
-				}
-			}
-		}
-
-		http.Error(w, "update.xml not found", http.StatusNotFound)
-	})
-
 	// Serve CRX files at root for Chrome enterprise policy
 	// This allows simple codebase URLs like http://host:port/extension-name.crx
 	r.Get("/{filename}.crx", func(w http.ResponseWriter, r *http.Request) {
