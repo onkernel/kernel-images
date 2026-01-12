@@ -804,3 +804,129 @@ func listCDPTargets(ctx context.Context) ([]map[string]interface{}, error) {
 
 	return targets, nil
 }
+
+func TestWebBotAuthInstallation(t *testing.T) {
+	image := headlessImage
+	name := containerName + "-web-bot-auth"
+
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelInfo}))
+	baseCtx := logctx.AddToContext(context.Background(), logger)
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		require.NoError(t, err, "docker not available: %v", err)
+	}
+
+	// Clean slate
+	_ = stopContainer(baseCtx, name)
+
+	env := map[string]string{}
+
+	// Start container
+	_, exitCh, err := runContainer(baseCtx, image, name, env)
+	require.NoError(t, err, "failed to start container: %v", err)
+	defer stopContainer(baseCtx, name)
+
+	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Minute)
+	defer cancel()
+
+	logger.Info("[setup]", "action", "waiting for API", "url", apiBaseURL+"/spec.yaml")
+	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready: %v", err)
+
+	// Build mock web-bot-auth extension zip in-memory
+	extDir := t.TempDir()
+
+	// Create manifest with webRequest permissions to trigger enterprise policy requirement
+	manifest := map[string]interface{}{
+		"manifest_version": 3,
+		"version":          "1.0.0",
+		"name":             "Web Bot Auth Mock",
+		"description":      "Mock web-bot-auth extension for testing",
+		"permissions":      []string{"webRequest", "webRequestBlocking"},
+		"host_permissions": []string{"<all_urls>"},
+	}
+	manifestJSON, err := json.MarshalIndent(manifest, "", "  ")
+	require.NoError(t, err, "marshal manifest: %v", err)
+
+	err = os.WriteFile(filepath.Join(extDir, "manifest.json"), manifestJSON, 0600)
+	require.NoError(t, err, "write manifest: %v", err)
+
+	extZip, err := zipDirToBytes(extDir)
+	require.NoError(t, err, "zip ext: %v", err)
+
+	// Upload extension using the API
+	{
+		client, err := apiClient()
+		require.NoError(t, err)
+		var body bytes.Buffer
+		w := multipart.NewWriter(&body)
+		fw, err := w.CreateFormFile("extensions.zip_file", "web-bot-auth.zip")
+		require.NoError(t, err)
+		_, err = io.Copy(fw, bytes.NewReader(extZip))
+		require.NoError(t, err)
+		err = w.WriteField("extensions.name", "web-bot-auth")
+		require.NoError(t, err)
+		err = w.Close()
+		require.NoError(t, err)
+
+		logger.Info("[test]", "action", "uploading web-bot-auth extension")
+		start := time.Now()
+		rsp, err := client.UploadExtensionsAndRestartWithBodyWithResponse(ctx, w.FormDataContentType(), &body)
+		elapsed := time.Since(start)
+		require.NoError(t, err, "uploadExtensionsAndRestart request error: %v", err)
+		require.Equal(t, http.StatusCreated, rsp.StatusCode(), "unexpected status: %s body=%s", rsp.Status(), string(rsp.Body))
+		logger.Info("[test]", "action", "extension uploaded", "elapsed", elapsed.String())
+	}
+
+	// Verify the policy.json file contains the correct web-bot-auth configuration
+	{
+		logger.Info("[test]", "action", "reading policy.json")
+		policyContent, err := execCombinedOutput(ctx, "cat", []string{"/etc/chromium/policies/managed/policy.json"})
+		require.NoError(t, err, "failed to read policy.json: %v", err)
+
+		logger.Info("[test]", "policy_content", policyContent)
+
+		var policy map[string]interface{}
+		err = json.Unmarshal([]byte(policyContent), &policy)
+		require.NoError(t, err, "failed to parse policy.json: %v", err)
+
+		// Check ExtensionInstallForcelist exists
+		extensionInstallForcelist, ok := policy["ExtensionInstallForcelist"].([]interface{})
+		require.True(t, ok, "ExtensionInstallForcelist not found in policy.json")
+		require.GreaterOrEqual(t, len(extensionInstallForcelist), 1, "ExtensionInstallForcelist should have at least 1 entry")
+
+		// Find the web-bot-auth entry in the forcelist
+		var webBotAuthEntry string
+		for _, entry := range extensionInstallForcelist {
+			if entryStr, ok := entry.(string); ok && strings.Contains(entryStr, "web-bot-auth") {
+				webBotAuthEntry = entryStr
+				break
+			}
+		}
+		require.NotEmpty(t, webBotAuthEntry, "web-bot-auth entry not found in ExtensionInstallForcelist")
+
+		// Verify the entry format: "extension-id;update_url"
+		parts := strings.Split(webBotAuthEntry, ";")
+		require.Len(t, parts, 2, "expected web-bot-auth entry to have format 'extension-id;update_url'")
+
+		extensionID := parts[0]
+		updateURL := parts[1]
+
+		logger.Info("[test]", "extension_id", extensionID, "update_url", updateURL)
+		logger.Info("[test]", "result", "web-bot-auth policy verified successfully")
+	}
+
+	// Verify the extension directory exists
+	{
+		logger.Info("[test]", "action", "checking extension directory")
+		dirList, err := execCombinedOutput(ctx, "ls", []string{"-la", "/home/kernel/extensions/web-bot-auth/"})
+		require.NoError(t, err, "failed to list extension directory: %v", err)
+		logger.Info("[test]", "extension_directory_contents", dirList)
+
+		// Verify manifest.json exists (uploaded as part of the extension)
+		manifestContent, err := execCombinedOutput(ctx, "cat", []string{"/home/kernel/extensions/web-bot-auth/manifest.json"})
+		require.NoError(t, err, "failed to read manifest.json: %v", err)
+		require.Contains(t, manifestContent, "Web Bot Auth Mock", "manifest.json should contain extension name")
+
+		logger.Info("[test]", "result", "extension directory verified successfully")
+	}
+}
