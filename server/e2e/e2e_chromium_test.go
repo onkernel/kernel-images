@@ -850,6 +850,30 @@ func TestWebBotAuthInstallation(t *testing.T) {
 	err = os.WriteFile(filepath.Join(extDir, "manifest.json"), manifestJSON, 0600)
 	require.NoError(t, err, "write manifest: %v", err)
 
+	// Create update.xml required for enterprise policy
+	updateXML := map[string]interface{}{
+		"gupdate": map[string]interface{}{
+			"@xmlns":    "http://www.google.com/update2/response",
+			"@protocol": "2.0",
+			"app": map[string]interface{}{
+				"@appid": "aaaabbbbccccddddeeeeffffgggghhhh",
+				"updatecheck": map[string]interface{}{
+					"@codebase": "http://localhost:10001/extensions/web-bot-auth/web-bot-auth.crx",
+					"@version":  "1.0.0",
+				},
+			},
+		},
+	}
+
+	updateXMLJSON, err := json.MarshalIndent(updateXML, "", "  ")
+	require.NoError(t, err, "marshal update.xml: %v", err)
+	err = os.WriteFile(filepath.Join(extDir, "update.xml"), updateXMLJSON, 0600)
+	require.NoError(t, err, "write update.xml: %v", err)
+
+	// Create a minimal .crx file (just needs to exist for the test)
+	err = os.WriteFile(filepath.Join(extDir, "web-bot-auth.crx"), []byte("mock crx content"), 0600)
+	require.NoError(t, err, "write .crx: %v", err)
+
 	extZip, err := zipDirToBytes(extDir)
 	require.NoError(t, err, "zip ext: %v", err)
 
