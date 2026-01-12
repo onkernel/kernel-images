@@ -625,6 +625,14 @@ func (s *ApiService) ProcessResize(ctx context.Context, request oapi.ProcessResi
 }
 
 
+// writeJSON writes a JSON response with the given status code.
+// Unlike http.Error, this sets the correct Content-Type for JSON.
+func writeJSON(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
+}
+
 // HandleProcessAttachWS handles PTY attach via WebSocket for bidirectional streaming.
 // Protocol:
 //   - Client sends BinaryMessage for stdin data
@@ -641,36 +649,37 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 	h, ok := s.procs[id]
 	s.procMu.RUnlock()
 	if !ok {
-		http.Error(w, `{"type":"error","message":"process not found"}`, http.StatusNotFound)
+		writeJSON(w, http.StatusNotFound, `{"type":"error","message":"process not found"}`)
 		return
 	}
 	if !h.isTTY || h.ptyFile == nil {
-		http.Error(w, `{"type":"error","message":"process is not PTY-backed"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, `{"type":"error","message":"process is not PTY-backed"}`)
 		return
 	}
 	// Enforce single concurrent attach per PTY-backed process to avoid I/O corruption.
 	h.mu.Lock()
 	if h.attachActive {
 		h.mu.Unlock()
-		http.Error(w, `{"type":"error","message":"process already has an active attach session"}`, http.StatusConflict)
+		writeJSON(w, http.StatusConflict, `{"type":"error","message":"process already has an active attach session"}`)
 		return
 	}
 	h.attachActive = true
 	h.mu.Unlock()
 
-	// Ensure the flag is cleared when this handler exits.
-	defer func() {
-		h.mu.Lock()
-		h.attachActive = false
-		h.mu.Unlock()
-	}()
-
-	// Accept WebSocket connection
+	// Accept WebSocket connection.
+	// OriginPatterns allows all origins because this endpoint uses token-based auth
+	// (not cookies), so CSWSH attacks are not a concern.
 	wsConn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: []string{"*"},
 	})
 	if err != nil {
 		log.Error("websocket accept failed", "err", err)
+		// Send error response for non-WebSocket clients
+		http.Error(w, "websocket upgrade failed", http.StatusBadRequest)
+		// Clear attachActive since we're returning early
+		h.mu.Lock()
+		h.attachActive = false
+		h.mu.Unlock()
 		return
 	}
 	defer wsConn.CloseNow()
@@ -680,25 +689,32 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 
 	log.Info("websocket attach started", "process_id", id)
 
-	// Coordinate shutdown so that both pumps exit when either side closes.
+	// WaitGroup to track all goroutines for clean shutdown
+	var wg sync.WaitGroup
+
+	// Coordinate shutdown so that all pumps exit when any side closes.
 	done := make(chan struct{})
-	var once sync.Once
+	var doneOnce sync.Once
 	shutdown := func() {
-		once.Do(func() {
+		doneOnce.Do(func() {
 			close(done)
 		})
 	}
 
 	// Channel for write operations - we serialize writes through this channel
-	// since WebSocket writes are not concurrent-safe
+	// since WebSocket writes are not concurrent-safe.
+	// writerDone signals when the writer has finished draining.
 	writeCh := make(chan wsWriteOp, 64)
+	writerDone := make(chan struct{})
 
-	// Writer goroutine - serializes all writes to the WebSocket
+	// Writer goroutine - serializes all writes to the WebSocket.
+	// After done is closed, drains any remaining messages before exiting.
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+		defer close(writerDone)
 		for {
 			select {
-			case <-done:
-				return
 			case op := <-writeCh:
 				// Use context.Background() instead of request context because we want to
 				// complete pending writes even if the HTTP request context is cancelled.
@@ -710,12 +726,31 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 					shutdown()
 					return
 				}
+			case <-done:
+				// Drain any remaining messages in the channel before exiting
+				for {
+					select {
+					case op := <-writeCh:
+						writeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						err := wsConn.Write(writeCtx, op.msgType, op.data)
+						cancel()
+						if err != nil {
+							log.Error("websocket write failed during drain", "err", err)
+							return
+						}
+					default:
+						// Channel is empty, we're done
+						return
+					}
+				}
 			}
 		}
 	}()
 
 	// Goroutine: read from WebSocket, write to PTY (stdin)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-done:
@@ -774,7 +809,9 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 	}()
 
 	// Goroutine: read from PTY (stdout), write to WebSocket
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		err := ptyio.ReadPTYToWriter(h.ptyFile, func(data []byte) error {
 			select {
 			case writeCh <- wsWriteOp{msgType: websocket.MessageBinary, data: data}:
@@ -789,33 +826,50 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 		shutdown()
 	}()
 
-	// Goroutine: watch for process exit
+	// Goroutine: watch for process exit and send exit code.
+	// This must send the exit code BEFORE triggering shutdown so the writer can deliver it.
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		select {
 		case <-h.doneCh:
-			// Process exited - send exit code
+			// Process exited - send exit code before shutdown
 			h.mu.RLock()
 			exitCode := h.exitCode
 			h.mu.RUnlock()
 
 			exitMsg := ptyio.AttachControlMessage{Type: ptyio.AttachMessageExit, ExitCode: exitCode}
 			data, _ := json.Marshal(exitMsg)
+
+			// Send exit message to write channel
 			select {
 			case writeCh <- wsWriteOp{msgType: websocket.MessageText, data: data}:
+				// Wait for writer to finish draining (ensures exit message is sent)
+				shutdown()
+				<-writerDone
 			case <-done:
+				// Already shutting down from another source
 			}
-			// Give a moment for the message to be sent before closing
-			time.Sleep(50 * time.Millisecond)
-			shutdown()
 		case <-done:
+			// Shutdown triggered by another goroutine
 		}
 	}()
 
-	// Wait for shutdown
+	// Wait for shutdown signal
 	<-done
+
+	// Wait for all goroutines to complete before clearing attachActive.
+	// This prevents a race where a new client attaches while goroutines are still running.
+	wg.Wait()
 
 	// Close WebSocket gracefully
 	wsConn.Close(websocket.StatusNormalClosure, "")
+
+	// Now safe to clear attachActive
+	h.mu.Lock()
+	h.attachActive = false
+	h.mu.Unlock()
+
 	log.Info("websocket attach ended", "process_id", id)
 }
 
