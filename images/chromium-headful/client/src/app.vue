@@ -260,8 +260,13 @@
     // Add a watcher so that when we are connected we can set the resolution from query params
     @Watch('connected', { immediate: true })
     onConnected(value: boolean) {
-      if (value) {
-        this.applyQueryResolution()
+      try {
+        if (value) {
+          this.applyQueryResolution()
+          window.parent.postMessage({ type: 'KERNEL_CONNECTED', connected: true }, '*')
+        }
+      } catch (e) {
+        console.error('Failed to post message to parent', e)
       }
     }
 
@@ -325,6 +330,32 @@
 
     get connected() {
       return this.$accessor.connected
+    }
+
+    get playing() {
+      return this.$accessor.video.playing
+    }
+
+    @Watch('playing')
+    onPlaying(value: boolean) {
+      try {
+        if (value) {
+          window.parent.postMessage({ type: 'KERNEL_PLAYING', playing: true }, '*')
+        } else {
+          window.parent.postMessage({ type: 'KERNEL_PAUSED', playing: false }, '*')
+        }
+      } catch (e) {
+        console.error('Failed to post message to parent', e)
+      }
+    }
+
+    @Watch('playable')
+    onPlayable(value: boolean) {
+      try {
+        window.parent.postMessage({ type: 'KERNEL_PLAYABLE', playable: value }, '*')
+      } catch (e) {
+        console.error('Failed to post message to parent', e)
+      }
     }
   }
 </script>
