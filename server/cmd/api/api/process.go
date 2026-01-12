@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,7 +26,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
-	"golang.org/x/sys/unix"
+	"github.com/onkernel/kernel-images/server/lib/ptyio"
 )
 
 type processHandle struct {
@@ -625,143 +624,6 @@ func (s *ApiService) ProcessResize(ctx context.Context, request oapi.ProcessResi
 	return oapi.ProcessResize200JSONResponse(oapi.OkResponse{Ok: true}), nil
 }
 
-// HandleProcessAttach performs a raw HTTP hijack and shuttles bytes between the client and the PTY.
-// This endpoint is intentionally not defined in OpenAPI.
-func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request, id string) {
-	s.procMu.RLock()
-	h, ok := s.procs[id]
-	s.procMu.RUnlock()
-	if !ok {
-		http.Error(w, "process not found", http.StatusNotFound)
-		return
-	}
-	if !h.isTTY || h.ptyFile == nil {
-		http.Error(w, "process is not PTY-backed", http.StatusBadRequest)
-		return
-	}
-	// Enforce single concurrent attach per PTY-backed process to avoid I/O corruption.
-	h.mu.Lock()
-	if h.attachActive {
-		h.mu.Unlock()
-		http.Error(w, "process already has an active attach session", http.StatusConflict)
-		return
-	}
-	h.attachActive = true
-	h.mu.Unlock()
-	// Ensure the flag is cleared when this handler exits (client disconnects or process ends).
-	defer func() {
-		h.mu.Lock()
-		h.attachActive = false
-		h.mu.Unlock()
-	}()
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
-		return
-	}
-	conn, buf, err := hj.Hijack()
-	if err != nil {
-		http.Error(w, "failed to hijack connection", http.StatusInternalServerError)
-		return
-	}
-	// Write minimal HTTP response and switch to raw I/O
-	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
-	_ = buf.Flush()
-
-	processRW := h.ptyFile
-	// Coordinate shutdown so that both pumps exit when either side closes.
-	done := make(chan struct{})
-	var once sync.Once
-	shutdown := func() {
-		once.Do(func() {
-			_ = conn.Close()
-			close(done)
-		})
-	}
-
-	// Pipe: client -> process
-	// Use buf.Reader to consume any buffered data that was read ahead before the hijack,
-	// then continue reading from the underlying connection.
-	go func() {
-		_, _ = io.Copy(processRW, buf.Reader)
-		shutdown()
-	}()
-	// Pipe: process -> client (non-blocking reads to allow early shutdown)
-	go func() {
-		copyPTYToConn(processRW, conn, done)
-		shutdown()
-	}()
-
-	// Close when process exits
-	go func() {
-		<-h.doneCh
-		shutdown()
-	}()
-
-	// Keep handler alive until shutdown triggered
-	<-done
-}
-
-// copyPTYToConn copies from a PTY (os.File) to a net.Conn without mutating the
-// PTY's file status flags. It uses readiness polling so we can wake up and exit
-// when stop is closed, avoiding goroutine leaks and preserving blocking mode.
-func copyPTYToConn(ptyFile *os.File, conn net.Conn, stop <-chan struct{}) {
-	fd := int(ptyFile.Fd())
-	buf := make([]byte, 32*1024)
-	// Poll in short intervals so we can react quickly to stop signal.
-	for {
-		// Check for stop first to avoid extra reads after shutdown.
-		select {
-		case <-stop:
-			return
-		default:
-		}
-		pfds := []unix.PollFd{
-			{Fd: int32(fd), Events: unix.POLLIN},
-		}
-		_, perr := unix.Poll(pfds, 100) // 100ms
-		if perr != nil && perr != syscall.EINTR {
-			return
-		}
-		// If readable (or hangup/err), attempt a read.
-		if pfds[0].Revents&(unix.POLLIN|unix.POLLHUP|unix.POLLERR) == 0 {
-			// Not ready; loop around and re-check stop.
-			continue
-		}
-		n, rerr := ptyFile.Read(buf)
-		if n > 0 {
-			if _, werr := conn.Write(buf[:n]); werr != nil {
-				return
-			}
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				return
-			}
-			if errno, ok := rerr.(syscall.Errno); ok {
-				// EIO is observed on PTY when the slave closes; treat as EOF.
-				if errno == syscall.EIO {
-					return
-				}
-				// Spurious would-block after poll; just continue.
-				if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
-					continue
-				}
-			}
-			return
-		}
-	}
-}
-
-// attachControlMessage represents control messages sent over the WebSocket attach connection.
-// Control messages use TextMessage type, while data uses BinaryMessage.
-type attachControlMessage struct {
-	Type     string `json:"type"`               // "resize", "exit", "error"
-	Rows     int    `json:"rows,omitempty"`     // For resize
-	Cols     int    `json:"cols,omitempty"`     // For resize
-	ExitCode *int   `json:"exitCode,omitempty"` // For exit
-	Message  string `json:"message,omitempty"`  // For error
-}
 
 // HandleProcessAttachWS handles PTY attach via WebSocket for bidirectional streaming.
 // Protocol:
@@ -838,6 +700,8 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 			case <-done:
 				return
 			case op := <-writeCh:
+				// Use context.Background() instead of request context because we want to
+				// complete pending writes even if the HTTP request context is cancelled.
 				writeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				err := wsConn.Write(writeCtx, op.msgType, op.data)
 				cancel()
@@ -880,20 +744,27 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 				}
 			case websocket.MessageText:
 				// Text message is a control message (JSON)
-				var ctrl attachControlMessage
+				var ctrl ptyio.AttachControlMessage
 				if err := json.Unmarshal(data, &ctrl); err != nil {
-					log.Error("invalid control message", "err", err, "data", string(data))
+					// Truncate data for logging to avoid spam
+					logData := string(data)
+					if len(logData) > 100 {
+						logData = logData[:100] + "..."
+					}
+					log.Error("invalid control message", "err", err, "data", logData)
 					continue
 				}
 				switch ctrl.Type {
-				case "resize":
-					if ctrl.Rows > 0 && ctrl.Cols > 0 && ctrl.Rows <= 65535 && ctrl.Cols <= 65535 {
+				case ptyio.AttachMessageResize:
+					if ctrl.Rows > 0 && ctrl.Cols > 0 && ctrl.Rows <= ptyio.MaxTerminalDimension && ctrl.Cols <= ptyio.MaxTerminalDimension {
 						ws := &pty.Winsize{Rows: uint16(ctrl.Rows), Cols: uint16(ctrl.Cols)}
 						if err := pty.Setsize(h.ptyFile, ws); err != nil {
 							log.Error("pty resize failed", "err", err)
 						} else {
 							log.Debug("pty resized", "rows", ctrl.Rows, "cols", ctrl.Cols)
 						}
+					} else {
+						log.Warn("resize rejected: dimensions out of range", "rows", ctrl.Rows, "cols", ctrl.Cols)
 					}
 				default:
 					log.Warn("unknown control message type", "type", ctrl.Type)
@@ -904,57 +775,18 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 
 	// Goroutine: read from PTY (stdout), write to WebSocket
 	go func() {
-		fd := int(h.ptyFile.Fd())
-		buf := make([]byte, 32*1024)
-		for {
+		err := ptyio.ReadPTYToWriter(h.ptyFile, func(data []byte) error {
 			select {
+			case writeCh <- wsWriteOp{msgType: websocket.MessageBinary, data: data}:
+				return nil
 			case <-done:
-				return
-			default:
+				return io.EOF // Signal to stop reading
 			}
-			// Poll for readability with timeout so we can check done channel
-			pfds := []unix.PollFd{
-				{Fd: int32(fd), Events: unix.POLLIN},
-			}
-			_, perr := unix.Poll(pfds, 100) // 100ms timeout
-			if perr != nil && perr != syscall.EINTR {
-				shutdown()
-				return
-			}
-			if pfds[0].Revents&(unix.POLLIN|unix.POLLHUP|unix.POLLERR) == 0 {
-				continue
-			}
-			n, rerr := h.ptyFile.Read(buf)
-			if n > 0 {
-				// Copy data to avoid race with next read
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				select {
-				case writeCh <- wsWriteOp{msgType: websocket.MessageBinary, data: data}:
-				case <-done:
-					return
-				}
-			}
-			if rerr != nil {
-				if rerr == io.EOF {
-					shutdown()
-					return
-				}
-				if errno, ok := rerr.(syscall.Errno); ok {
-					if errno == syscall.EIO {
-						// PTY slave closed
-						shutdown()
-						return
-					}
-					if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
-						continue
-					}
-				}
-				log.Error("pty read error", "err", rerr)
-				shutdown()
-				return
-			}
+		}, done)
+		if err != nil {
+			log.Error("pty read error", "err", err)
 		}
+		shutdown()
 	}()
 
 	// Goroutine: watch for process exit
@@ -966,7 +798,7 @@ func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Reques
 			exitCode := h.exitCode
 			h.mu.RUnlock()
 
-			exitMsg := attachControlMessage{Type: "exit", ExitCode: exitCode}
+			exitMsg := ptyio.AttachControlMessage{Type: ptyio.AttachMessageExit, ExitCode: exitCode}
 			data, _ := json.Marshal(exitMsg)
 			select {
 			case writeCh <- wsWriteOp{msgType: websocket.MessageText, data: data}:
