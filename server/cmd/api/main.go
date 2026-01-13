@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -172,6 +173,40 @@ func main() {
 			"webSocketDebuggerUrl": proxyWSURL,
 		})
 	})
+	// Proxy CDP JSON endpoints to upstream Chromium DevTools
+	cdpProxyHandler := func(path string) http.HandlerFunc {
+		client := &http.Client{Timeout: 10 * time.Second}
+		return func(w http.ResponseWriter, r *http.Request) {
+			current := upstreamMgr.Current()
+			if current == "" {
+				http.Error(w, "upstream not ready", http.StatusServiceUnavailable)
+				return
+			}
+			upstreamURL, err := url.Parse(current)
+			if err != nil {
+				http.Error(w, "invalid upstream URL", http.StatusInternalServerError)
+				return
+			}
+			httpURL := &url.URL{
+				Scheme:   "http",
+				Host:     upstreamURL.Host,
+				Path:     path,
+				RawQuery: r.URL.RawQuery,
+			}
+			resp, err := client.Get(httpURL.String())
+			if err != nil {
+				slogger.Error("failed to proxy CDP endpoint", "path", path, "err", err)
+				http.Error(w, "failed to reach upstream", http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			io.Copy(w, resp.Body)
+		}
+	}
+	rDevtools.Get("/json/list", cdpProxyHandler("/json/list"))
+	rDevtools.Get("/json/new", cdpProxyHandler("/json/new"))
 	rDevtools.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		devtoolsproxy.WebSocketProxyHandler(upstreamMgr, slogger, config.LogCDPMessages, stz).ServeHTTP(w, r)
 	})
