@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,12 +20,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/creack/pty"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
-	"golang.org/x/sys/unix"
+	"github.com/onkernel/kernel-images/server/lib/ptyio"
 )
 
 type processHandle struct {
@@ -624,130 +624,257 @@ func (s *ApiService) ProcessResize(ctx context.Context, request oapi.ProcessResi
 	return oapi.ProcessResize200JSONResponse(oapi.OkResponse{Ok: true}), nil
 }
 
-// HandleProcessAttach performs a raw HTTP hijack and shuttles bytes between the client and the PTY.
+
+// writeJSON writes a JSON response with the given status code.
+// Unlike http.Error, this sets the correct Content-Type for JSON.
+func writeJSON(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
+}
+
+// HandleProcessAttachWS handles PTY attach via WebSocket for bidirectional streaming.
+// Protocol:
+//   - Client sends BinaryMessage for stdin data
+//   - Server sends BinaryMessage for stdout data
+//   - Client sends TextMessage with JSON for control (e.g., resize)
+//   - Server sends TextMessage with JSON for events (e.g., exit code)
+//
 // This endpoint is intentionally not defined in OpenAPI.
-func (s *ApiService) HandleProcessAttach(w http.ResponseWriter, r *http.Request, id string) {
+func (s *ApiService) HandleProcessAttachWS(w http.ResponseWriter, r *http.Request, id string) {
+	ctx := r.Context()
+	log := logger.FromContext(ctx)
+
 	s.procMu.RLock()
 	h, ok := s.procs[id]
 	s.procMu.RUnlock()
 	if !ok {
-		http.Error(w, "process not found", http.StatusNotFound)
+		writeJSON(w, http.StatusNotFound, `{"type":"error","message":"process not found"}`)
 		return
 	}
 	if !h.isTTY || h.ptyFile == nil {
-		http.Error(w, "process is not PTY-backed", http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, `{"type":"error","message":"process is not PTY-backed"}`)
 		return
 	}
 	// Enforce single concurrent attach per PTY-backed process to avoid I/O corruption.
 	h.mu.Lock()
 	if h.attachActive {
 		h.mu.Unlock()
-		http.Error(w, "process already has an active attach session", http.StatusConflict)
+		writeJSON(w, http.StatusConflict, `{"type":"error","message":"process already has an active attach session"}`)
 		return
 	}
 	h.attachActive = true
 	h.mu.Unlock()
-	// Ensure the flag is cleared when this handler exits (client disconnects or process ends).
-	defer func() {
+
+	// Accept WebSocket connection.
+	// OriginPatterns allows all origins because this endpoint uses token-based auth
+	// (not cookies), so CSWSH attacks are not a concern.
+	wsConn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"*"},
+	})
+	if err != nil {
+		log.Error("websocket accept failed", "err", err)
+		// Send error response for non-WebSocket clients
+		http.Error(w, "websocket upgrade failed", http.StatusBadRequest)
+		// Clear attachActive since we're returning early
 		h.mu.Lock()
 		h.attachActive = false
 		h.mu.Unlock()
-	}()
-	hj, ok := w.(http.Hijacker)
-	if !ok {
-		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
 		return
 	}
-	conn, buf, err := hj.Hijack()
-	if err != nil {
-		http.Error(w, "failed to hijack connection", http.StatusInternalServerError)
-		return
-	}
-	// Write minimal HTTP response and switch to raw I/O
-	_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
-	_ = buf.Flush()
+	defer wsConn.CloseNow()
 
-	processRW := h.ptyFile
-	// Coordinate shutdown so that both pumps exit when either side closes.
+	// Set a generous read limit for PTY data
+	wsConn.SetReadLimit(1024 * 1024) // 1MB
+
+	log.Info("websocket attach started", "process_id", id)
+
+	// WaitGroup to track all goroutines for clean shutdown
+	var wg sync.WaitGroup
+
+	// Coordinate shutdown so that all pumps exit when any side closes.
 	done := make(chan struct{})
-	var once sync.Once
+	var doneOnce sync.Once
 	shutdown := func() {
-		once.Do(func() {
-			_ = conn.Close()
+		doneOnce.Do(func() {
 			close(done)
 		})
 	}
 
-	// Pipe: client -> process
-	// Use buf.Reader to consume any buffered data that was read ahead before the hijack,
-	// then continue reading from the underlying connection.
-	go func() {
-		_, _ = io.Copy(processRW, buf.Reader)
-		shutdown()
-	}()
-	// Pipe: process -> client (non-blocking reads to allow early shutdown)
-	go func() {
-		copyPTYToConn(processRW, conn, done)
-		shutdown()
-	}()
+	// Channel for write operations - we serialize writes through this channel
+	// since WebSocket writes are not concurrent-safe.
+	// writerDone signals when the writer has finished draining.
+	writeCh := make(chan wsWriteOp, 64)
+	writerDone := make(chan struct{})
 
-	// Close when process exits
+	// Writer goroutine - serializes all writes to the WebSocket.
+	// After done is closed, drains any remaining messages before exiting.
+	wg.Add(1)
 	go func() {
-		<-h.doneCh
-		shutdown()
-	}()
-
-	// Keep handler alive until shutdown triggered
-	<-done
-}
-
-// copyPTYToConn copies from a PTY (os.File) to a net.Conn without mutating the
-// PTY's file status flags. It uses readiness polling so we can wake up and exit
-// when stop is closed, avoiding goroutine leaks and preserving blocking mode.
-func copyPTYToConn(ptyFile *os.File, conn net.Conn, stop <-chan struct{}) {
-	fd := int(ptyFile.Fd())
-	buf := make([]byte, 32*1024)
-	// Poll in short intervals so we can react quickly to stop signal.
-	for {
-		// Check for stop first to avoid extra reads after shutdown.
-		select {
-		case <-stop:
-			return
-		default:
-		}
-		pfds := []unix.PollFd{
-			{Fd: int32(fd), Events: unix.POLLIN},
-		}
-		_, perr := unix.Poll(pfds, 100) // 100ms
-		if perr != nil && perr != syscall.EINTR {
-			return
-		}
-		// If readable (or hangup/err), attempt a read.
-		if pfds[0].Revents&(unix.POLLIN|unix.POLLHUP|unix.POLLERR) == 0 {
-			// Not ready; loop around and re-check stop.
-			continue
-		}
-		n, rerr := ptyFile.Read(buf)
-		if n > 0 {
-			if _, werr := conn.Write(buf[:n]); werr != nil {
-				return
-			}
-		}
-		if rerr != nil {
-			if rerr == io.EOF {
-				return
-			}
-			if errno, ok := rerr.(syscall.Errno); ok {
-				// EIO is observed on PTY when the slave closes; treat as EOF.
-				if errno == syscall.EIO {
+		defer wg.Done()
+		defer close(writerDone)
+		for {
+			select {
+			case op := <-writeCh:
+				// Use context.Background() instead of request context because we want to
+				// complete pending writes even if the HTTP request context is cancelled.
+				writeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				err := wsConn.Write(writeCtx, op.msgType, op.data)
+				cancel()
+				if err != nil {
+					log.Error("websocket write failed", "err", err)
+					shutdown()
 					return
 				}
-				// Spurious would-block after poll; just continue.
-				if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
-					continue
+			case <-done:
+				// Drain any remaining messages in the channel before exiting
+				for {
+					select {
+					case op := <-writeCh:
+						writeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						err := wsConn.Write(writeCtx, op.msgType, op.data)
+						cancel()
+						if err != nil {
+							log.Error("websocket write failed during drain", "err", err)
+							return
+						}
+					default:
+						// Channel is empty, we're done
+						return
+					}
 				}
 			}
-			return
 		}
-	}
+	}()
+
+	// Goroutine: read from WebSocket, write to PTY (stdin)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+			msgType, data, err := wsConn.Read(ctx)
+			if err != nil {
+				// Normal close or error - trigger shutdown
+				if websocket.CloseStatus(err) != -1 {
+					log.Debug("websocket closed by client", "status", websocket.CloseStatus(err))
+				} else {
+					log.Error("websocket read error", "err", err)
+				}
+				shutdown()
+				return
+			}
+
+			switch msgType {
+			case websocket.MessageBinary:
+				// Binary data goes to PTY stdin
+				if _, werr := h.ptyFile.Write(data); werr != nil {
+					log.Error("pty write error", "err", werr)
+					shutdown()
+					return
+				}
+			case websocket.MessageText:
+				// Text message is a control message (JSON)
+				var ctrl ptyio.AttachControlMessage
+				if err := json.Unmarshal(data, &ctrl); err != nil {
+					// Truncate data for logging to avoid spam
+					logData := string(data)
+					if len(logData) > 100 {
+						logData = logData[:100] + "..."
+					}
+					log.Error("invalid control message", "err", err, "data", logData)
+					continue
+				}
+				switch ctrl.Type {
+				case ptyio.AttachMessageResize:
+					if ctrl.Rows > 0 && ctrl.Cols > 0 && ctrl.Rows <= ptyio.MaxTerminalDimension && ctrl.Cols <= ptyio.MaxTerminalDimension {
+						ws := &pty.Winsize{Rows: uint16(ctrl.Rows), Cols: uint16(ctrl.Cols)}
+						if err := pty.Setsize(h.ptyFile, ws); err != nil {
+							log.Error("pty resize failed", "err", err)
+						} else {
+							log.Debug("pty resized", "rows", ctrl.Rows, "cols", ctrl.Cols)
+						}
+					} else {
+						log.Warn("resize rejected: dimensions out of range", "rows", ctrl.Rows, "cols", ctrl.Cols)
+					}
+				default:
+					log.Warn("unknown control message type", "type", ctrl.Type)
+				}
+			}
+		}
+	}()
+
+	// Goroutine: read from PTY (stdout), write to WebSocket
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := ptyio.ReadPTYToWriter(h.ptyFile, func(data []byte) error {
+			select {
+			case writeCh <- wsWriteOp{msgType: websocket.MessageBinary, data: data}:
+				return nil
+			case <-done:
+				return io.EOF // Signal to stop reading
+			}
+		}, done)
+		if err != nil {
+			log.Error("pty read error", "err", err)
+		}
+		shutdown()
+	}()
+
+	// Goroutine: watch for process exit and send exit code.
+	// This must send the exit code BEFORE triggering shutdown so the writer can deliver it.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case <-h.doneCh:
+			// Process exited - send exit code before shutdown
+			h.mu.RLock()
+			exitCode := h.exitCode
+			h.mu.RUnlock()
+
+			exitMsg := ptyio.AttachControlMessage{Type: ptyio.AttachMessageExit, ExitCode: exitCode}
+			data, _ := json.Marshal(exitMsg)
+
+			// Send exit message to write channel
+			select {
+			case writeCh <- wsWriteOp{msgType: websocket.MessageText, data: data}:
+				// Wait for writer to finish draining (ensures exit message is sent)
+				shutdown()
+				<-writerDone
+			case <-done:
+				// Already shutting down from another source
+			}
+		case <-done:
+			// Shutdown triggered by another goroutine
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-done
+
+	// Wait for all goroutines to complete before clearing attachActive.
+	// This prevents a race where a new client attaches while goroutines are still running.
+	wg.Wait()
+
+	// Close WebSocket gracefully
+	wsConn.Close(websocket.StatusNormalClosure, "")
+
+	// Now safe to clear attachActive
+	h.mu.Lock()
+	h.attachActive = false
+	h.mu.Unlock()
+
+	log.Info("websocket attach ended", "process_id", id)
+}
+
+// wsWriteOp represents a write operation to be performed on the WebSocket.
+type wsWriteOp struct {
+	msgType websocket.MessageType
+	data    []byte
 }

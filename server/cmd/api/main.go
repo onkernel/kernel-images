@@ -118,10 +118,11 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(jsonData)
 	})
-	// Raw attach endpoint (HTTP hijack) - not part of OpenAPI spec
+	// PTY attach endpoint (WebSocket) - not part of OpenAPI spec
+	// Uses WebSocket for bidirectional streaming, which works well through proxies.
 	r.Get("/process/{process_id}/attach", func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "process_id")
-		apiService.HandleProcessAttach(w, r, id)
+		apiService.HandleProcessAttachWS(w, r, id)
 	})
 
 	// Serve extension files for Chrome policy-installed extensions
