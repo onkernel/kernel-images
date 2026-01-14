@@ -31,11 +31,6 @@
     align-items: center;
 
     .window {
-      width: 300px;
-      background: $background-secondary;
-      border-radius: 5px;
-      padding: 10px;
-
       .logo {
         width: 100%;
         display: flex;
@@ -111,24 +106,21 @@
         .kernel-logo {
           width: 100%;
           height: 100%;
-          animation: kernel-logo-spin 1s linear infinite;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .kernel-logo {
-            animation: none;
-          }
+          animation: kernel-logo-pulse 1.5s ease-in-out infinite;
         }
       }
     }
   }
 
-  @keyframes kernel-logo-spin {
-    from {
-      transform: rotate(0deg);
+  @keyframes kernel-logo-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
     }
-    to {
-      transform: rotate(360deg);
+    50% {
+      transform: scale(1.2);
+      opacity: 0.8;
     }
   }
 </style>
