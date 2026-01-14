@@ -233,6 +233,17 @@
       }
     }
 
+    get parentOrigin() {
+      try {
+        if (document.referrer) {
+          return new URL(document.referrer).origin
+        }
+      } catch (e) {
+        // fallback if referrer is not a valid URL
+      }
+      return '*'
+    }
+
     @Watch('hideControls', { immediate: true })
     onHideControls(enabled: boolean) {
       if (enabled) {
@@ -260,15 +271,15 @@
     // Add a watcher so that when we are connected we can set the resolution from query params
     @Watch('connected', { immediate: true })
     onConnected(value: boolean) {
-      try {
-        if (value) {
-          this.applyQueryResolution()
+      if (value) {
+        this.applyQueryResolution()
+        try {
           if (window.parent !== window) {
-            window.parent.postMessage({ type: 'KERNEL_CONNECTED', connected: true }, '*')
+            window.parent.postMessage({ type: 'KERNEL_CONNECTED', connected: true }, this.parentOrigin)
           }
+        } catch (e) {
+          console.error('Failed to post message to parent', e)
         }
-      } catch (e) {
-        console.error('Failed to post message to parent', e)
       }
     }
 
@@ -344,9 +355,9 @@
         if (window.parent === window) return
 
         if (value) {
-          window.parent.postMessage({ type: 'KERNEL_PLAYING', playing: true }, '*')
+          window.parent.postMessage({ type: 'KERNEL_PLAYING', playing: true }, this.parentOrigin)
         } else {
-          window.parent.postMessage({ type: 'KERNEL_PAUSED', playing: false }, '*')
+          window.parent.postMessage({ type: 'KERNEL_PAUSED', playing: false }, this.parentOrigin)
         }
       } catch (e) {
         console.error('Failed to post message to parent', e)
