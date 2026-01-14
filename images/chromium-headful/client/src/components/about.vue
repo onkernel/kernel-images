@@ -3,8 +3,7 @@
     <div class="window">
       <div class="loading" v-if="loading">
         <div class="loader">
-          <div class="bounce1"></div>
-          <div class="bounce2"></div>
+          <img src="../assets/images/logo.svg" alt="Kernel" class="kernel-logo" />
         </div>
       </div>
 
@@ -85,25 +84,14 @@
           height: 90px;
           position: relative;
           margin: 0 auto 20px auto;
+          display: flex;
+          justify-content: center;
+          align-items: center;
 
-          .bounce1,
-          .bounce2 {
+          .kernel-logo {
             width: 100%;
             height: 100%;
-            border-radius: 50%;
-            background-color: $style-primary;
-            opacity: 0.6;
-            position: absolute;
-            top: 0;
-            left: 0;
-
-            -webkit-animation: bounce 2s infinite ease-in-out;
-            animation: bounce 2s infinite ease-in-out;
-          }
-
-          .bounce2 {
-            -webkit-animation-delay: -1s;
-            animation-delay: -1s;
+            animation: spin 1s linear infinite;
           }
         }
       }
@@ -114,15 +102,12 @@
     }
   }
 
-  @keyframes bounce {
-    0%,
-    100% {
-      transform: scale(0);
-      -webkit-transform: scale(0);
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
     }
-    50% {
-      transform: scale(1);
-      -webkit-transform: scale(1);
+    to {
+      transform: rotate(360deg);
     }
   }
 </style>
