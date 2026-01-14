@@ -263,7 +263,9 @@
       try {
         if (value) {
           this.applyQueryResolution()
-          window.parent.postMessage({ type: 'KERNEL_CONNECTED', connected: true }, '*')
+          if (window.parent !== window) {
+            window.parent.postMessage({ type: 'KERNEL_CONNECTED', connected: true }, '*')
+          }
         }
       } catch (e) {
         console.error('Failed to post message to parent', e)
@@ -339,6 +341,8 @@
     @Watch('playing')
     onPlaying(value: boolean) {
       try {
+        if (window.parent === window) return
+
         if (value) {
           window.parent.postMessage({ type: 'KERNEL_PLAYING', playing: true }, '*')
         } else {
@@ -349,13 +353,6 @@
       }
     }
 
-    @Watch('playable')
-    onPlayable(value: boolean) {
-      try {
-        window.parent.postMessage({ type: 'KERNEL_PLAYABLE', playable: value }, '*')
-      } catch (e) {
-        console.error('Failed to post message to parent', e)
-      }
-    }
+
   }
 </script>
