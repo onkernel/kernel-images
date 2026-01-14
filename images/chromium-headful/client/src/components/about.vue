@@ -3,7 +3,7 @@
     <div class="window">
       <div class="loading" v-if="loading">
         <div class="loader">
-          <img src="../assets/images/logo.svg" alt="Kernel" class="kernel-logo" />
+          <img src="../assets/images/logo.svg" alt="loading" aria-hidden="true" class="kernel-logo" />
         </div>
       </div>
 
@@ -91,7 +91,13 @@
           .kernel-logo {
             width: 100%;
             height: 100%;
-            animation: spin 1s linear infinite;
+            animation: kernel-logo-spin 1s linear infinite;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .kernel-logo {
+              animation: none;
+            }
           }
         }
       }
@@ -102,7 +108,7 @@
     }
   }
 
-  @keyframes spin {
+  @keyframes kernel-logo-spin {
     from {
       transform: rotate(0deg);
     }
