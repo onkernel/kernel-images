@@ -115,12 +115,12 @@
   @keyframes kernel-logo-pulse {
     0%,
     100% {
-      transform: scale(1);
-      opacity: 1;
+      transform: scale(0.85);
+      opacity: 0.7;
     }
     50% {
-      transform: scale(1.2);
-      opacity: 0.8;
+      transform: scale(1);
+      opacity: 1;
     }
   }
 </style>
