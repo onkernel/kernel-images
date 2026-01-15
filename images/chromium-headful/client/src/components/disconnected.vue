@@ -8,12 +8,9 @@
 
 <style lang="scss" scoped>
   .disconnected-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba($color: $background-floating, $alpha: 0.95);
+    width: 100vw;
+    height: 100vh;
+    background: #000;
     display: flex;
     justify-content: center;
     align-items: center;
