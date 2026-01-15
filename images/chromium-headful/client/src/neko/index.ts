@@ -75,13 +75,9 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   // Internal Events
   /////////////////////////////
   protected [EVENT.RECONNECTING]() {
-    this.$vue.$notify({
-      group: 'neko',
-      type: 'warning',
-      title: this.$vue.$t('connection.reconnecting') as string,
-      duration: 5000,
-      speed: 1000,
-    })
+    // Don't show reconnecting notification or attempt reconnection
+    // show the disconnected state
+    this.cleanup()
   }
 
   protected [EVENT.CONNECTING]() {

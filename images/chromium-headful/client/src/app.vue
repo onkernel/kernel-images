@@ -32,7 +32,8 @@
         </div>
       </main>
       <neko-side v-if="!videoOnly && side" />
-      <neko-connect v-if="!connected" />
+      <neko-connect v-if="!connected && !wasConnected" />
+      <neko-disconnected v-if="!connected && wasConnected" />
       <neko-about v-if="about" />
       <notifications
         v-if="!videoOnly"
@@ -175,6 +176,7 @@
   import { Vue, Component, Ref, Watch } from 'vue-property-decorator'
 
   import Connect from '~/components/connect.vue'
+  import Disconnected from '~/components/disconnected.vue'
   import Video from '~/components/video.vue'
   import Menu from '~/components/menu.vue'
   import Side from '~/components/side.vue'
@@ -189,6 +191,7 @@
     name: 'neko',
     components: {
       'neko-connect': Connect,
+      'neko-disconnected': Disconnected,
       'neko-video': Video,
       // 'neko-menu': Menu,
       //'neko-side': Side,
@@ -204,6 +207,7 @@
     @Ref('video') video!: Video
 
     shakeKbd = false
+    wasConnected = false
 
     get volume() {
       const numberParam = parseFloat(new URL(location.href).searchParams.get('volume') || '1.0')
@@ -364,6 +368,11 @@
       }
     }
 
-
+    @Watch('connected', { immediate: true })
+    onConnectedChange(connected: boolean) {
+      if (connected) {
+        this.wasConnected = true
+      }
+    }
   }
 </script>
