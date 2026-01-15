@@ -276,6 +276,7 @@
     @Watch('connected', { immediate: true })
     onConnected(value: boolean) {
       if (value) {
+        this.wasConnected = true
         this.applyQueryResolution()
         try {
           if (window.parent !== window) {

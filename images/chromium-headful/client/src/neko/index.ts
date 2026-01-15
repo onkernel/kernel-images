@@ -77,6 +77,7 @@ export class NekoClient extends BaseClient implements EventEmitter<NekoEvents> {
   protected [EVENT.RECONNECTING]() {
     // Don't show reconnecting notification or attempt reconnection
     // show the disconnected state
+    this.disconnect()
     this.cleanup()
   }
 

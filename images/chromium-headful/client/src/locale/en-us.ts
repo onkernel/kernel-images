@@ -125,3 +125,7 @@ export const files = {
   uploads: 'Uploads',
   upload_here: 'Click or drag files here to upload',
 }
+
+export const disconnected = {
+  message: 'Browser has been shutdown and is no longer available',
+}
