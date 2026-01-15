@@ -1,15 +1,6 @@
 <template>
   <div class="connect">
     <div class="window">
-      <form class="message" v-if="!connecting" @submit.stop.prevent="connect">
-        <span v-if="!autoPassword">{{ $t('connect.login_title') }}</span>
-        <span v-else>{{ $t('connect.invitation_title') }}</span>
-        <input type="text" :placeholder="$t('connect.displayname')" v-model="displayname" />
-        <input type="password" :placeholder="$t('connect.password')" v-model="password" v-if="!autoPassword" />
-        <button type="submit" @click.stop.prevent="login">
-          {{ $t('connect.connect') }}
-        </button>
-      </form>
       <div class="loader" v-if="connecting">
         <img src="../assets/images/logo.svg" alt="loading" aria-hidden="true" class="kernel-logo" />
       </div>
@@ -51,46 +42,6 @@
           b {
             font-weight: 900;
           }
-        }
-      }
-
-      .message {
-        display: flex;
-        flex-direction: column;
-
-        span {
-          display: block;
-          text-align: center;
-          text-transform: uppercase;
-          line-height: 30px;
-        }
-
-        input {
-          border: none;
-          padding: 6px 8px;
-          line-height: 20px;
-          border-radius: 5px;
-          margin: 5px 0;
-          background: $background-tertiary;
-          color: $text-normal;
-
-          &::selection {
-            background: $text-link;
-          }
-        }
-
-        button {
-          cursor: pointer;
-          border-radius: 5px;
-          padding: 4px;
-          background: $style-primary;
-          color: $text-normal;
-          text-align: center;
-          text-transform: uppercase;
-          font-weight: bold;
-          line-height: 30px;
-          margin: 5px 0;
-          border: none;
         }
       }
 
