@@ -203,18 +203,15 @@ func UntarZstd(r io.Reader, destDir string, stripComponents int) error {
 			f.Close()
 
 		case tar.TypeSymlink:
-			// Security check: reject absolute symlink targets
-			if filepath.IsAbs(header.Linkname) {
-				return fmt.Errorf("illegal symlink target (absolute path): %s -> %s", header.Name, header.Linkname)
-			}
-
-			// Security check: resolve symlink target and ensure it stays within destDir
-			// The target is relative to the symlink's directory
-			symlinkDir := filepath.Dir(destPath)
-			resolvedTarget := filepath.Clean(filepath.Join(symlinkDir, header.Linkname))
-			if !strings.HasPrefix(resolvedTarget, filepath.Clean(destDir)+string(os.PathSeparator)) &&
-				resolvedTarget != filepath.Clean(destDir) {
-				return fmt.Errorf("illegal symlink target (escapes destination): %s -> %s", header.Name, header.Linkname)
+			// Security check for relative symlinks: ensure they don't escape destDir
+			// Absolute symlinks are allowed (e.g., chromium creates symlinks to /tmp)
+			if !filepath.IsAbs(header.Linkname) {
+				symlinkDir := filepath.Dir(destPath)
+				resolvedTarget := filepath.Clean(filepath.Join(symlinkDir, header.Linkname))
+				if !strings.HasPrefix(resolvedTarget, filepath.Clean(destDir)+string(os.PathSeparator)) &&
+					resolvedTarget != filepath.Clean(destDir) {
+					return fmt.Errorf("illegal symlink target (escapes destination): %s -> %s", header.Name, header.Linkname)
+				}
 			}
 
 			// Ensure parent directory exists
