@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/onkernel/kernel-images/server/lib/chromiumflags"
 )
@@ -18,11 +21,21 @@ func main() {
 	runtimeFlagsPath := flag.String("runtime-flags", "/chromium/flags", "Path to runtime flags overlay file")
 	flag.Parse()
 
+	// Clean up stale lock file from previous SIGKILL termination
+	// Chromium creates this lock and doesn't clean it up when killed
+	_ = os.Remove("/home/kernel/user-data/SingletonLock")
+	_ = os.Remove("/home/kernel/user-data/SingletonSocket")
+	_ = os.Remove("/home/kernel/user-data/SingletonCookie")
+
 	// Inputs
 	internalPort := strings.TrimSpace(os.Getenv("INTERNAL_PORT"))
 	if internalPort == "" {
 		internalPort = "9223"
 	}
+
+	// Wait for devtools port to be available (handles SIGKILL socket cleanup delay)
+	waitForPort(internalPort, 5*time.Second)
+
 	baseFlags := os.Getenv("CHROMIUM_FLAGS")
 	runtimeTokens, err := chromiumflags.ReadOptionalFlagFile(*runtimeFlagsPath)
 	if err != nil {
@@ -103,4 +116,45 @@ func execLookPath(file string) (string, error) {
 		return file, nil
 	}
 	return exec.LookPath(file)
+}
+
+// waitForPort waits until the given port is available for binding on both IPv4 and IPv6.
+// This handles the delay after SIGKILL before the kernel releases the socket.
+// We disable SO_REUSEADDR to get an accurate check matching chromium's bind behavior.
+func waitForPort(port string, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	addrs := []string{"127.0.0.1:" + port, "[::1]:" + port}
+
+	// ListenConfig with Control to disable SO_REUSEADDR for accurate port availability check
+	lc := &net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var sockErr error
+			err := c.Control(func(fd uintptr) {
+				// Disable SO_REUSEADDR to match chromium's behavior
+				sockErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 0)
+			})
+			if err != nil {
+				return err
+			}
+			return sockErr
+		},
+	}
+
+	ctx := context.Background()
+	for time.Now().Before(deadline) {
+		allFree := true
+		for _, addr := range addrs {
+			ln, err := lc.Listen(ctx, "tcp", addr)
+			if err != nil {
+				allFree = false
+				break
+			}
+			ln.Close()
+		}
+		if allFree {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	// Timeout reached, proceed anyway and let chromium report the error
 }
