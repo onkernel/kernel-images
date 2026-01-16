@@ -20,6 +20,7 @@ import (
 	"github.com/onkernel/kernel-images/server/lib/logger"
 	oapi "github.com/onkernel/kernel-images/server/lib/oapi"
 	"github.com/onkernel/kernel-images/server/lib/ziputil"
+	"github.com/onkernel/kernel-images/server/lib/zstdutil"
 )
 
 // fsWatch represents an in-memory directory watch.
@@ -849,4 +850,145 @@ func (s *ApiService) DownloadDirZip(ctx context.Context, request oapi.DownloadDi
 
 	body := io.NopCloser(bytes.NewReader(zipBytes))
 	return oapi.DownloadDirZip200ApplicationzipResponse{Body: body, ContentLength: int64(len(zipBytes))}, nil
+}
+
+func (s *ApiService) DownloadDirZstd(ctx context.Context, request oapi.DownloadDirZstdRequestObject) (oapi.DownloadDirZstdResponseObject, error) {
+	log := logger.FromContext(ctx)
+	path := request.Params.Path
+	if path == "" {
+		return oapi.DownloadDirZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path cannot be empty"}}, nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return oapi.DownloadDirZstd404JSONResponse{NotFoundErrorJSONResponse: oapi.NotFoundErrorJSONResponse{Message: "directory not found"}}, nil
+		}
+		log.Error("failed to stat path", "err", err, "path", path)
+		return oapi.DownloadDirZstd500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to stat path"}}, nil
+	}
+	if !info.IsDir() {
+		return oapi.DownloadDirZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "path is not a directory"}}, nil
+	}
+
+	// Determine compression level
+	level := zstdutil.LevelDefault
+	if request.Params.CompressionLevel != nil {
+		switch *request.Params.CompressionLevel {
+		case oapi.Fastest:
+			level = zstdutil.LevelFastest
+		case oapi.Better:
+			level = zstdutil.LevelBetter
+		case oapi.Best:
+			level = zstdutil.LevelBest
+		default:
+			level = zstdutil.LevelDefault
+		}
+	}
+
+	// Create streaming response using a pipe
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+		if err := zstdutil.TarZstdDir(pw, path, level); err != nil {
+			log.Error("failed to create tar.zst archive", "err", err, "path", path)
+			pw.CloseWithError(err)
+		}
+	}()
+
+	return oapi.DownloadDirZstd200ApplicationzstdResponse{Body: pr, ContentLength: 0}, nil
+}
+
+func (s *ApiService) UploadZstd(ctx context.Context, request oapi.UploadZstdRequestObject) (oapi.UploadZstdResponseObject, error) {
+	log := logger.FromContext(ctx)
+
+	if request.Body == nil {
+		return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "request body required"}}, nil
+	}
+
+	// Create temp file for uploaded archive
+	tmpArchive, err := os.CreateTemp("", "upload-*.tar.zst")
+	if err != nil {
+		log.Error("failed to create temporary file", "err", err)
+		return oapi.UploadZstd500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+	}
+	defer os.Remove(tmpArchive.Name())
+	defer tmpArchive.Close()
+
+	var destPath string
+	var stripComponents int
+	var archiveReceived bool
+
+	for {
+		part, err := request.Body.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Error("failed to read form part", "err", err)
+			return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read form part"}}, nil
+		}
+
+		switch part.FormName() {
+		case "archive":
+			archiveReceived = true
+			if _, err := io.Copy(tmpArchive, part); err != nil {
+				log.Error("failed to read archive data", "err", err)
+				return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read archive"}}, nil
+			}
+		case "dest_path":
+			data, err := io.ReadAll(part)
+			if err != nil {
+				log.Error("failed to read dest_path", "err", err)
+				return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read dest_path"}}, nil
+			}
+			destPath = strings.TrimSpace(string(data))
+			if destPath == "" || !filepath.IsAbs(destPath) {
+				return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "dest_path must be an absolute path"}}, nil
+			}
+		case "strip_components":
+			data, err := io.ReadAll(part)
+			if err != nil {
+				log.Error("failed to read strip_components", "err", err)
+				return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "failed to read strip_components"}}, nil
+			}
+			if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && v >= 0 {
+				stripComponents = v
+			}
+		default:
+			return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid form field: " + part.FormName()}}, nil
+		}
+	}
+
+	// Validate required parts
+	if !archiveReceived || destPath == "" {
+		return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "archive and dest_path are required"}}, nil
+	}
+
+	// Close temp writer and reopen for reading
+	if err := tmpArchive.Close(); err != nil {
+		log.Error("failed to finalize temporary archive", "err", err)
+		return oapi.UploadZstd500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+	}
+
+	// Open for reading
+	archiveReader, err := os.Open(tmpArchive.Name())
+	if err != nil {
+		log.Error("failed to reopen temporary archive", "err", err)
+		return oapi.UploadZstd500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "internal error"}}, nil
+	}
+	defer archiveReader.Close()
+
+	// Extract the archive
+	if err := zstdutil.UntarZstd(archiveReader, destPath, stripComponents); err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "illegal file path") {
+			return oapi.UploadZstd400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid archive: path traversal detected"}}, nil
+		}
+		log.Error("failed to extract tar.zst archive", "err", err)
+		return oapi.UploadZstd500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to extract archive"}}, nil
+	}
+
+	return oapi.UploadZstd201Response{}, nil
 }

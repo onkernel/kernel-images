@@ -666,6 +666,89 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /fs/download_dir_zstd:
+    get:
+      summary: Download a directory as a tar.zst archive
+      description: |
+        Returns a tar.zst (tar archive compressed with zstd) file containing the contents
+        of the specified directory. Zstd offers significantly faster compression and
+        decompression compared to zip while achieving better compression ratios.
+      operationId: downloadDirZstd
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: "^/.*"
+          description: Absolute directory path to archive and download.
+        - name: compression_level
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [fastest, default, better, best]
+            default: default
+          description: |
+            Compression level. Higher levels produce smaller archives but take longer.
+            - fastest: ~zstd level 1, maximum speed (~300-500 MB/s)
+            - default: ~zstd level 3, balanced speed/ratio (~150 MB/s)
+            - better: ~zstd level 7, better ratio (~50-80 MB/s)
+            - best: ~zstd level 11, best ratio (~20-40 MB/s)
+      responses:
+        "200":
+          description: Tar.zst archive of the requested directory
+          content:
+            application/zstd:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /fs/upload_zstd:
+    post:
+      summary: Upload a tar.zst archive and extract it
+      description: |
+        Upload a tar.zst (tar archive compressed with zstd) file and extract its contents
+        to the specified destination path. Zstd offers significantly faster decompression
+        compared to zip.
+      operationId: uploadZstd
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                  description: The tar.zst archive file.
+                dest_path:
+                  type: string
+                  description: Absolute destination directory to extract the archive to.
+                  pattern: "^/.*"
+                strip_components:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  description: Number of leading path components to strip during extraction (like tar --strip-components).
+              required: [archive, dest_path]
+      responses:
+        "201":
+          description: Archive uploaded and extracted successfully
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /fs/list_files:
     get:
       summary: List files in a directory
