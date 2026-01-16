@@ -234,9 +234,10 @@ func UntarZstd(r io.Reader, destDir string, stripComponents int) error {
 			linkName := header.Linkname
 			if stripComponents > 0 {
 				parts := strings.Split(linkName, string(os.PathSeparator))
-				if len(parts) > stripComponents {
-					linkName = filepath.Join(parts[stripComponents:]...)
+				if len(parts) <= stripComponents {
+					continue // Skip this hard link, target has insufficient components
 				}
+				linkName = filepath.Join(parts[stripComponents:]...)
 			}
 			linkPath := filepath.Join(destDir, linkName)
 
