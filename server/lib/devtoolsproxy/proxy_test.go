@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,17 +25,28 @@ func silentLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func testLogger(t *testing.T) *slog.Logger {
-	return slog.New(slog.NewTextHandler(testWriter{t}, &slog.HandlerOptions{Level: slog.LevelDebug}))
+// testLogWriter wraps testing.T for slog output and can be stopped to avoid
+// panics when the test goroutine logs after the test has completed.
+type testLogWriter struct {
+	t       *testing.T
+	stopped atomic.Bool
 }
 
-type testWriter struct {
-	t *testing.T
-}
-
-func (tw testWriter) Write(p []byte) (n int, err error) {
+func (tw *testLogWriter) Write(p []byte) (n int, err error) {
+	if tw.stopped.Load() {
+		// Test is done, discard logs to avoid panic
+		return len(p), nil
+	}
 	tw.t.Log(strings.TrimSpace(string(p)))
 	return len(p), nil
+}
+
+func (tw *testLogWriter) Stop() {
+	tw.stopped.Store(true)
+}
+
+func newTestLogWriter(t *testing.T) *testLogWriter {
+	return &testLogWriter{t: t}
 }
 
 func findBrowserBinary() (string, error) {
@@ -161,10 +173,18 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 	}
 	defer logFile.Close()
 
-	logger := testLogger(t)
+	logWriter := newTestLogWriter(t)
+	logger := slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	mgr := NewUpstreamManager(logPath, logger)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer func() {
+		cancel()
+		// Stop the log writer to prevent panics from background goroutine
+		// logging after test completion
+		logWriter.Stop()
+		// Give the tail goroutine time to exit after context cancellation
+		time.Sleep(100 * time.Millisecond)
+	}()
 	mgr.Start(ctx)
 
 	startChromium := func(port int) (*exec.Cmd, error) {

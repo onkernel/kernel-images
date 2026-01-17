@@ -88,7 +88,7 @@ if [ -z "${CHROMIUM_FLAGS:-}" ]; then
     --password-store=basic \
     --unsafely-disable-devtools-self-xss-warnings \
     --use-angle=swiftshader \
-    --use-gl=egl-angle \
+    --use-gl=angle \
     --use-mock-keychain"
 fi
 export CHROMIUM_FLAGS
