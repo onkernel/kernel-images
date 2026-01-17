@@ -86,8 +86,8 @@ if [ -z "${CHROMIUM_FLAGS:-}" ]; then
     --ozone-platform=headless \
     --password-store=basic \
     --unsafely-disable-devtools-self-xss-warnings \
-    --use-angle \
-    --use-gl=disabled \
+    --use-angle=swiftshader \
+    --use-gl=egl-angle \
     --use-mock-keychain"
 fi
 export CHROMIUM_FLAGS
