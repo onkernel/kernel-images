@@ -24,6 +24,19 @@ func silentLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+func testLogger(t *testing.T) *slog.Logger {
+	return slog.New(slog.NewTextHandler(testWriter{t}, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+type testWriter struct {
+	t *testing.T
+}
+
+func (tw testWriter) Write(p []byte) (n int, err error) {
+	tw.t.Log(strings.TrimSpace(string(p)))
+	return len(p), nil
+}
+
 func findBrowserBinary() (string, error) {
 	candidates := []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable"}
 	for _, name := range candidates {
@@ -148,7 +161,7 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 	}
 	defer logFile.Close()
 
-	logger := silentLogger()
+	logger := testLogger(t)
 	mgr := NewUpstreamManager(logPath, logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -170,12 +183,14 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 			fmt.Sprintf("--user-data-dir=%s", userDir),
 			"about:blank",
 		}
+		t.Logf("starting chromium: %s %v", browser, args)
 		cmd := exec.Command(browser, args...)
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 		if err := cmd.Start(); err != nil {
 			return nil, err
 		}
+		t.Logf("chromium started with PID %d", cmd.Process.Pid)
 		return cmd, nil
 	}
 
@@ -198,6 +213,13 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 		return strings.Contains(u, fmt.Sprintf(":%d/", port1))
 	})
 	if !ok {
+		// Read and log the contents of the log file for debugging
+		logContents, readErr := os.ReadFile(logPath)
+		if readErr != nil {
+			t.Logf("failed to read log file: %v", readErr)
+		} else {
+			t.Logf("chromium log file contents (%d bytes):\n%s", len(logContents), string(logContents))
+		}
 		t.Fatalf("did not detect initial upstream for port %d; got: %q", port1, mgr.Current())
 	}
 
@@ -206,6 +228,7 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get free port 2: %v", err)
 	}
+	t.Logf("killing first chromium instance to restart on port %d", port2)
 	_ = cmd1.Process.Kill()
 	_, _ = cmd1.Process.Wait()
 
@@ -224,6 +247,13 @@ func TestUpstreamManagerDetectsChromiumAndRestart(t *testing.T) {
 		return strings.Contains(u, fmt.Sprintf(":%d/", port2))
 	})
 	if !ok {
+		// Read and log the contents of the log file for debugging
+		logContents, readErr := os.ReadFile(logPath)
+		if readErr != nil {
+			t.Logf("failed to read log file: %v", readErr)
+		} else {
+			t.Logf("chromium log file contents after restart (%d bytes):\n%s", len(logContents), string(logContents))
+		}
 		t.Fatalf("did not update upstream to port %d; got: %q", port2, mgr.Current())
 	}
 }
