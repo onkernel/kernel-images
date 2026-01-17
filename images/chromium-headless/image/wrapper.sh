@@ -76,6 +76,7 @@ if [ -z "${CHROMIUM_FLAGS:-}" ]; then
     --enable-use-zoom-for-dsf=false \
     --export-tagged-pdf \
     --force-color-profile=srgb \
+    --hide-crash-restore-bubble \
     --hide-scrollbars \
     --metrics-recording-only \
     --mute-audio \
