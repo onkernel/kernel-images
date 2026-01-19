@@ -26,6 +26,8 @@ type Policy struct {
 	DefaultNotificationsSetting int                         `json:"DefaultNotificationsSetting"`
 	ExtensionInstallForcelist   []string                    `json:"ExtensionInstallForcelist,omitempty"`
 	ExtensionSettings           map[string]ExtensionSetting `json:"ExtensionSettings"`
+	DownloadDirectory           string                      `json:"DownloadDirectory,omitempty"`
+	PromptForDownloadLocation   *bool                       `json:"PromptForDownloadLocation,omitempty"`
 }
 
 // ExtensionSetting represents settings for a specific extension
@@ -248,4 +250,41 @@ func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
 	}
 
 	return appID, nil
+}
+
+// SetDownloadDirectory sets the download directory in Chrome enterprise policy.
+// This forces Chrome to use the specified directory for all downloads, regardless
+// of user preferences. Set disablePrompt to true to prevent "Save As" dialogs.
+func (p *Policy) SetDownloadDirectory(downloadDir string, disablePrompt bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	policy, err := p.readPolicyUnlocked()
+	if err != nil {
+		return err
+	}
+
+	policy.DownloadDirectory = downloadDir
+
+	promptValue := !disablePrompt
+	policy.PromptForDownloadLocation = &promptValue
+
+	return p.writePolicyUnlocked(policy)
+}
+
+// ClearDownloadDirectory removes the download directory setting from policy,
+// allowing Chrome to use the user's default download location.
+func (p *Policy) ClearDownloadDirectory() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	policy, err := p.readPolicyUnlocked()
+	if err != nil {
+		return err
+	}
+
+	policy.DownloadDirectory = ""
+	policy.PromptForDownloadLocation = nil
+
+	return p.writePolicyUnlocked(policy)
 }

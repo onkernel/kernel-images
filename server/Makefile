@@ -28,7 +28,7 @@ oapi-generate: $(OAPI_CODEGEN)
 	go mod tidy
 
 build: | $(BIN_DIR)
-	go build -o $(BIN_DIR)/api ./cmd/api
+	go build -buildvcs=false -o $(BIN_DIR)/api ./cmd/api
 
 dev: build $(RECORDING_DIR)
 	OUTPUT_DIR=$(RECORDING_DIR) DISPLAY_NUM=$(DISPLAY_NUM) ./bin/api

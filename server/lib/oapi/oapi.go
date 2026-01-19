@@ -56,6 +56,25 @@ const (
 	WRITE  FileSystemEventType = "WRITE"
 )
 
+// Defines values for FspipeStartResultTransportMode.
+const (
+	FspipeStartResultTransportModeS3        FspipeStartResultTransportMode = "s3"
+	FspipeStartResultTransportModeWebsocket FspipeStartResultTransportMode = "websocket"
+)
+
+// Defines values for FspipeStatusTransportMode.
+const (
+	FspipeStatusTransportModeS3        FspipeStatusTransportMode = "s3"
+	FspipeStatusTransportModeWebsocket FspipeStatusTransportMode = "websocket"
+)
+
+// Defines values for FspipeStatusTransportState.
+const (
+	Connected    FspipeStatusTransportState = "connected"
+	Disconnected FspipeStatusTransportState = "disconnected"
+	Reconnecting FspipeStatusTransportState = "reconnecting"
+)
+
 // Defines values for PatchDisplayRequestRefreshRate.
 const (
 	N10 PatchDisplayRequestRefreshRate = 10
@@ -258,6 +277,60 @@ type FileSystemEvent struct {
 
 // FileSystemEventType Event type.
 type FileSystemEventType string
+
+// FspipeStartResult Response after starting the fspipe daemon
+type FspipeStartResult struct {
+	// HealthEndpoint URL of the fspipe health/metrics server
+	HealthEndpoint *string `json:"health_endpoint,omitempty"`
+
+	// MountPath The path where the virtual filesystem is mounted
+	MountPath string `json:"mount_path"`
+
+	// Running Whether the daemon is now running
+	Running bool `json:"running"`
+
+	// S3Bucket The S3 bucket being used (if transport_mode is s3)
+	S3Bucket *string `json:"s3_bucket,omitempty"`
+
+	// TransportMode The transport mode being used
+	TransportMode FspipeStartResultTransportMode `json:"transport_mode"`
+
+	// WsEndpoint The WebSocket endpoint being used (if transport_mode is websocket)
+	WsEndpoint *string `json:"ws_endpoint,omitempty"`
+}
+
+// FspipeStartResultTransportMode The transport mode being used
+type FspipeStartResultTransportMode string
+
+// FspipeStatus Status of the fspipe daemon
+type FspipeStatus struct {
+	// MountPath The path where the virtual filesystem is mounted (if running)
+	MountPath *string `json:"mount_path,omitempty"`
+
+	// Running Whether the daemon is currently running
+	Running bool `json:"running"`
+
+	// S3Bucket The S3 bucket being used (if transport_mode is s3)
+	S3Bucket *string `json:"s3_bucket,omitempty"`
+
+	// Stats Transport statistics (messages sent, bytes transferred, etc.)
+	Stats *map[string]interface{} `json:"stats,omitempty"`
+
+	// TransportMode The transport mode being used (if running)
+	TransportMode *FspipeStatusTransportMode `json:"transport_mode,omitempty"`
+
+	// TransportState Current transport connection state (if running)
+	TransportState *FspipeStatusTransportState `json:"transport_state,omitempty"`
+
+	// WsEndpoint The WebSocket endpoint being used (if transport_mode is websocket)
+	WsEndpoint *string `json:"ws_endpoint,omitempty"`
+}
+
+// FspipeStatusTransportMode The transport mode being used (if running)
+type FspipeStatusTransportMode string
+
+// FspipeStatusTransportState Current transport connection state (if running)
+type FspipeStatusTransportState string
 
 // ListFiles Array of file or directory information entries.
 type ListFiles = []FileInfo
@@ -497,6 +570,27 @@ type RecorderInfo struct {
 	StartedAt *time.Time `json:"started_at"`
 }
 
+// S3Config S3/R2 storage configuration
+type S3Config struct {
+	// AccessKeyId Access key ID
+	AccessKeyId string `json:"access_key_id"`
+
+	// Bucket Bucket name
+	Bucket string `json:"bucket"`
+
+	// Endpoint S3-compatible endpoint URL (e.g., "https://ACCOUNT_ID.r2.cloudflarestorage.com")
+	Endpoint string `json:"endpoint"`
+
+	// Prefix Optional key prefix for uploaded objects
+	Prefix *string `json:"prefix,omitempty"`
+
+	// Region Region (use "auto" for R2)
+	Region *string `json:"region,omitempty"`
+
+	// SecretAccessKey Secret access key
+	SecretAccessKey string `json:"secret_access_key"`
+}
+
 // ScreenshotRegion defines model for ScreenshotRegion.
 type ScreenshotRegion struct {
 	// Height Height of the region in pixels
@@ -563,6 +657,22 @@ type StartFsWatchRequest struct {
 
 	// Recursive Whether to watch recursively.
 	Recursive *bool `json:"recursive,omitempty"`
+}
+
+// StartFspipeRequest Request to start the fspipe daemon
+type StartFspipeRequest struct {
+	// HealthPort Port for the fspipe health/metrics HTTP server
+	HealthPort *int `json:"health_port,omitempty"`
+
+	// MountPath Path where the virtual filesystem will be mounted. Defaults to /home/kernel/Downloads.
+	MountPath *string `json:"mount_path,omitempty"`
+
+	// S3Config S3/R2 storage configuration
+	S3Config *S3Config `json:"s3_config,omitempty"`
+
+	// WsEndpoint WebSocket endpoint for streaming files (e.g., "ws://listener:9000/fspipe" or "wss://...").
+	// Mutually exclusive with s3_config.
+	WsEndpoint *string `json:"ws_endpoint,omitempty"`
 }
 
 // StartRecordingRequest defines model for StartRecordingRequest.
@@ -786,6 +896,9 @@ type UploadZstdMultipartRequestBody UploadZstdMultipartBody
 // StartFsWatchJSONRequestBody defines body for StartFsWatch for application/json ContentType.
 type StartFsWatchJSONRequestBody = StartFsWatchRequest
 
+// StartFspipeJSONRequestBody defines body for StartFspipe for application/json ContentType.
+type StartFspipeJSONRequestBody = StartFspipeRequest
+
 // ExecutePlaywrightCodeJSONRequestBody defines body for ExecutePlaywrightCode for application/json ContentType.
 type ExecutePlaywrightCodeJSONRequestBody = ExecutePlaywrightRequest
 
@@ -1001,6 +1114,17 @@ type ClientInterface interface {
 
 	// WriteFileWithBody request with any body
 	WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartFspipeWithBody request with any body
+	StartFspipeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	StartFspipe(ctx context.Context, body StartFspipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFspipeStatus request
+	GetFspipeStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StopFspipe request
+	StopFspipe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LogsStream request
 	LogsStream(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1581,6 +1705,54 @@ func (c *Client) StreamFsEvents(ctx context.Context, watchId string, reqEditors 
 
 func (c *Client) WriteFileWithBody(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewWriteFileRequestWithBody(c.Server, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartFspipeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartFspipeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartFspipe(ctx context.Context, body StartFspipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartFspipeRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetFspipeStatus(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFspipeStatusRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StopFspipe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStopFspipeRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -2995,6 +3167,100 @@ func NewWriteFileRequestWithBody(server string, params *WriteFileParams, content
 	return req, nil
 }
 
+// NewStartFspipeRequest calls the generic StartFspipe builder with application/json body
+func NewStartFspipeRequest(server string, body StartFspipeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartFspipeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewStartFspipeRequestWithBody generates requests for StartFspipe with any type of body
+func NewStartFspipeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fspipe/start")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetFspipeStatusRequest generates requests for GetFspipeStatus
+func NewGetFspipeStatusRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fspipe/status")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewStopFspipeRequest generates requests for StopFspipe
+func NewStopFspipeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/fspipe/stop")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewLogsStreamRequest generates requests for LogsStream
 func NewLogsStreamRequest(server string, params *LogsStreamParams) (*http.Request, error) {
 	var err error
@@ -3772,6 +4038,17 @@ type ClientWithResponsesInterface interface {
 	// WriteFileWithBodyWithResponse request with any body
 	WriteFileWithBodyWithResponse(ctx context.Context, params *WriteFileParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteFileResponse, error)
 
+	// StartFspipeWithBodyWithResponse request with any body
+	StartFspipeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartFspipeResponse, error)
+
+	StartFspipeWithResponse(ctx context.Context, body StartFspipeJSONRequestBody, reqEditors ...RequestEditorFn) (*StartFspipeResponse, error)
+
+	// GetFspipeStatusWithResponse request
+	GetFspipeStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFspipeStatusResponse, error)
+
+	// StopFspipeWithResponse request
+	StopFspipeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*StopFspipeResponse, error)
+
 	// LogsStreamWithResponse request
 	LogsStreamWithResponse(ctx context.Context, params *LogsStreamParams, reqEditors ...RequestEditorFn) (*LogsStreamResponse, error)
 
@@ -4502,6 +4779,77 @@ func (r WriteFileResponse) StatusCode() int {
 	return 0
 }
 
+type StartFspipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *FspipeStartResult
+	JSON400      *BadRequestError
+	JSON409      *ConflictError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r StartFspipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartFspipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetFspipeStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *FspipeStatus
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFspipeStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFspipeStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StopFspipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r StopFspipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StopFspipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type LogsStreamResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5216,6 +5564,41 @@ func (c *ClientWithResponses) WriteFileWithBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseWriteFileResponse(rsp)
+}
+
+// StartFspipeWithBodyWithResponse request with arbitrary body returning *StartFspipeResponse
+func (c *ClientWithResponses) StartFspipeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartFspipeResponse, error) {
+	rsp, err := c.StartFspipeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartFspipeResponse(rsp)
+}
+
+func (c *ClientWithResponses) StartFspipeWithResponse(ctx context.Context, body StartFspipeJSONRequestBody, reqEditors ...RequestEditorFn) (*StartFspipeResponse, error) {
+	rsp, err := c.StartFspipe(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartFspipeResponse(rsp)
+}
+
+// GetFspipeStatusWithResponse request returning *GetFspipeStatusResponse
+func (c *ClientWithResponses) GetFspipeStatusWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetFspipeStatusResponse, error) {
+	rsp, err := c.GetFspipeStatus(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFspipeStatusResponse(rsp)
+}
+
+// StopFspipeWithResponse request returning *StopFspipeResponse
+func (c *ClientWithResponses) StopFspipeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*StopFspipeResponse, error) {
+	rsp, err := c.StopFspipe(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStopFspipeResponse(rsp)
 }
 
 // LogsStreamWithResponse request returning *LogsStreamResponse
@@ -6497,6 +6880,119 @@ func ParseWriteFileResponse(rsp *http.Response) (*WriteFileResponse, error) {
 	return response, nil
 }
 
+// ParseStartFspipeResponse parses an HTTP response from a StartFspipeWithResponse call
+func ParseStartFspipeResponse(rsp *http.Response) (*StartFspipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartFspipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FspipeStartResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ConflictError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFspipeStatusResponse parses an HTTP response from a GetFspipeStatusWithResponse call
+func ParseGetFspipeStatusResponse(rsp *http.Response) (*GetFspipeStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFspipeStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FspipeStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStopFspipeResponse parses an HTTP response from a StopFspipeWithResponse call
+func ParseStopFspipeResponse(rsp *http.Response) (*StopFspipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StopFspipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseLogsStreamResponse parses an HTTP response from a LogsStreamWithResponse call
 func ParseLogsStreamResponse(rsp *http.Response) (*LogsStreamResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7140,6 +7636,15 @@ type ServerInterface interface {
 	// Write or create a file
 	// (PUT /fs/write_file)
 	WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams)
+	// Start fspipe daemon to monitor Chrome downloads
+	// (POST /fspipe/start)
+	StartFspipe(w http.ResponseWriter, r *http.Request)
+	// Get fspipe daemon status
+	// (GET /fspipe/status)
+	GetFspipeStatus(w http.ResponseWriter, r *http.Request)
+	// Stop the fspipe daemon
+	// (POST /fspipe/stop)
+	StopFspipe(w http.ResponseWriter, r *http.Request)
 	// Stream logs over SSE
 	// (GET /logs/stream)
 	LogsStream(w http.ResponseWriter, r *http.Request, params LogsStreamParams)
@@ -7353,6 +7858,24 @@ func (_ Unimplemented) StreamFsEvents(w http.ResponseWriter, r *http.Request, wa
 // Write or create a file
 // (PUT /fs/write_file)
 func (_ Unimplemented) WriteFile(w http.ResponseWriter, r *http.Request, params WriteFileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Start fspipe daemon to monitor Chrome downloads
+// (POST /fspipe/start)
+func (_ Unimplemented) StartFspipe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get fspipe daemon status
+// (GET /fspipe/status)
+func (_ Unimplemented) GetFspipeStatus(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Stop the fspipe daemon
+// (POST /fspipe/stop)
+func (_ Unimplemented) StopFspipe(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7999,6 +8522,48 @@ func (siw *ServerInterfaceWrapper) WriteFile(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// StartFspipe operation middleware
+func (siw *ServerInterfaceWrapper) StartFspipe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartFspipe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFspipeStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetFspipeStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFspipeStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StopFspipe operation middleware
+func (siw *ServerInterfaceWrapper) StopFspipe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StopFspipe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // LogsStream operation middleware
 func (siw *ServerInterfaceWrapper) LogsStream(w http.ResponseWriter, r *http.Request) {
 
@@ -8503,6 +9068,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/fs/write_file", wrapper.WriteFile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fspipe/start", wrapper.StartFspipe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/fspipe/status", wrapper.GetFspipeStatus)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/fspipe/stop", wrapper.StopFspipe)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/logs/stream", wrapper.LogsStream)
@@ -9755,6 +10329,108 @@ func (response WriteFile500JSONResponse) VisitWriteFileResponse(w http.ResponseW
 	return json.NewEncoder(w).Encode(response)
 }
 
+type StartFspipeRequestObject struct {
+	Body *StartFspipeJSONRequestBody
+}
+
+type StartFspipeResponseObject interface {
+	VisitStartFspipeResponse(w http.ResponseWriter) error
+}
+
+type StartFspipe200JSONResponse FspipeStartResult
+
+func (response StartFspipe200JSONResponse) VisitStartFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFspipe400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response StartFspipe400JSONResponse) VisitStartFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFspipe409JSONResponse struct{ ConflictErrorJSONResponse }
+
+func (response StartFspipe409JSONResponse) VisitStartFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StartFspipe500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response StartFspipe500JSONResponse) VisitStartFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFspipeStatusRequestObject struct {
+}
+
+type GetFspipeStatusResponseObject interface {
+	VisitGetFspipeStatusResponse(w http.ResponseWriter) error
+}
+
+type GetFspipeStatus200JSONResponse FspipeStatus
+
+func (response GetFspipeStatus200JSONResponse) VisitGetFspipeStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetFspipeStatus500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response GetFspipeStatus500JSONResponse) VisitGetFspipeStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StopFspipeRequestObject struct {
+}
+
+type StopFspipeResponseObject interface {
+	VisitStopFspipeResponse(w http.ResponseWriter) error
+}
+
+type StopFspipe200Response struct {
+}
+
+func (response StopFspipe200Response) VisitStopFspipeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type StopFspipe400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response StopFspipe400JSONResponse) VisitStopFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type StopFspipe500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response StopFspipe500JSONResponse) VisitStopFspipeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type LogsStreamRequestObject struct {
 	Params LogsStreamParams
 }
@@ -10492,6 +11168,15 @@ type StrictServerInterface interface {
 	// Write or create a file
 	// (PUT /fs/write_file)
 	WriteFile(ctx context.Context, request WriteFileRequestObject) (WriteFileResponseObject, error)
+	// Start fspipe daemon to monitor Chrome downloads
+	// (POST /fspipe/start)
+	StartFspipe(ctx context.Context, request StartFspipeRequestObject) (StartFspipeResponseObject, error)
+	// Get fspipe daemon status
+	// (GET /fspipe/status)
+	GetFspipeStatus(ctx context.Context, request GetFspipeStatusRequestObject) (GetFspipeStatusResponseObject, error)
+	// Stop the fspipe daemon
+	// (POST /fspipe/stop)
+	StopFspipe(ctx context.Context, request StopFspipeRequestObject) (StopFspipeResponseObject, error)
 	// Stream logs over SSE
 	// (GET /logs/stream)
 	LogsStream(ctx context.Context, request LogsStreamRequestObject) (LogsStreamResponseObject, error)
@@ -11395,6 +12080,85 @@ func (sh *strictHandler) WriteFile(w http.ResponseWriter, r *http.Request, param
 	}
 }
 
+// StartFspipe operation middleware
+func (sh *strictHandler) StartFspipe(w http.ResponseWriter, r *http.Request) {
+	var request StartFspipeRequestObject
+
+	var body StartFspipeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartFspipe(ctx, request.(StartFspipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartFspipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartFspipeResponseObject); ok {
+		if err := validResponse.VisitStartFspipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFspipeStatus operation middleware
+func (sh *strictHandler) GetFspipeStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetFspipeStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFspipeStatus(ctx, request.(GetFspipeStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFspipeStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFspipeStatusResponseObject); ok {
+		if err := validResponse.VisitGetFspipeStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StopFspipe operation middleware
+func (sh *strictHandler) StopFspipe(w http.ResponseWriter, r *http.Request) {
+	var request StopFspipeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StopFspipe(ctx, request.(StopFspipeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StopFspipe")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StopFspipeResponseObject); ok {
+		if err := validResponse.VisitStopFspipeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // LogsStream operation middleware
 func (sh *strictHandler) LogsStream(w http.ResponseWriter, r *http.Request, params LogsStreamParams) {
 	var request LogsStreamRequestObject
@@ -11811,133 +12575,151 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+x9eXMbN/bgV0H1TpWlHV7ykWw0fzm2nGhtxy5L2cwk9PIHdj+S+Kkb6ABoUrTL89m3",
-	"8IC+0bwkWVZ2qlIxRXYDD3gn3oXPQSiSVHDgWgWnnwMJKhVcAf7xI40+wJ8ZKH0mpZDmq1BwDVybjzRN",
-	"YxZSzQQf/rcS3HynwgUk1Hz6m4RZcBr8j2E5/tD+qoZ2tC9fvvSCCFQoWWoGCU7NhMTNGHzpBS8En8Us",
-	"/Fqz59OZqc+5Bslp/JWmzqcjFyCXIIl7sBf8IvQrkfHoK8Hxi9AE5wvMb+5xM9qLmIVXb0WmIMePASCK",
-	"mHmRxu+lSEFqZuhmRmMFvSCtfPU5mGZaWwjrE+KQxP5KtCDMbAQNNVkxvQh6AfAsCU7/CGKY6aAXSDZf",
-	"mH8TFkUxBL1gSsOroBfMhFxRGQUfe4FepxCcBkpLxudmC0MD+sR+3Zz+cp0CETOCzxAa4tflrJFYmT+z",
-	"NHDDeCdYiDiaXMFa+ZYXsRkDSczPZn3mWRJl5lWiF2AnDnoB05Dg+63R3RdUSro2f/MsmeBbbroZzWId",
-	"nJ60UJklU5BmcZolgJNLSIHq2rxudLPtc0CKu26v4p8kFEJGjFONu1UMQFKhmNuz9kjr9kj/OmSkL71A",
-	"wp8ZkxAZpFwHZugSEWL632CZ9oUEquElkxBqIdeHUWoiIg+hvEvt6yTKRyfmQXIkQk1jYtHVIzCYD8j3",
-	"z54dD8hLixnc+O+fPRsEvSCl2rB5cBr83z9G/e8/fn7Se/rlb4GHpFKqF20gnk+ViDMNFSDMg2aGEJfe",
-	"mGQ4+J/twRu7iTP5NvMlxKDhPdWLw/ZxyxJywCOc5vYB/wAhEtr8MOhZ1Ib9PAKuLTs70pX5JJWVkOdx",
-	"uqA8S0CykAhJFut0AbyJf9r/9Lz/+6j/Q//j3//mXWx7YUylMV0bNcXme65nASg5W2t6kUkJXJPIjk3s",
-	"c4RxkrJriJWXsSXMJKjFRFIN24d0TxPztBn450/kKKFrMgXCszgmbEa40CQCDaGm0xiOvZOuWOQjqOZs",
-	"+NhG+L1bK+n8K2i3SNJ5h2YrNJpVcT49E0FM1zWhP2oK/ZfmEbP6hMUxUxAKHikyBb0C4DkgRqsRyiOi",
-	"NJXaUW8ilkBoLJxeMtw1QLA4SwygIx9ObqL5zF7spfj8AuWdjEBCRGKmtGHLP657ZP2xqmZSyqQqlqgX",
-	"UmTzBVktWGyBmDM+H5C3mdLEGFeUcUI1iYEqTR6TVDCu1aAKaRPkyoYk9Prc/voY9678o7majT8qDekE",
-	"0T1J6mr+2Z4olxBTzZZAzJCqsWpyZBjPIINxppnRbmaw4+2Ix9EmKciJgnni7NHSFhl1GyMFQIgNC1UK",
-	"krhxzEIK+iNvLRDkpAbRyVYToVM3FGZ0Q+eDUnQOHjJsDJw/6B37GsJMw/uYrlfIxLvKkvpWubcMwYId",
-	"kZRDktBYJ03xE3pNFmPbXuDfw/9Nl9R+xAEqYw/IpTHBzJcLqggNQ1DILI9SOodHPfIIDxzX+lEPRcaj",
-	"qRQrBfIRWVLJjLRWgzE/u6ZJGsMpGQd0RZkm5uXBXGhx9GihdapOh0OwzwxCkTw6/geRoDPJSeVxzXQM",
-	"R8f/GAdj7rOJjBkrMj1RENao7bsWtb2l10g2do3MyF6WoO5x7FFYZ4Qp8t0Iqcu+E5w+GY32ojXc/B3p",
-	"QSHAe5KDeclwToMKytW16AFyKq8PhcRPHAkbtVvuz4yyGCLfrssC6AZ1LYAsaZyBwyREZLq29jzaxWxG",
-	"KF8fW2ERgfTAc6Epj6iMCMJLZlIkOEB1YS14lI5EpjcMJjKdZnrX0TIk+PZwvy1AL0CWC3L8EhH3yiyL",
-	"43U55FSIGChvUUc+gY9AXrEYzvlMtOURU5OIyc1QoQHNFKHlaWDggadnDjQTQ//t4d4YFZegorZuBOST",
-	"gT1PJ1QHp0FENfTxbc/u+Y9KZln2cDRlWpEjcybqkXEQydW17Jv/xoGxi8dBX676sm/+GwfHA98MnPrg",
-	"/pEqIOan3A6fmSmF9O7Ezoeq3ORpEwn7BJPpWoOHTi7YJxQs+POAjMisAgYDNdh+nsU1Ouhqk/VyOqjg",
-	"0G16FzldrJWG5GxZaOQmYhQ+QMIF5XMgYB4ctOTHLuRHZzMIDT/sTIeH4rKY6lCk7kclfkcRbikxvw0q",
-	"tvuLD2fPL8+CXvDbh3P89+XZmzP88OHsl+dvzzxmfAP5+Guv22B5w5RGvHnWaKxFs7b2jjFuGdiwNHCd",
-	"E2JhuG7yDRZSyWOCvxHzDtp6TmIxx7nWpeitOCjbRFaxuRpSScwLJWUsj0GXMaA0TVKPZjK63kxfQrSi",
-	"iqRSRFloqWgX8dZh+VWn9iHsrVjCDU6SNzlRGYt6rxPVNldfeWYCEmZSCUm0OMjVt+tIO7v6zDYf7puK",
-	"QOnJNh8bKG2ANzyUq4ZtLqpeoGS4bWAlMhnCzmM2DYp8gl5lFb4denf1wcVy9rQ4fwKOrqt3r0keDWpz",
-	"r7iq2eBaZtCOaUSG+UHlJtNgu7kkrrxreU91uHDurwP5qsP/9bLb71WcAR4/He3vBXvZ6f0akPMZEQnT",
-	"GqIeyRQoZIsFmy/MuY8uKYvNwcq+YuwJ62pE8nGi1Cmg70a9J6Pe42e9k9FHP4i4tRMWxbAdXzOCXxuQ",
-	"MwU2YGDMEbJaACexObQvGayMqikcn0MJuExjAITmXO/X/RLQ1zQJF1IkzMD+uXt2fJS8cI8SOtMgK+vP",
-	"jRdziOUqk0CYJjSiqfW1c1gRA3XtjIc0gXu5ABrNsriHsxXfxB3k2el2fNnpbizI5snj0W7Ox/cSlHoN",
-	"B1J2lElqgdroGHRPFXrD0BQqEvQGNtxHVRI16B717LNUAtE0Ta0WPdg3WARTkm0q7QrWJDXbQ5TZHB7C",
-	"YC8N55//jfMVmtHVOpmKGCfHiQbkjIYLYqYgaiGyOCJTILTyLFFZmgqp7Yn3OhJaiHjMjxQA+efJCa5l",
-	"nZAIZuhVE1wdD4jzkCjCeBhnEZBx8AHPzePAnI0uFmym7ccXWsb20/PYffXq2TgYjK2/0DrImLIOzxAB",
-	"pLESBspQJFOnspSLRdnx/q7zIxf+hbP9/ZJOcdg9NrQhrXF3vfJaCiPwz64hvDUnGDXLS9BtveZGjnCR",
-	"qXjdVk1Uzus+0z8+tiP9diQq51kCTf/uVqqiaiKFqPs8/cvInDfT7ge6/ol5laSSLVkMc+gQO1RNMgWe",
-	"M1hzSKosOZinzVA8i1F75DK+HQ63a/cccXCjUfMISdQC4rjYcqMLMu61xMOVZ6zfhLwyPFweSY5o9Uh2",
-	"7EZ0/hU7CeO+BWy3uYAvu8nrsy+O4nD2uZX/cMaXTAqOnujCwWlgVaALVey2vrIbJeW3nJT7+SW7Edjt",
-	"frTo3MqGN/I90irTFQgr1tFmwlwrFfGLNqWZ9eePtRSQ95QB10xP/M5ut1RiHkGHnX8E64qcTL976vdE",
-	"fPe0D9y8HhH7KJlms5nlrA5X5K6DiUx3D/alG3uvWRwfJkQv2NwoWaRey8MN6q2jTOHjNaEWXJ59eBts",
-	"HrfqD3GPvz5/8yboBee/XAa94Odf3293g7i5NxDxBzRFD9UmaMZS8v7yX/0pDa8g6t6GUMQekv0FVkSD",
-	"TJhZeSjiLOFqW1CqF0ix2jaWeWTP6BaO2rOAbtixi5SueHXD4vjdLDj9Y7P7x6O6v/Sa/mkax8Ic7SZa",
-	"r7drwefuaUJJqiCLRL9Y/dH7y38dNwWrtexREeXpYBjBNBqpQ136kXbuoppNxNkDTXUR5oxgxO2hKG3N",
-	"ZB47fJq2OPjYwusB8vy84hakUyOQKFFmtE38kPpSYd5dFMg6f+kXte73ie91m+XYp8rwPUSElZk1HiVb",
-	"eOuyjEV+QUyNOT6h2u8NRG+dxUaVzNxrezgEO1lNU52pPbGRZ64ofNlq2W6plGaTNPSs70xpllBzGHnx",
-	"/leSodc0BRkC13Re1YIcQ/Bb1OhZrj4Jm9X2akGtbrXbtc1G6QUJJF0hkxJiCQoxTxJIjI1ooS+iKR0a",
-	"3OtueV/iVNdc9DLj3KDPLhsivy7qRmzE+GFK5yXV1EiylWTWAdogPRutZDzNPBGYiGq6k2ERVWcZbPUe",
-	"FuN+3LrmG9mLBhyXWKTMcO0Vmic08C4iKRNG8AHiHh8Eu7pU3FIk0DIcto/tdHFGUrqOBTVkmkpQRkLx",
-	"eYFBF2YWksRsBuE6jF04Td0Um0X4pCQWswqvCQr+aMybOkituJVhBW+K2U6ioRCkdnCmyBhfHAddLGvg",
-	"92gB6wi3P+dBOtyCcJHxqyrALupf5BLsxsQ2BxSkP8g+Y5ypxW5qo0z0zN/qUhpbz99WH7a/VkXGauX3",
-	"iomzh5IroXUvHQhsQ3ig8q3C6RMiF6EE4Goh9AeYO7fkLfjpf7b++SLvdu4OjRuyVDs8t7+hx3afgXbM",
-	"iLdjPTLma9qPYWa4RXKQN8mN32NMb+gs34VevrHbUHaIB1oWiN50sGgRhpdlL0Ipdj/vNqN6saaT682O",
-	"8J+FZJ8Ex6R9nIvQRGRcD8h7rEAwBw38XhHMteoRDnNa+97gwS/pLARbcnT/j4E43GH+SKy4Z/os9U9+",
-	"k9CxHftWg8dUk9WChZjkn4I08qc+1f5MsfeQO4eTL0C/wLD0gdFFFkXAt2SR2bB3GVNwL22NibrnOsB+",
-	"xWJ4b06dSjHB1WHwz6XIUr+jAn9yCTqS/FQ77e2bCeaplfnu6dPj/UpjxIr7/OIGVvwJPeE5vL92wLtL",
-	"1tBqIRSepfK9teEvG2nBEGR0aNnKhiyuC6OxX6nfqA5vtfCmqIrC04IZfeBP9zR0ypaw3a1TELcbjxTv",
-	"xusdQv2diQu4Azcs35lJmoA/MP+hNOXyh4z+n6WGQJcgJYtAEWXrMN0OHFcThB+PtvmIvB6TPObp8XVU",
-	"7DVAUrulIiIEOo/8nvML61vvjkuUcFT98nlJwebd2bghCb3G7ET2Cc752x+7IcBUNuVyKt/+uCNGTkaj",
-	"etL2joH3Cy3SmxKakCGYcbbzy3mSQMSohnhNlBYpRgNFpslc0hBmWUzUItNG6Q/I5YIpkmD6CB6pGcf4",
-	"p5RZqiEiSxaBwM3yu0P3qV6zHGwAusPStct1CpdwrQ827G5W+GTMHi3FFaitaQsarn0HLLjGYLTGemF7",
-	"+l0IDMAnaaarBnlXoqcZty3uzGPMHU+xACI4DV6D5BCT84TOQZHn78+DXrAEqSwoo8HJYISKMAVOUxac",
-	"Bk8Go8ETl0WKGzbM82yGs5jOc60QetTCW5BzwJwZfNJGqOGaKXR2CA6qR7LUnBlJY1BPps6SUaKyFOSS",
-	"KSGj3phTHhGs8Mi4ZjFuW/H0S1heChErMg5ipjRwxufjALM2Y8aBMEXEFLnemEszIfNSAxSULqUM0xcM",
-	"rVgZFwWnNlksn+UVrt+iApT+UUTrvaroG9ye72bDk5svye6hFiTBbXWp73+Mg37/igl1ZdM5+v2IKXPs",
-	"7s/TbBx8PD48A8MC5Cer8jlzuLdJWGVvh8ejkcdgQ/gtviOs9ymW5pDdLID40gue2pF8Z79ixmGzlcSX",
-	"XvBsl/fqfRiwKUGWJFSug9PgV0uXBYgxzXi4cEgwwDuY8bWSerM0FjTqw7UGjnZdn/Konz9rcC6URwT8",
-	"iq8ZljCSMTHkWAxBPrGUUBku2NIwDFxr7GGgF5CQjBsRO1yIBIZXyNnDcurhOBuNnoTGXMVP0BtzBZpI",
-	"wy9JdQa7KsYPYEOSc+GYf0U2tPt1Viz1OY8+uD3exI5JFmuWUqmH5njXj6immziy3MruNK/yGcOaFv24",
-	"JxhYNEZihf/qw/trFl6J2OAUDxnmKBrTEFytUY6u/bDeULDP+7/T/qdR/4fBpP/x80nv8bNn/rPQJ5ZO",
-	"jBXQBvH3kiDzqlaDL2ogS20EvKCAEuqjJFO6SFFLKGczUHpgxOJx1Yc4Zdyw4DadV4Dnij981v5G8VbB",
-	"7mEy7sTnxy6owZICRD2PmLNcUzAHU0QCje5b4LVEUIHNCpEfUWUEkjquCsFiiU4aOrtlaLujJCKzeeK5",
-	"7Kvzctn95QaqdJNzsN1e5lAVZkvubSeX3EkE0b2i7YIlWWzzH3Cfa91m/NZkA0foOupGT+G9uiPstLxj",
-	"uyPnVuavlDL42jZZx9qSKTZlMdPrwoD5ZiyVn1nkkirFquIMbKA5knTe5sRmnBuTPnlkXbg5RdnODj0i",
-	"nJchXluzeyYkoWZaqW1tf89Mz5vdHuZsCbbKxYmMGKiCwZhf1gpNt/RY8FkBRWONOyLNVuOOQ+WGGegb",
-	"kRcIii3oQlmGaKKIhwbFGDRuk91FQdodYaBV8HYzye3c5GZl94uFt3m9WlKFy+VxqBRCNmMQVZhA7SLK",
-	"scZgcgXrLSzuioLKeTByg+zMCy4v3HQD8tr8XMYWKpUNY+6rVxiQVygaDGASFsZ0WELB4JXXe0QBjLkB",
-	"xl/cQKgmeY+HcM70YCYBIlBXWqQDIefDa/O/VAothtcnJ/ZDGlPGh3awCGaDhRU1zse3EFxIVXXl9GNY",
-	"QrleRTLlPLih2woVA6TK2d0WCyLyugdctc0dsUOzmOdQbkCEIrV8S4rMqp+qAYp0uQPhqyL82y2qLukV",
-	"lGHiuzJmWtHuLw5HG60XltA5DFObnVHOtP1I1LJXSgAIDnqvCH1BU51JY5qWCMr9w1vQKeK4W4jZOD5Z",
-	"ulh3vDaGxVAY3s7j7+Y7XTE/KpK0bshgzyJj7hiWr5WMOQulFki3YTrGSSzmGGbXLLxSttWRTfKw56IK",
-	"BZEpLOiSGZKma7Kkcv0PojM8MLtGZTkDD8b8N2M/TYVeVJaCA+ZrJZgFYMFIpVgyPGHqUrzhzFbAJ66u",
-	"TTNc6lExBlpp5QTH1pU6pTpcACYWQ+zSzZwo/C8n2N3hot93zR5/If0+Wn5kRKzbwdqK1vHwXz4JeZGH",
-	"0++I/SoJHodKR0de38j5zgJT2goWPVQbo821tdxFROadJzqEowuh3BFemhGaQzFjIyXr9FvSWtjlVRvA",
-	"urHg+gfWQiWeuIKr+70r48FT5/6Vz9r1JpMe9fWrO1znDRdDfDIvQr4Bmp+Oftj+Xr0l9C1GETqWY0hj",
-	"poa2veqkKGdEMsl8nrJ6C9q7cpf5G90e6hItc0PsOr8h1rUrJRRDlOX253ixPVd3wIttCnvXeGn3zD3Y",
-	"HVGgxC4xuhlnPd3+Xr3T+K34MRDyamOoJt7y2MUGlL2y8YNvG1uY6PYXQBTio8CRWPFY0Mhw1+QTwwyX",
-	"OWhfRpXOJFeEkt/P39sUnkrIyVZ4I7pUfrIo3Rq1XlwN/Lv5XzL5O0sxRCZpAhqkwirGnXtj53EwY0Hn",
-	"i8KCf/PenxmgOLCRvjw9r04DvWr4cVu638e9lLPb1xsdKM2u52ssUnuQsKob/BDp0iGrKkIIzQnNLbmD",
-	"XpWOdiBYTeXgk9LkSFNZiZcmueMF02HMWMcb6XrMNxA2+V3piIjZDKQiis05tlvkOl6TGVUaZDEh1mXy",
-	"aMwjqH5lPlMJWMH9iaXuQEzDBYOlgWQKujkKspHfIV/hKrNHD4Wtep/bPTyK5aJ3cEB+ZvMFSPtX0fCN",
-	"qITGMRToVWSaaaLpFZBY8DnIwZj3LSaUPiX/Nti2Q5CTHnE5hgaxEJGjfz8ZjfrPRiPy9sehOjYvupS0",
-	"+otPemRKY8pDY0qZN4eIAXL075NnlXct4uqvft/L8Zm/8mzU/1+1l1pgnvTw2+KNx6P+0+KNDoxUqGWC",
-	"wwRVdJQdAPJPZS2W26qgV/nNgowflK+ybF+p6Lj3RmLx0vH2/2eiUdeXXYhHI78meaqhE4t10VB0ftxV",
-	"JmxtrvktaNj9bMKy+2WboNDKq7TWfIBk8xPoWnPQvAtAC3sF2cRMabTTVSfdlD1KD1MmD5NSylV7SKU8",
-	"vsU2lfYB0gqmzyHmbfp5mzaw4WjX8S3v0HmHYefbOLphmLd0dzxAPOEKsCcjJiRuYmYJNCoO3V5e/gA0",
-	"ckfu3VgZJ8tNQjP+t8LNItSg+2Xt+Y1sCRT9ZnW35hm7J2Ix+C2PMnjrX04cCqygn1RK3jq5u115eHe5",
-	"Zx0ljodyfGWoPFPsASLyArSn8XcFdUOshlQLlhYYtvmu3UHb53EsVnlaLKZ3Mz63U9i07BicQnBpMBIS",
-	"4WSAbSw/6EgDz82DW8v7LiySjsTtQzo8V7q1OIN2t57PuUDdNz3apUZvbuO8ufwDd+HWUqMRS0VW9EMX",
-	"dZ5s6Zmz16rskLs2N1Z9UHS8IL/Zxoe2wINpVfo2W6lhvg7iPuaw3s1bY419ST+qVgZXSleKg7MWu/FB",
-	"tRrhBqUCm/jhQML+naUlWVcQ+JchclqtQGqQaIvenXNlC8Hv6xrt4osx384Y212kNY/omDdcot31R87H",
-	"eWvMlXtVvPchNVwvhQrZygy9+2Na8ymd1C+B7i6zLdtyxWBNBFSc5eu2lliyNO8u4mDD6qKYXeEmkX4f",
-	"n+mX7229c64hL3I83Im4eO728C8uMprk2iE2Vnk6TEfxSaVhxV2dATw9MXbH7YG1vrhsb/fKXzn7MwNf",
-	"I4eSK1duO7bWxrfPmrhMctvVtvdEbHYxVSe12SvbPkXVSWz4Od/yL67oH2z/jia9ibQkt4aTAh0PztPg",
-	"/A4FHjf5Hra7GjzN+3JEiTR9+Ii6wI4UZkVYJ+pxHjWRNLT5p52uJNt88ZU6s499RVw13UIarrWF1usP",
-	"2hYPqF6q5svnvjir9DAsz8IuPxd7r9EIV/05+Gf/4uKs/8LC1r/03jX2FiJGXauJGTHDY1NEl+571BRi",
-	"x7XIXR6la4k6T1Duy0MkU9zo1i67SjcrdguKNYf5zUlGv5lHdnF4vqwYX7Tl/PyKce+ikdCs6K7V2Vir",
-	"dgn9d0+fdoGZ2FtlvWBtbMdlmW8XjX9Dd+yB3oy8b+yDV6PoljKaM8+HLFO1YjFXw3Jj/SE6MXfNcDvk",
-	"cIMg7B1lGyk3FzT5vZVFwwlvc1b/NDMRx2LlzzyodSStNBFrolnweF3UZxA2y+9XY4o40DYwZrdW2Wee",
-	"ytr9s5UPTFxT3+DeNFpxh+NWVWYI65vWXj7NYIAmYgnSTG0ZJC0uTh66y4S63R9n+W1Dcsq0pHLdunYZ",
-	"Y6H2TrfyHhd3STahc8q4sidxd1M2cR3Ix1xwEouQxguh9OkPjx8/vp3Lty/t7XCu83bjwmLs4abKO5rd",
-	"9erFxX4ex0nr3uoXVjvcxcmu8870r1z10HVXt6/dQPdt0PeZKH/Wuit+WF4AbynCQ5yOQaxMQu7oPuhX",
-	"bga5s9rZ9t0jX5cO2jcmeSigvL7IXY7+LeC943q0OoLxso+tGMYLRu4WxbW7ae4Hx9VrVHyq0N6L8o3h",
-	"lm5A7ufyxpUvwytWr871Ivo1wzLP7efyyl0um0zCLRe17H5YOAih1YuyvqkGNe9eP8j8AiNKipu+crO1",
-	"m+LsXbFbac7exfXXobr6vWT/obubJyh13tW2gfhUcQGT9/hbv6bpa9PeHesxuyifCnO/PMgs5cpNSXZ5",
-	"3aiP2A42DT71l5E6tXup7sl+qlwT5SG+H6vXNj1Yj1up+ew9VpvpUGR6myOu3DyR6Y0euXuSRzfwLHku",
-	"3drqY2pcp2Vs3OZ9Wv8JoNxBAKVC1SLTDYdZebt/GYT1S1dbOVzeCHWXhdqtTv3dfZu6bny4txLte+pt",
-	"URR2pxKWDM+Medf/6iUCLay74rJOKZZXn1URvzF6VgStijsHyuyJAcGWSiIxqqLeKSnL++C5qEDxelcg",
-	"C4WeP4y17daC7aIRN2yYpE9vXE5QuYPEhh5rAq74tf/KXTbXf77x0jcxK+/ka99UNyA/ZVRSrsHmy02B",
-	"fHj14smTJz8MNkdAaqBc2HyUgyDJL1o9EBADyuPR402MzYwkY3GMN7lJMZegVI+k2MaUaLm2vk8SU1ul",
-	"WtnuD6Dluv98pn2XCl1k87mtFcVuqo3b2ivt0OXaMkG5iI3X+355wAWnts2VQl4ETNHcQaLEzGqPzvrB",
-	"/KpGWyRwA8u1qAfYpFBqF0O2k+xb/Jp3kpcFlLdWYEfjuDpsfdtaVxJ4Uu/uWvn6r2Py6t6TTSyaX0X5",
-	"8DpE4Q4UHRJLuTYg73i8xgKDUtalIMn5SxJSbvsGzpnSICGy7eCMBBm0sSzSTUiuXFJ0Zzj2XIS0v3nl",
-	"UuHutxmfFmld/eBC/l8AAAD//90+RAzopgAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

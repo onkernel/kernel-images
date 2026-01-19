@@ -175,6 +175,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-ap
     imagemagick \
     sudo \
     mutter \
+    # FUSE for fspipe virtual filesystem (fuse provides /bin/fusermount required by go-fuse)
+    fuse \
+    libfuse2 \
     # Python/pyenv reqs
     build-essential \
     libssl-dev  \
@@ -215,6 +218,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=$CACHEIDPREFIX-ap
 # install ffmpeg manually since the version available in apt is from the 4.x branch due to #drama.
 COPY --from=ffmpeg-downloader /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg-downloader /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+
+# Enable user_allow_other in fuse.conf so FUSE mounts can be accessed by other users (e.g., Chrome)
+RUN echo "user_allow_other" >> /etc/fuse.conf
 
 # runtime
 ENV USERNAME=root
@@ -317,5 +323,10 @@ RUN esbuild /tmp/playwright-daemon.ts \
     && rm /tmp/playwright-daemon.ts
 
 RUN useradd -m -s /bin/bash kernel
+
+# Create fspipe download directory with proper permissions for FUSE mount
+RUN mkdir -p /home/kernel/fspipe-downloads && \
+    chown kernel:kernel /home/kernel/fspipe-downloads && \
+    chmod 777 /home/kernel/fspipe-downloads
 
 ENTRYPOINT [ "/wrapper.sh" ]

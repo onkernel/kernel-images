@@ -1091,6 +1091,74 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+
+  /fspipe/start:
+    post:
+      summary: Start fspipe daemon to monitor Chrome downloads
+      description: |
+        Starts the fspipe daemon which creates a virtual FUSE filesystem that streams file writes
+        to a remote destination (WebSocket listener or S3/R2). The daemon will mount at a directory
+        which is also set as Chrome's download directory. Chrome is restarted with the new download
+        directory configured.
+
+        Transport modes:
+        - WebSocket: Provide ws_endpoint (e.g., "ws://listener:9000/fspipe" or "wss://...")
+        - S3/R2: Provide s3_config with endpoint, bucket, access_key_id, secret_access_key, and optional region/prefix
+      operationId: startFspipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartFspipeRequest"
+      responses:
+        "200":
+          description: Fspipe daemon started successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FspipeStartResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "409":
+          description: Fspipe daemon is already running
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /fspipe/stop:
+    post:
+      summary: Stop the fspipe daemon
+      description: |
+        Stops the running fspipe daemon, unmounts the virtual filesystem, and closes the
+        transport connection. Chrome's download directory setting is preserved but downloads
+        will no longer be streamed.
+      operationId: stopFspipe
+      responses:
+        "200":
+          description: Fspipe daemon stopped successfully
+        "400":
+          description: Fspipe daemon is not running
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /fspipe/status:
+    get:
+      summary: Get fspipe daemon status
+      description: |
+        Returns the current status of the fspipe daemon including whether it's running,
+        the configured transport mode, and connection statistics.
+      operationId: getFspipeStatus
+      responses:
+        "200":
+          description: Fspipe daemon status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FspipeStatus"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -1721,6 +1789,113 @@ components:
         stderr:
           type: string
           description: Standard error from the execution
+      additionalProperties: false
+
+    S3Config:
+      type: object
+      description: S3/R2 storage configuration
+      required: [endpoint, bucket, access_key_id, secret_access_key]
+      properties:
+        endpoint:
+          type: string
+          description: S3-compatible endpoint URL (e.g., "https://ACCOUNT_ID.r2.cloudflarestorage.com")
+        bucket:
+          type: string
+          description: Bucket name
+        access_key_id:
+          type: string
+          description: Access key ID
+        secret_access_key:
+          type: string
+          description: Secret access key
+        region:
+          type: string
+          description: Region (use "auto" for R2)
+          default: "auto"
+        prefix:
+          type: string
+          description: Optional key prefix for uploaded objects
+      additionalProperties: false
+
+    StartFspipeRequest:
+      type: object
+      description: Request to start the fspipe daemon
+      properties:
+        mount_path:
+          type: string
+          description: Path where the virtual filesystem will be mounted. Defaults to /home/kernel/fspipe-downloads.
+          pattern: "^/.*"
+          default: "/home/kernel/fspipe-downloads"
+        ws_endpoint:
+          type: string
+          description: |
+            WebSocket endpoint for streaming files (e.g., "ws://listener:9000/fspipe" or "wss://...").
+            Mutually exclusive with s3_config.
+        s3_config:
+          $ref: "#/components/schemas/S3Config"
+        health_port:
+          type: integer
+          description: Port for the fspipe health/metrics HTTP server
+          minimum: 1024
+          maximum: 65535
+          default: 8090
+      additionalProperties: false
+
+    FspipeStartResult:
+      type: object
+      description: Response after starting the fspipe daemon
+      required: [running, transport_mode, mount_path]
+      properties:
+        running:
+          type: boolean
+          description: Whether the daemon is now running
+        transport_mode:
+          type: string
+          enum: [websocket, s3]
+          description: The transport mode being used
+        mount_path:
+          type: string
+          description: The path where the virtual filesystem is mounted
+        ws_endpoint:
+          type: string
+          description: The WebSocket endpoint being used (if transport_mode is websocket)
+        s3_bucket:
+          type: string
+          description: The S3 bucket being used (if transport_mode is s3)
+        health_endpoint:
+          type: string
+          description: URL of the fspipe health/metrics server
+      additionalProperties: false
+
+    FspipeStatus:
+      type: object
+      description: Status of the fspipe daemon
+      required: [running]
+      properties:
+        running:
+          type: boolean
+          description: Whether the daemon is currently running
+        transport_mode:
+          type: string
+          enum: [websocket, s3]
+          description: The transport mode being used (if running)
+        transport_state:
+          type: string
+          enum: [connected, reconnecting, disconnected]
+          description: Current transport connection state (if running)
+        mount_path:
+          type: string
+          description: The path where the virtual filesystem is mounted (if running)
+        ws_endpoint:
+          type: string
+          description: The WebSocket endpoint being used (if transport_mode is websocket)
+        s3_bucket:
+          type: string
+          description: The S3 bucket being used (if transport_mode is s3)
+        stats:
+          type: object
+          description: Transport statistics (messages sent, bytes transferred, etc.)
+          additionalProperties: true
       additionalProperties: false
   responses:
     BadRequestError:
