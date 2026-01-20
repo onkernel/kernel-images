@@ -1,6 +1,5 @@
 <template>
-  <ul>
-  </ul>
+  <ul></ul>
 </template>
 
 <style lang="scss" scoped>

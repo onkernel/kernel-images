@@ -26,8 +26,10 @@
           @touchmove.stop.prevent="onTouchHandler"
           @touchstart.stop.prevent="onTouchHandler"
           @touchend.stop.prevent="onTouchHandler"
+          @paste.stop.prevent="onPaste"
+          @focus="onOverlayFocus"
         />
-<!-- KERNEL
+        <!-- KERNEL
         <div v-if="!playing && playable" class="player-overlay" @click.stop.prevent="playAndUnmute">
           <i class="fas fa-play-circle" />
         </div>
@@ -817,12 +819,26 @@
       this.focused = false
     }
 
+    onPaste() {
+      if (this.hosting) {
+        this.syncClipboard()
+      }
+    }
+
+    onOverlayFocus() {
+      if (this.hosting) {
+        this.syncClipboard()
+      }
+    }
+
     onResize() {
       const { offsetWidth, offsetHeight } = !this.fullscreen ? this._component : document.body
       this._player.style.width = `${offsetWidth}px`
       this._player.style.height = `${offsetHeight}px`
       const aspectPreservingMaxWidth = (this.horizontal / this.vertical) * offsetHeight
-      this._container.style.maxWidth = `${!this.fullscreen ? Math.min(this.width, aspectPreservingMaxWidth) : aspectPreservingMaxWidth}px`
+      this._container.style.maxWidth = `${
+        !this.fullscreen ? Math.min(this.width, aspectPreservingMaxWidth) : aspectPreservingMaxWidth
+      }px`
       this._aspect.style.paddingBottom = `${(this.vertical / this.horizontal) * 100}%`
     }
 
