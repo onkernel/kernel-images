@@ -165,17 +165,19 @@ func waitForPort(port string, timeout time.Duration) {
 	// Timeout reached, proceed anyway and let chromium report the error
 }
 
-// killExistingChromium kills any existing chromium processes and waits for them to die.
+// killExistingChromium kills any existing chromium browser processes and waits for them to die.
 // This ensures a clean restart where the new process can bind to both IPv4 and IPv6.
+// Note: We use -x for exact match to avoid killing chromium-launcher itself.
 func killExistingChromium() {
-	// First, try to kill all chromium processes using the full binary path
-	_ = exec.Command("pkill", "-9", "-f", "chromium").Run()
+	// Kill chromium processes by exact name match.
+	// Using -x prevents matching "chromium-launcher" which would kill this process.
+	_ = exec.Command("pkill", "-9", "-x", "chromium").Run()
 
 	// Wait up to 2 seconds for processes to fully terminate
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		// Check if any chromium processes are still running
-		output, err := exec.Command("pgrep", "-f", "chromium").Output()
+		// Check if any chromium browser processes are still running (exact match)
+		output, err := exec.Command("pgrep", "-x", "chromium").Output()
 		if err != nil || len(strings.TrimSpace(string(output))) == 0 {
 			// No processes found, we're done
 			return
