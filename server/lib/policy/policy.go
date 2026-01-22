@@ -27,10 +27,10 @@ type Policy struct {
 	AutofillCreditCardEnabled       bool                        `json:"AutofillCreditCardEnabled"`
 	TranslateEnabled                bool                        `json:"TranslateEnabled"`
 	DefaultNotificationsSetting     int                         `json:"DefaultNotificationsSetting"`
-	DefaultSearchProviderEnabled    bool                        `json:"DefaultSearchProviderEnabled,omitempty"`
-	DefaultSearchProviderName       string                      `json:"DefaultSearchProviderName,omitempty"`
-	DefaultSearchProviderSearchURL  string                      `json:"DefaultSearchProviderSearchURL,omitempty"`
-	DefaultSearchProviderSuggestURL string                      `json:"DefaultSearchProviderSuggestURL,omitempty"`
+	DefaultSearchProviderEnabled    bool                        `json:"DefaultSearchProviderEnabled"`
+	DefaultSearchProviderName       string                      `json:"DefaultSearchProviderName"`
+	DefaultSearchProviderSearchURL  string                      `json:"DefaultSearchProviderSearchURL"`
+	DefaultSearchProviderSuggestURL string                      `json:"DefaultSearchProviderSuggestURL"`
 	ExtensionInstallForcelist       []string                    `json:"ExtensionInstallForcelist,omitempty"`
 	ExtensionSettings               map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
