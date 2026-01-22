@@ -7,6 +7,7 @@
   "DefaultSearchProviderName": "DuckDuckGo",
   "DefaultSearchProviderSearchURL": "https://duckduckgo.com/?q={searchTerms}",
   "DefaultSearchProviderSuggestURL": "https://duckduckgo.com/ac/?q={searchTerms}",
+  "NewTabPageLocation": "https://start.duckduckgo.com/",
   "ExtensionSettings": {
     "*": {
       "allowed_types": ["extension"],

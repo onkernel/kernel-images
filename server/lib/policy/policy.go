@@ -15,6 +15,7 @@ const PolicyPath = "/etc/chromium/policies/managed/policy.json"
 const DefaultSearchProviderName = "DuckDuckGo"
 const DefaultSearchProviderSearchURL = "https://duckduckgo.com/?q={searchTerms}"
 const DefaultSearchProviderSuggestURL = "https://duckduckgo.com/ac/?q={searchTerms}"
+const NewTabPageLocation = "https://start.duckduckgo.com/"
 
 // Chrome extension IDs are 32 lowercase a-p characters
 var extensionIDRegex = regexp.MustCompile(`^[a-p]{32}$`)
@@ -31,6 +32,7 @@ type Policy struct {
 	DefaultSearchProviderName       string                      `json:"DefaultSearchProviderName"`
 	DefaultSearchProviderSearchURL  string                      `json:"DefaultSearchProviderSearchURL"`
 	DefaultSearchProviderSuggestURL string                      `json:"DefaultSearchProviderSuggestURL"`
+	NewTabPageLocation              string                      `json:"NewTabPageLocation"`
 	ExtensionInstallForcelist       []string                    `json:"ExtensionInstallForcelist,omitempty"`
 	ExtensionSettings               map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
@@ -61,6 +63,7 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 				DefaultSearchProviderName:       DefaultSearchProviderName,
 				DefaultSearchProviderSearchURL:  DefaultSearchProviderSearchURL,
 				DefaultSearchProviderSuggestURL: DefaultSearchProviderSuggestURL,
+				NewTabPageLocation:              NewTabPageLocation,
 				ExtensionInstallForcelist:       []string{},
 				ExtensionSettings:               make(map[string]ExtensionSetting),
 			}, nil
