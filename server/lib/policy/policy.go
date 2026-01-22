@@ -12,6 +12,9 @@ import (
 )
 
 const PolicyPath = "/etc/chromium/policies/managed/policy.json"
+const DefaultSearchProviderName = "DuckDuckGo"
+const DefaultSearchProviderSearchURL = "https://duckduckgo.com/?q={searchTerms}"
+const DefaultSearchProviderSuggestURL = "https://duckduckgo.com/ac/?q={searchTerms}"
 
 // Chrome extension IDs are 32 lowercase a-p characters
 var extensionIDRegex = regexp.MustCompile(`^[a-p]{32}$`)
@@ -20,12 +23,16 @@ var extensionIDRegex = regexp.MustCompile(`^[a-p]{32}$`)
 type Policy struct {
 	mu sync.Mutex
 
-	PasswordManagerEnabled      bool                        `json:"PasswordManagerEnabled"`
-	AutofillCreditCardEnabled   bool                        `json:"AutofillCreditCardEnabled"`
-	TranslateEnabled            bool                        `json:"TranslateEnabled"`
-	DefaultNotificationsSetting int                         `json:"DefaultNotificationsSetting"`
-	ExtensionInstallForcelist   []string                    `json:"ExtensionInstallForcelist,omitempty"`
-	ExtensionSettings           map[string]ExtensionSetting `json:"ExtensionSettings"`
+	PasswordManagerEnabled          bool                        `json:"PasswordManagerEnabled"`
+	AutofillCreditCardEnabled       bool                        `json:"AutofillCreditCardEnabled"`
+	TranslateEnabled                bool                        `json:"TranslateEnabled"`
+	DefaultNotificationsSetting     int                         `json:"DefaultNotificationsSetting"`
+	DefaultSearchProviderEnabled    bool                        `json:"DefaultSearchProviderEnabled"`
+	DefaultSearchProviderName       string                      `json:"DefaultSearchProviderName"`
+	DefaultSearchProviderSearchURL  string                      `json:"DefaultSearchProviderSearchURL"`
+	DefaultSearchProviderSuggestURL string                      `json:"DefaultSearchProviderSuggestURL"`
+	ExtensionInstallForcelist       []string                    `json:"ExtensionInstallForcelist,omitempty"`
+	ExtensionSettings               map[string]ExtensionSetting `json:"ExtensionSettings"`
 }
 
 // ExtensionSetting represents settings for a specific extension
@@ -46,12 +53,16 @@ func (p *Policy) readPolicyUnlocked() (*Policy, error) {
 		if os.IsNotExist(err) {
 			// Return default policy if file doesn't exist
 			return &Policy{
-				PasswordManagerEnabled:      false,
-				AutofillCreditCardEnabled:   false,
-				TranslateEnabled:            false,
-				DefaultNotificationsSetting: 2,
-				ExtensionInstallForcelist:   []string{},
-				ExtensionSettings:           make(map[string]ExtensionSetting),
+				PasswordManagerEnabled:          false,
+				AutofillCreditCardEnabled:       false,
+				TranslateEnabled:                false,
+				DefaultNotificationsSetting:     2,
+				DefaultSearchProviderEnabled:    true,
+				DefaultSearchProviderName:       DefaultSearchProviderName,
+				DefaultSearchProviderSearchURL:  DefaultSearchProviderSearchURL,
+				DefaultSearchProviderSuggestURL: DefaultSearchProviderSuggestURL,
+				ExtensionInstallForcelist:       []string{},
+				ExtensionSettings:               make(map[string]ExtensionSetting),
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read policy file: %w", err)
