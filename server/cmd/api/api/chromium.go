@@ -223,13 +223,12 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 				}
 			}
 
-			// Fail if policy extension is missing required files
+			// If missing required files for ExtensionInstallForcelist, fall back to --load-extension
 			if !hasUpdateXML || !hasCRX {
-				return oapi.UploadExtensionsAndRestart400JSONResponse{
-					BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{
-						Message: fmt.Sprintf("extension %s requires enterprise policy (ExtensionInstallForcelist) but is missing required files: update.xml (present: %v), .crx file (present: %v). These files are required for Chrome to install the extension.", extensionName, hasUpdateXML, hasCRX),
-					},
-				}, nil
+				log.Info("extension missing policy files, falling back to --load-extension",
+					"name", extensionName, "hasUpdateXML", hasUpdateXML, "hasCRX", hasCRX)
+				requiresEntPolicy = false
+				pathsNeedingFlags = append(pathsNeedingFlags, extensionPath)
 			}
 		} else {
 			// Only add --load-extension flags for non-policy extensions
