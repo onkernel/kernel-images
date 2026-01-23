@@ -154,6 +154,15 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 			log.Error("failed to unzip zip file", "error", err)
 			return oapi.UploadExtensionsAndRestart400JSONResponse{BadRequestErrorJSONResponse: oapi.BadRequestErrorJSONResponse{Message: "invalid zip file"}}, nil
 		}
+
+		// Rewrite update.xml URLs to match the extension name (directory name)
+		// This ensures URLs like /extensions/web-bot-auth/ become /extensions/<actual-name>/
+		updateXMLPath := filepath.Join(dest, "update.xml")
+		if err := policy.RewriteUpdateXMLUrls(updateXMLPath, p.name); err != nil {
+			log.Warn("failed to rewrite update.xml URLs", "error", err, "extension", p.name)
+			// continue since not all extensions require update.xml
+		}
+
 		if err := exec.Command("chown", "-R", "kernel:kernel", dest).Run(); err != nil {
 			log.Error("failed to chown extension dir", "error", err)
 			return oapi.UploadExtensionsAndRestart500JSONResponse{InternalErrorJSONResponse: oapi.InternalErrorJSONResponse{Message: "failed to chown extension dir"}}, nil

@@ -19,6 +19,7 @@ const NewTabPageLocation = "https://start.duckduckgo.com/"
 
 // Chrome extension IDs are 32 lowercase a-p characters
 var extensionIDRegex = regexp.MustCompile(`^[a-p]{32}$`)
+var extensionPathRegex = regexp.MustCompile(`/extensions/[^/]+/`)
 
 // Policy represents the Chrome enterprise policy structure
 type Policy struct {
@@ -262,4 +263,30 @@ func ExtractExtensionIDFromUpdateXML(updateXMLPath string) (string, error) {
 	}
 
 	return appID, nil
+}
+
+// RewriteUpdateXMLUrls rewrites the codebase URLs in update.xml to use the specified extension name.
+// This ensures that regardless of what name was originally in the update.xml, the URLs will match
+// the actual directory name where the extension is installed.
+func RewriteUpdateXMLUrls(updateXMLPath, extensionName string) error {
+	data, err := os.ReadFile(updateXMLPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read update.xml: %w", err)
+	}
+
+	content := string(data)
+	newPath := fmt.Sprintf("/extensions/%s/", extensionName)
+
+	newContent := extensionPathRegex.ReplaceAllString(content, newPath)
+
+	if newContent != content {
+		if err := os.WriteFile(updateXMLPath, []byte(newContent), 0644); err != nil {
+			return fmt.Errorf("failed to write update.xml: %w", err)
+		}
+	}
+
+	return nil
 }
