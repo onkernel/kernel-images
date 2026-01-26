@@ -9,12 +9,12 @@
             <key>installation_mode</key>
             <string>blocked</string>
         </dict>
-        <key>dkamcndnlciinlhlbkpllfljehkghiaa</key>
+        <key>boimhnmdbkcpjabondiibeejkndanfpi</key>
         <dict>
             <key>installation_mode</key>
             <string>force_installed</string>
             <key>update_url</key>
-            <string>http://127.0.0.1:10001/extensions/raf-test-web-bot-auth-fixed-v2/update.xml</string>
+            <string>http://127.0.0.1:10001/extensions/my-web-bot-auth-test-2/update.xml</string>
         </dict>
     </dict>
 </dict>
