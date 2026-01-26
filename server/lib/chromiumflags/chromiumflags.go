@@ -184,6 +184,38 @@ func MergeFlagsWithRuntimeTokens(baseFlags string, runtimeTokens []string) []str
 	return MergeFlags(base, runtimeTokens)
 }
 
+// MergeExtensionPath appends an extension path to existing --load-extension flags
+// within an args slice. If the flag exists, the path is appended to its comma-separated
+// list. If it doesn't exist, a new flag is added. This preserves other extensions that
+// may already be configured.
+//
+// NOTE: We intentionally do NOT use --disable-extensions-except here because it causes
+// Chrome to disable external providers (including the policy loader), which prevents
+// enterprise policy extensions (ExtensionInstallForcelist) from being fetched and installed.
+// See Chromium source: extension_service.cc - external providers are only created when
+// extensions_enabled() returns true, which is false when --disable-extensions-except is used.
+func MergeExtensionPath(args []string, extPath string) []string {
+	foundLoad := false
+	result := make([]string, 0, len(args)+1)
+
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--load-extension="):
+			existing := strings.TrimPrefix(arg, "--load-extension=")
+			result = append(result, "--load-extension="+existing+","+extPath)
+			foundLoad = true
+		default:
+			result = append(result, arg)
+		}
+	}
+
+	if !foundLoad {
+		result = append(result, "--load-extension="+extPath)
+	}
+
+	return result
+}
+
 // WriteFlagFile writes the provided tokens to the given path as JSON in the
 // form: { "flags": ["--foo", "--bar=1"] } with file mode 0644.
 // The function creates or truncates the file.

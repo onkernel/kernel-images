@@ -260,10 +260,14 @@ func (s *ApiService) UploadExtensionsAndRestart(ctx context.Context, request oap
 
 	// Build flags overlay file in /chromium/flags, merging with existing flags
 	// Only add --load-extension flags for extensions that don't use policy installation
+	// NOTE: We intentionally do NOT use --disable-extensions-except here because it causes
+	// Chrome to disable external providers (including the policy loader), which prevents
+	// enterprise policy extensions (ExtensionInstallForcelist) from being fetched and installed.
+	// See Chromium source: extension_service.cc - external providers are only created when
+	// extensions_enabled() returns true, which is false when --disable-extensions-except is used.
 	var newTokens []string
 	if len(pathsNeedingFlags) > 0 {
 		newTokens = []string{
-			fmt.Sprintf("--disable-extensions-except=%s", strings.Join(pathsNeedingFlags, ",")),
 			fmt.Sprintf("--load-extension=%s", strings.Join(pathsNeedingFlags, ",")),
 		}
 	}

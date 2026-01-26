@@ -82,6 +82,17 @@ func runEnterpriseExtensionTest(t *testing.T, image string) {
 	_, err = waitDevtoolsWS(ctx)
 	require.NoError(t, err, "devtools not ready")
 
+	// First upload a simple extension to simulate the kernel extension in production.
+	// This causes Chrome to be launched with --load-extension, which mirrors production
+	// where the kernel extension is always loaded before any enterprise extensions.
+	logger.Info("[test]", "action", "uploading kernel-like extension first (to simulate prod)")
+	uploadKernelLikeExtension(t, ctx, logger)
+
+	// Wait for Chrome to restart with the new flags
+	time.Sleep(3 * time.Second)
+	_, err = waitDevtoolsWS(ctx)
+	require.NoError(t, err, "devtools not ready after kernel extension")
+
 	// Upload the enterprise test extension (with update.xml and .crx)
 	logger.Info("[test]", "action", "uploading enterprise test extension (with update.xml and .crx)")
 	uploadEnterpriseTestExtension(t, ctx, logger)
@@ -136,6 +147,47 @@ func runEnterpriseExtensionTest(t *testing.T, image string) {
 	verifyExtensionInstalled(t, ctx, logger)
 
 	logger.Info("[test]", "result", "enterprise extension installation test completed")
+}
+
+// uploadKernelLikeExtension uploads a simple extension to simulate the kernel extension.
+// In production, the kernel extension is always loaded before any enterprise extensions,
+// so this ensures the test mirrors that behavior.
+func uploadKernelLikeExtension(t *testing.T, ctx context.Context, logger *slog.Logger) {
+	t.Helper()
+
+	client, err := apiClient()
+	require.NoError(t, err, "failed to create API client")
+
+	// Get the path to the simple test extension (no webRequest, so no enterprise policy)
+	extDir, err := filepath.Abs("test-extension")
+	require.NoError(t, err, "failed to get absolute path to test-extension")
+
+	// Create zip of the extension
+	extZip, err := zipDirToBytes(extDir)
+	require.NoError(t, err, "failed to zip test extension")
+
+	// Upload extension
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	fw, err := w.CreateFormFile("extensions.zip_file", "kernel-like-ext.zip")
+	require.NoError(t, err)
+	_, err = io.Copy(fw, bytes.NewReader(extZip))
+	require.NoError(t, err)
+	err = w.WriteField("extensions.name", "kernel")
+	require.NoError(t, err)
+	err = w.Close()
+	require.NoError(t, err)
+
+	start := time.Now()
+	rsp, err := client.UploadExtensionsAndRestartWithBodyWithResponse(ctx, w.FormDataContentType(), &body)
+	elapsed := time.Since(start)
+	require.NoError(t, err, "uploadExtensionsAndRestart request error")
+
+	require.Equal(t, http.StatusCreated, rsp.StatusCode(),
+		"expected 201 Created but got %d. Body: %s",
+		rsp.StatusCode(), string(rsp.Body))
+
+	logger.Info("[kernel-ext]", "action", "uploaded kernel-like extension", "elapsed", elapsed.String())
 }
 
 // uploadEnterpriseTestExtension uploads the test extension with update.xml and .crx files.
