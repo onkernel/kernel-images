@@ -21,6 +21,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -298,9 +299,9 @@ func testCookiePersistence(t *testing.T, image, name string) {
 	logger.Info("[test]", "phase", "2", "action", "starting second container")
 	_, exitCh2, err := runContainerWithOptions(ctx, image, name, env, ContainerOptions{HostAccess: true})
 	require.NoError(t, err, "failed to start second container: %v", err)
+	defer stopContainer(baseCtx, name)
 
 	require.NoError(t, waitHTTPOrExitWithLogs(ctx, apiBaseURL+"/spec.yaml", exitCh2, name), "api not ready for second container")
-	defer stopContainer(baseCtx, name)
 
 	client2, err := apiClient()
 	require.NoError(t, err)
@@ -406,9 +407,9 @@ func testIndexedDBPersistence(t *testing.T, image, name string) {
 	logger.Info("[test]", "phase", "2", "action", "starting second container")
 	_, exitCh2, err := runContainerWithOptions(ctx, image, name, env, ContainerOptions{HostAccess: true})
 	require.NoError(t, err, "failed to start second container: %v", err)
+	defer stopContainer(baseCtx, name)
 
 	require.NoError(t, waitHTTPOrExitWithLogs(ctx, apiBaseURL+"/spec.yaml", exitCh2, name), "api not ready for second container")
-	defer stopContainer(baseCtx, name)
 
 	client2, err := apiClient()
 	require.NoError(t, err)
@@ -753,7 +754,18 @@ func restoreUserDataDir(t *testing.T, ctx context.Context, client *instanceoapi.
 	require.Equal(t, http.StatusOK, execRsp.StatusCode(), "unexpected status: %s body=%s", execRsp.Status(), string(execRsp.Body))
 
 	if execRsp.JSON200.ExitCode != nil && *execRsp.JSON200.ExitCode != 0 {
-		logger.Info("[restore]", "unzip_exit_code", *execRsp.JSON200.ExitCode)
+		var stdout, stderr string
+		if execRsp.JSON200.StdoutB64 != nil {
+			if b, decErr := base64.StdEncoding.DecodeString(*execRsp.JSON200.StdoutB64); decErr == nil {
+				stdout = string(b)
+			}
+		}
+		if execRsp.JSON200.StderrB64 != nil {
+			if b, decErr := base64.StdEncoding.DecodeString(*execRsp.JSON200.StderrB64); decErr == nil {
+				stderr = string(b)
+			}
+		}
+		require.Fail(t, "unzip failed", "exit_code=%d stdout=%s stderr=%s", *execRsp.JSON200.ExitCode, stdout, stderr)
 	}
 
 	logger.Info("[restore]", "action", "extracted zip to user-data")
@@ -802,6 +814,7 @@ func restartChromium(t *testing.T, ctx context.Context, client *instanceoapi.Cli
 	// Wait for CDP endpoint to be ready again by checking the internal CDP endpoint
 	logger.Info("[restart]", "action", "waiting for CDP endpoint to be ready")
 	for i := 0; i < 30; i++ {
+		// Use curl to check the CDP endpoint and capture the HTTP status code
 		checkArgs := []string{"-s", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:9223/json/version"}
 		checkReq := instanceoapi.ProcessExecJSONRequestBody{
 			Command: "curl",
@@ -809,11 +822,20 @@ func restartChromium(t *testing.T, ctx context.Context, client *instanceoapi.Cli
 		}
 		checkRsp, err := client.ProcessExecWithResponse(ctx, checkReq)
 		if err == nil && checkRsp.JSON200 != nil && checkRsp.JSON200.ExitCode != nil && *checkRsp.JSON200.ExitCode == 0 {
-			logger.Info("[restart]", "action", "CDP endpoint is ready")
-			return
+			// Decode stdout to get the HTTP status code
+			if checkRsp.JSON200.StdoutB64 != nil {
+				if b, decErr := base64.StdEncoding.DecodeString(*checkRsp.JSON200.StdoutB64); decErr == nil {
+					httpCode := strings.TrimSpace(string(b))
+					if httpCode == "200" {
+						logger.Info("[restart]", "action", "CDP endpoint is ready", "http_code", httpCode)
+						return
+					}
+					logger.Info("[restart]", "action", "CDP endpoint returned non-200", "http_code", httpCode)
+				}
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	logger.Info("[restart]", "warning", "CDP endpoint may not be fully ready after 15 seconds")
+	require.Fail(t, "Chromium restart timed out", "CDP endpoint did not become ready after 15 seconds")
 }
