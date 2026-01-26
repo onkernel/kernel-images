@@ -35,7 +35,9 @@ dev: build $(RECORDING_DIR)
 
 test:
 	go vet ./...
-	go test -v -race ./...
+	# Run tests sequentially (-p 1) to avoid port conflicts in e2e tests
+	# (all e2e tests bind to the same ports: 10001, 9222)
+	go test -v -race -p 1 ./...
 
 clean:
 	@rm -rf $(BIN_DIR)

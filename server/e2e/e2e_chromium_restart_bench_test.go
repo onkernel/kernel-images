@@ -316,7 +316,7 @@ func TestChromiumRestartTiming(t *testing.T) {
 			defer cancel()
 
 			t.Logf("Waiting for API...")
-			require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready")
+			require.NoError(t, waitHTTPOrExitWithLogs(ctx, apiBaseURL+"/spec.yaml", exitCh, name), "api not ready")
 
 			t.Logf("Waiting for DevTools...")
 			require.NoError(t, waitTCP(ctx, "127.0.0.1:9222"), "DevTools not ready")

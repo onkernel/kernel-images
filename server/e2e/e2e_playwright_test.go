@@ -36,7 +36,7 @@ func TestPlaywrightExecuteAPI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(baseCtx, 2*time.Minute)
 	defer cancel()
 
-	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready: %v", err)
+	require.NoError(t, waitHTTPOrExitWithLogs(ctx, apiBaseURL+"/spec.yaml", exitCh, name), "api not ready: %v", err)
 
 	client, err := apiClient()
 	require.NoError(t, err)
@@ -114,7 +114,7 @@ func TestPlaywrightDaemonRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(baseCtx, 3*time.Minute)
 	defer cancel()
 
-	require.NoError(t, waitHTTPOrExit(ctx, apiBaseURL+"/spec.yaml", exitCh), "api not ready: %v", err)
+	require.NoError(t, waitHTTPOrExitWithLogs(ctx, apiBaseURL+"/spec.yaml", exitCh, name), "api not ready: %v", err)
 
 	client, err := apiClient()
 	require.NoError(t, err)
