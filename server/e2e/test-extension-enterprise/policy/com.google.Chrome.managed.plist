@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ExtensionSettings</key>
+    <dict>
+        <key>*</key>
+        <dict>
+            <key>installation_mode</key>
+            <string>blocked</string>
+        </dict>
+        <key>dkamcndnlciinlhlbkpllfljehkghiaa</key>
+        <dict>
+            <key>installation_mode</key>
+            <string>force_installed</string>
+            <key>update_url</key>
+            <string>http://127.0.0.1:10001/extensions/raf-test-web-bot-auth-fixed-v2/update.xml</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

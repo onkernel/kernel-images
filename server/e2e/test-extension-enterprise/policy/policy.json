@@ -1,0 +1,8 @@
+{
+  "ExtensionSettings": {
+    "dkamcndnlciinlhlbkpllfljehkghiaa": {
+      "installation_mode": "force_installed",
+      "update_url": "http://127.0.0.1:10001/extensions/raf-test-web-bot-auth-fixed-v2/update.xml"
+    }
+  }
+}
