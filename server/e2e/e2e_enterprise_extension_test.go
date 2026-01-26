@@ -215,7 +215,7 @@ func uploadEnterpriseTestExtension(t *testing.T, ctx context.Context, logger *sl
 	logger.Info("[extension]", "update.xml", string(updateXMLData))
 
 	// Verify .crx exists
-	crxPath := filepath.Join(extDir, "http-message-signatures-extension.crx")
+	crxPath := filepath.Join(extDir, "extension.crx")
 	crxInfo, err := os.Stat(crxPath)
 	require.NoError(t, err, "failed to stat .crx file")
 	logger.Info("[extension]", "crx_size", crxInfo.Size())
@@ -319,7 +319,7 @@ func checkExtractedFiles(t *testing.T, ctx context.Context, logger *slog.Logger)
 	}
 
 	// Check file types
-	fileOutput, err := execCombinedOutput(ctx, "file", []string{"/home/kernel/extensions/enterprise-test/http-message-signatures-extension.crx"})
+	fileOutput, err := execCombinedOutput(ctx, "file", []string{"/home/kernel/extensions/enterprise-test/extension.crx"})
 	if err != nil {
 		logger.Warn("[files]", "file_type_error", err.Error())
 	} else {
@@ -528,7 +528,7 @@ func verifyExtensionInstalled(t *testing.T, ctx context.Context, logger *slog.Lo
 	// directory path, which differs from the ID in update.xml (which is for the packed .crx file).
 	// So we verify by extension name instead.
 	
-	expectedExtensionName := "HTTP Message Signatures User Agent"
+	expectedExtensionName := "Minimal Enterprise Test Extension"
 	logger.Info("[verify]", "expected_extension_name", expectedExtensionName)
 
 	// Use playwright to navigate to chrome://extensions and verify extension is loaded
