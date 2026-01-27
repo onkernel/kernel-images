@@ -53,7 +53,7 @@
         @click.stop.prevent="toggleMedia"
       />
     </li>
-<!--KERNEL
+    <!--KERNEL
     <li>
       <div class="volume">
         <i
