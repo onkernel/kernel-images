@@ -22,6 +22,11 @@ type Config struct {
 
 	// DevTools proxy configuration
 	LogCDPMessages bool `envconfig:"LOG_CDP_MESSAGES" default:"false"`
+
+	// Reclaim TEE configuration
+	TEEKUrl     string `envconfig:"TEE_K_URL" default:"wss://tk.reclaimprotocol.org/ws"`
+	TEETUrl     string `envconfig:"TEE_T_URL" default:"wss://tt.reclaimprotocol.org/ws"`
+	AttestorUrl string `envconfig:"ATTESTOR_URL" default:"wss://attestor.reclaimprotocol.org:444/ws"`
 }
 
 // Load loads configuration from environment variables

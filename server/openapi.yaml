@@ -1091,6 +1091,31 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /reclaim/prove:
+    post:
+      summary: Execute TEE+MPC proof protocol to generate a verifiable claim
+      description: |
+        Executes the complete Reclaim TEE+MPC protocol to prove data from an HTTPS endpoint.
+        The protocol connects to TEE_K and TEE_T services, performs a TLS handshake with the target,
+        and generates a cryptographically signed claim that can be verified on-chain.
+      operationId: reclaimProve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReclaimProveRequest"
+      responses:
+        "200":
+          description: Proof completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReclaimProveResult"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   schemas:
     StartRecordingRequest:
@@ -1721,6 +1746,77 @@ components:
         stderr:
           type: string
           description: Standard error from the execution
+      additionalProperties: false
+    ReclaimProveRequest:
+      type: object
+      description: Request to execute TEE+MPC proof protocol
+      required: [provider_params_json]
+      properties:
+        provider_params_json:
+          type: string
+          description: |
+            JSON-encoded provider parameters containing the target URL, HTTP method,
+            response matching rules, and redaction specifications.
+            Example: {"name":"http","params":{"url":"https://example.com","method":"GET"}}
+        config_json:
+          type: string
+          description: |
+            Optional JSON config to override default TEE service URLs.
+            Example: {"teekUrl":"wss://custom-tee-k.example.com/ws"}
+      additionalProperties: false
+    ReclaimProveResult:
+      type: object
+      description: Result of TEE+MPC proof protocol execution
+      required: [session_id, claim, signature]
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: Server-generated unique session identifier for this proof execution
+        claim:
+          $ref: "#/components/schemas/ReclaimClaim"
+        signature:
+          $ref: "#/components/schemas/ReclaimSignature"
+      additionalProperties: false
+    ReclaimClaim:
+      type: object
+      description: The verified claim data from the attestor
+      properties:
+        provider:
+          type: string
+          description: Name of the provider (e.g., "http")
+        parameters:
+          type: string
+          description: Canonically JSON stringified parameters of the claim
+        owner:
+          type: string
+          description: Owner address/public key of the claim
+        timestamp_s:
+          type: integer
+          description: Unix timestamp in seconds when the claim was made
+        context:
+          type: string
+          description: Additional context data stored with the claim (JSON string)
+        identifier:
+          type: string
+          description: Unique identifier of the claim (hash of provider, parameters, context)
+        epoch:
+          type: integer
+          description: Beacon epoch number (legacy)
+      additionalProperties: false
+    ReclaimSignature:
+      type: object
+      description: Cryptographic signatures from the attestor
+      properties:
+        attestor_address:
+          type: string
+          description: Ethereum address of the attestor that signed the claim
+        claim_signature:
+          type: string
+          description: Base64-encoded signature of the claim data
+        result_signature:
+          type: string
+          description: Base64-encoded signature of the complete response
       additionalProperties: false
   responses:
     BadRequestError:

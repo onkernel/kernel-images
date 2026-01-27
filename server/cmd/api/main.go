@@ -20,6 +20,7 @@ import (
 
 	serverpkg "github.com/onkernel/kernel-images/server"
 	"github.com/onkernel/kernel-images/server/cmd/api/api"
+	"github.com/onkernel/kernel-images/server/cmd/api/circuits"
 	"github.com/onkernel/kernel-images/server/cmd/config"
 	"github.com/onkernel/kernel-images/server/lib/devtoolsproxy"
 	"github.com/onkernel/kernel-images/server/lib/logger"
@@ -46,6 +47,16 @@ func main() {
 
 	// ensure ffmpeg is available
 	mustFFmpeg()
+
+	// Initialize ZK circuits in background at startup
+	slogger.Info("initializing ZK circuits in background...")
+	circuits.InitAllCircuits(func(algorithm string, success bool) {
+		if success {
+			slogger.Info("ZK circuit initialized", "algorithm", algorithm)
+		} else {
+			slogger.Error("ZK circuit initialization failed", "algorithm", algorithm)
+		}
+	})
 
 	stz := scaletozero.NewDebouncedController(scaletozero.NewUnikraftCloudController())
 	r := chi.NewRouter()
