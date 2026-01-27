@@ -143,6 +143,74 @@ You can use the embedded live view to monitor and control the browser. The live 
 - Audio streaming in the WebRTC implementation is currently non-functional and needs to be fixed.
 - The live view is read/write by default. You can set it to read-only by adding `-e ENABLE_READONLY_VIEW=true \` in `docker run`.
 
+## Proxy Configuration
+
+The headful image supports configuring an HTTP/SOCKS proxy for the browser using a Chrome extension. This is useful for:
+- Using residential/datacenter proxies (e.g., Bright Data, Oxylabs)
+- Geo-targeting specific locations
+- Rotating IP addresses
+
+### Usage
+
+Configure the proxy when starting the container:
+
+```bash
+cd images/chromium-headful
+
+PROXY_ENABLED=true \
+PROXY_HOST=brd.superproxy.io \
+PROXY_PORT=22225 \
+PROXY_USERNAME="brd-customer-XXXXX-zone-XXXXX" \
+PROXY_PASSWORD="your-password" \
+IMAGE=kernel-docker \
+ENABLE_WEBRTC=true \
+./run-docker.sh
+```
+
+### Geo-targeting
+
+Append the country code to the username for geo-targeting:
+
+| Country | Username Suffix |
+|---------|-----------------|
+| India | `-country-in` |
+| United States | `-country-us` |
+| United Kingdom | `-country-gb` |
+| Germany | `-country-de` |
+
+Example:
+```bash
+PROXY_USERNAME="brd-customer-XXXXX-zone-XXXXX-country-in"
+```
+
+### Runtime Configuration (API)
+
+Update the proxy configuration without restarting the container:
+
+```bash
+# Set proxy configuration
+curl -X PUT http://localhost:444/proxy/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "host": "brd.superproxy.io",
+    "port": 22225,
+    "username": "brd-customer-XXXXX-zone-XXXXX",
+    "password": "your-password"
+  }'
+
+# Get current proxy configuration
+curl http://localhost:444/proxy/config
+
+# Disable proxy
+curl -X DELETE http://localhost:444/proxy/config
+```
+
+### Notes
+- The proxy extension automatically picks up configuration changes within 30 seconds
+- Supported schemes: `http`, `https`, `socks4`, `socks5`
+- Whitelist the container's public IP in your proxy provider's dashboard (find it with `docker exec <container> curl -s https://api.ipify.org`)
+- Run without `PROXY_ENABLED=true` to disable the proxy extension
+
 ## Replay Capture
 
 You can use the embedded recording server to capture recordings of the entire screen in our headful images. It allows for one recording at a time and can be enabled with `WITH_KERNEL_IMAGES_API=true`

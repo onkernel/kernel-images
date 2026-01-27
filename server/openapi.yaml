@@ -1066,6 +1066,53 @@ paths:
           $ref: "#/components/responses/BadRequestError"
         "500":
           $ref: "#/components/responses/InternalError"
+  /proxy/config:
+    get:
+      summary: Get the current proxy configuration
+      description: Returns the current proxy configuration used by the browser extension.
+      operationId: getProxyConfig
+      responses:
+        "200":
+          description: Current proxy configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyConfig"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      summary: Set the proxy configuration
+      description: |
+        Set the proxy configuration for the browser. The browser extension will poll this
+        endpoint to get the current configuration and apply it automatically.
+      operationId: setProxyConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProxyConfig"
+      responses:
+        "200":
+          description: Proxy configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxyConfig"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Clear the proxy configuration
+      description: Remove the proxy configuration, disabling the proxy.
+      operationId: deleteProxyConfig
+      responses:
+        "204":
+          description: Proxy configuration cleared
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /playwright/execute:
     post:
       summary: Execute Playwright/TypeScript code against the browser
@@ -1721,6 +1768,36 @@ components:
         stderr:
           type: string
           description: Standard error from the execution
+      additionalProperties: false
+    ProxyConfig:
+      type: object
+      description: Proxy configuration for the browser
+      properties:
+        host:
+          type: string
+          description: Proxy server hostname or IP address
+        port:
+          type: integer
+          description: Proxy server port
+          minimum: 1
+          maximum: 65535
+        username:
+          type: string
+          description: Proxy authentication username
+        password:
+          type: string
+          description: Proxy authentication password
+        scheme:
+          type: string
+          description: Proxy protocol scheme
+          enum: [http, https, socks4, socks5]
+          default: http
+        bypassList:
+          type: array
+          description: List of hosts to bypass the proxy for
+          items:
+            type: string
+          default: ["localhost", "127.0.0.1"]
       additionalProperties: false
   responses:
     BadRequestError:

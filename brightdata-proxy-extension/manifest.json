@@ -1,0 +1,17 @@
+{
+  "name": "Bright Data Proxy Auth",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "description": "Proxy authentication for Bright Data",
+  "permissions": [
+    "proxy",
+    "webRequest",
+    "webRequestAuthProvider"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

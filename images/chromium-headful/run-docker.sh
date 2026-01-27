@@ -19,6 +19,13 @@ if [[ "$RUN_AS_ROOT" == "true" ]]; then
   CHROMIUM_FLAGS_DEFAULT="$CHROMIUM_FLAGS_DEFAULT --no-sandbox --no-zygote"
 fi
 CHROMIUM_FLAGS="${CHROMIUM_FLAGS:-$CHROMIUM_FLAGS_DEFAULT}"
+
+# Add proxy extension flags if proxy is enabled
+if [[ "${PROXY_ENABLED:-}" == "true" ]]; then
+  echo "Proxy enabled: $PROXY_HOST:$PROXY_PORT"
+  CHROMIUM_FLAGS="$CHROMIUM_FLAGS --load-extension=/home/kernel/extensions/brightdata-proxy --disable-extensions-except=/home/kernel/extensions/brightdata-proxy"
+fi
+
 rm -rf .tmp/chromium
 mkdir -p .tmp/chromium
 FLAGS_FILE="$(pwd)/.tmp/chromium/flags"
@@ -68,6 +75,16 @@ RUN_ARGS=(
 
 if [[ -n "${PLAYWRIGHT_ENGINE:-}" ]]; then
   RUN_ARGS+=( -e PLAYWRIGHT_ENGINE="$PLAYWRIGHT_ENGINE" )
+fi
+
+# Proxy environment variables
+if [[ "${PROXY_ENABLED:-}" == "true" ]]; then
+  RUN_ARGS+=( -e PROXY_ENABLED=true )
+  RUN_ARGS+=( -e PROXY_HOST="$PROXY_HOST" )
+  RUN_ARGS+=( -e PROXY_PORT="$PROXY_PORT" )
+  [[ -n "$PROXY_USERNAME" ]] && RUN_ARGS+=( -e PROXY_USERNAME="$PROXY_USERNAME" )
+  [[ -n "$PROXY_PASSWORD" ]] && RUN_ARGS+=( -e PROXY_PASSWORD="$PROXY_PASSWORD" )
+  [[ -n "$PROXY_SCHEME" ]] && RUN_ARGS+=( -e PROXY_SCHEME="$PROXY_SCHEME" )
 fi
 
 # WebRTC port mapping

@@ -89,6 +89,14 @@ const (
 	Stdout ProcessStreamEventStream = "stdout"
 )
 
+// Defines values for ProxyConfigScheme.
+const (
+	Http   ProxyConfigScheme = "http"
+	Https  ProxyConfigScheme = "https"
+	Socks4 ProxyConfigScheme = "socks4"
+	Socks5 ProxyConfigScheme = "socks5"
+)
+
 // Defines values for DownloadDirZstdParamsCompressionLevel.
 const (
 	Best    DownloadDirZstdParamsCompressionLevel = "best"
@@ -486,6 +494,30 @@ type ProcessStreamEventEvent string
 // ProcessStreamEventStream Source stream of the data chunk.
 type ProcessStreamEventStream string
 
+// ProxyConfig Proxy configuration for the browser
+type ProxyConfig struct {
+	// BypassList List of hosts to bypass the proxy for
+	BypassList *[]string `json:"bypassList,omitempty"`
+
+	// Host Proxy server hostname or IP address
+	Host *string `json:"host,omitempty"`
+
+	// Password Proxy authentication password
+	Password *string `json:"password,omitempty"`
+
+	// Port Proxy server port
+	Port *int `json:"port,omitempty"`
+
+	// Scheme Proxy protocol scheme
+	Scheme *ProxyConfigScheme `json:"scheme,omitempty"`
+
+	// Username Proxy authentication username
+	Username *string `json:"username,omitempty"`
+}
+
+// ProxyConfigScheme Proxy protocol scheme
+type ProxyConfigScheme string
+
 // RecorderInfo defines model for RecorderInfo.
 type RecorderInfo struct {
 	// FinishedAt Timestamp when recording finished
@@ -804,6 +836,9 @@ type ProcessResizeJSONRequestBody = ProcessResizeRequest
 // ProcessStdinJSONRequestBody defines body for ProcessStdin for application/json ContentType.
 type ProcessStdinJSONRequestBody = ProcessStdinRequest
 
+// SetProxyConfigJSONRequestBody defines body for SetProxyConfig for application/json ContentType.
+type SetProxyConfigJSONRequestBody = ProxyConfig
+
 // DeleteRecordingJSONRequestBody defines body for DeleteRecording for application/json ContentType.
 type DeleteRecordingJSONRequestBody = DeleteRecordingRequest
 
@@ -1040,6 +1075,17 @@ type ClientInterface interface {
 
 	// ProcessStdoutStream request
 	ProcessStdoutStream(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteProxyConfig request
+	DeleteProxyConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProxyConfig request
+	GetProxyConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProxyConfigWithBody request with any body
+	SetProxyConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetProxyConfig(ctx context.Context, body SetProxyConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteRecordingWithBody request with any body
 	DeleteRecordingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1761,6 +1807,54 @@ func (c *Client) ProcessStdin(ctx context.Context, processId openapi_types.UUID,
 
 func (c *Client) ProcessStdoutStream(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewProcessStdoutStreamRequest(c.Server, processId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteProxyConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProxyConfigRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetProxyConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProxyConfigRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetProxyConfigWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProxyConfigRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetProxyConfig(ctx context.Context, body SetProxyConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProxyConfigRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3417,6 +3511,100 @@ func NewProcessStdoutStreamRequest(server string, processId openapi_types.UUID) 
 	return req, nil
 }
 
+// NewDeleteProxyConfigRequest generates requests for DeleteProxyConfig
+func NewDeleteProxyConfigRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/proxy/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetProxyConfigRequest generates requests for GetProxyConfig
+func NewGetProxyConfigRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/proxy/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetProxyConfigRequest calls the generic SetProxyConfig builder with application/json body
+func NewSetProxyConfigRequest(server string, body SetProxyConfigJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProxyConfigRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSetProxyConfigRequestWithBody generates requests for SetProxyConfig with any type of body
+func NewSetProxyConfigRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/proxy/config")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteRecordingRequest calls the generic DeleteRecording builder with application/json body
 func NewDeleteRecordingRequest(server string, body DeleteRecordingJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3810,6 +3998,17 @@ type ClientWithResponsesInterface interface {
 
 	// ProcessStdoutStreamWithResponse request
 	ProcessStdoutStreamWithResponse(ctx context.Context, processId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ProcessStdoutStreamResponse, error)
+
+	// DeleteProxyConfigWithResponse request
+	DeleteProxyConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DeleteProxyConfigResponse, error)
+
+	// GetProxyConfigWithResponse request
+	GetProxyConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProxyConfigResponse, error)
+
+	// SetProxyConfigWithBodyWithResponse request with any body
+	SetProxyConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProxyConfigResponse, error)
+
+	SetProxyConfigWithResponse(ctx context.Context, body SetProxyConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProxyConfigResponse, error)
 
 	// DeleteRecordingWithBodyWithResponse request with any body
 	DeleteRecordingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteRecordingResponse, error)
@@ -4719,6 +4918,75 @@ func (r ProcessStdoutStreamResponse) StatusCode() int {
 	return 0
 }
 
+type DeleteProxyConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProxyConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProxyConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetProxyConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProxyConfig
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProxyConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProxyConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetProxyConfigResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ProxyConfig
+	JSON400      *BadRequestError
+	JSON500      *InternalError
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProxyConfigResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProxyConfigResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteRecordingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5345,6 +5613,41 @@ func (c *ClientWithResponses) ProcessStdoutStreamWithResponse(ctx context.Contex
 		return nil, err
 	}
 	return ParseProcessStdoutStreamResponse(rsp)
+}
+
+// DeleteProxyConfigWithResponse request returning *DeleteProxyConfigResponse
+func (c *ClientWithResponses) DeleteProxyConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DeleteProxyConfigResponse, error) {
+	rsp, err := c.DeleteProxyConfig(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProxyConfigResponse(rsp)
+}
+
+// GetProxyConfigWithResponse request returning *GetProxyConfigResponse
+func (c *ClientWithResponses) GetProxyConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetProxyConfigResponse, error) {
+	rsp, err := c.GetProxyConfig(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProxyConfigResponse(rsp)
+}
+
+// SetProxyConfigWithBodyWithResponse request with arbitrary body returning *SetProxyConfigResponse
+func (c *ClientWithResponses) SetProxyConfigWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProxyConfigResponse, error) {
+	rsp, err := c.SetProxyConfigWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProxyConfigResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetProxyConfigWithResponse(ctx context.Context, body SetProxyConfigJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProxyConfigResponse, error) {
+	rsp, err := c.SetProxyConfig(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProxyConfigResponse(rsp)
 }
 
 // DeleteRecordingWithBodyWithResponse request with arbitrary body returning *DeleteRecordingResponse
@@ -6861,6 +7164,105 @@ func ParseProcessStdoutStreamResponse(rsp *http.Response) (*ProcessStdoutStreamR
 	return response, nil
 }
 
+// ParseDeleteProxyConfigResponse parses an HTTP response from a DeleteProxyConfigWithResponse call
+func ParseDeleteProxyConfigResponse(rsp *http.Response) (*DeleteProxyConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProxyConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProxyConfigResponse parses an HTTP response from a GetProxyConfigWithResponse call
+func ParseGetProxyConfigResponse(rsp *http.Response) (*GetProxyConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProxyConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProxyConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProxyConfigResponse parses an HTTP response from a SetProxyConfigWithResponse call
+func ParseSetProxyConfigResponse(rsp *http.Response) (*SetProxyConfigResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProxyConfigResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProxyConfig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequestError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteRecordingResponse parses an HTTP response from a DeleteRecordingWithResponse call
 func ParseDeleteRecordingResponse(rsp *http.Response) (*DeleteRecordingResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7167,6 +7569,15 @@ type ServerInterface interface {
 	// Stream process stdout over SSE
 	// (GET /process/{process_id}/stdout/stream)
 	ProcessStdoutStream(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID)
+	// Clear the proxy configuration
+	// (DELETE /proxy/config)
+	DeleteProxyConfig(w http.ResponseWriter, r *http.Request)
+	// Get the current proxy configuration
+	// (GET /proxy/config)
+	GetProxyConfig(w http.ResponseWriter, r *http.Request)
+	// Set the proxy configuration
+	// (PUT /proxy/config)
+	SetProxyConfig(w http.ResponseWriter, r *http.Request)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(w http.ResponseWriter, r *http.Request)
@@ -7407,6 +7818,24 @@ func (_ Unimplemented) ProcessStdin(w http.ResponseWriter, r *http.Request, proc
 // Stream process stdout over SSE
 // (GET /process/{process_id}/stdout/stream)
 func (_ Unimplemented) ProcessStdoutStream(w http.ResponseWriter, r *http.Request, processId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Clear the proxy configuration
+// (DELETE /proxy/config)
+func (_ Unimplemented) DeleteProxyConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get the current proxy configuration
+// (GET /proxy/config)
+func (_ Unimplemented) GetProxyConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Set the proxy configuration
+// (PUT /proxy/config)
+func (_ Unimplemented) SetProxyConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8224,6 +8653,48 @@ func (siw *ServerInterfaceWrapper) ProcessStdoutStream(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteProxyConfig operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProxyConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProxyConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProxyConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetProxyConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProxyConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProxyConfig operation middleware
+func (siw *ServerInterfaceWrapper) SetProxyConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProxyConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteRecording operation middleware
 func (siw *ServerInterfaceWrapper) DeleteRecording(w http.ResponseWriter, r *http.Request) {
 
@@ -8530,6 +9001,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/process/{process_id}/stdout/stream", wrapper.ProcessStdoutStream)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/proxy/config", wrapper.DeleteProxyConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/proxy/config", wrapper.GetProxyConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/proxy/config", wrapper.SetProxyConfig)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/recording/delete", wrapper.DeleteRecording)
@@ -10176,6 +10656,90 @@ func (response ProcessStdoutStream500JSONResponse) VisitProcessStdoutStreamRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type DeleteProxyConfigRequestObject struct {
+}
+
+type DeleteProxyConfigResponseObject interface {
+	VisitDeleteProxyConfigResponse(w http.ResponseWriter) error
+}
+
+type DeleteProxyConfig204Response struct {
+}
+
+func (response DeleteProxyConfig204Response) VisitDeleteProxyConfigResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProxyConfig500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DeleteProxyConfig500JSONResponse) VisitDeleteProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProxyConfigRequestObject struct {
+}
+
+type GetProxyConfigResponseObject interface {
+	VisitGetProxyConfigResponse(w http.ResponseWriter) error
+}
+
+type GetProxyConfig200JSONResponse ProxyConfig
+
+func (response GetProxyConfig200JSONResponse) VisitGetProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProxyConfig500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response GetProxyConfig500JSONResponse) VisitGetProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProxyConfigRequestObject struct {
+	Body *SetProxyConfigJSONRequestBody
+}
+
+type SetProxyConfigResponseObject interface {
+	VisitSetProxyConfigResponse(w http.ResponseWriter) error
+}
+
+type SetProxyConfig200JSONResponse ProxyConfig
+
+func (response SetProxyConfig200JSONResponse) VisitSetProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProxyConfig400JSONResponse struct{ BadRequestErrorJSONResponse }
+
+func (response SetProxyConfig400JSONResponse) VisitSetProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetProxyConfig500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response SetProxyConfig500JSONResponse) VisitSetProxyConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteRecordingRequestObject struct {
 	Body *DeleteRecordingJSONRequestBody
 }
@@ -10519,6 +11083,15 @@ type StrictServerInterface interface {
 	// Stream process stdout over SSE
 	// (GET /process/{process_id}/stdout/stream)
 	ProcessStdoutStream(ctx context.Context, request ProcessStdoutStreamRequestObject) (ProcessStdoutStreamResponseObject, error)
+	// Clear the proxy configuration
+	// (DELETE /proxy/config)
+	DeleteProxyConfig(ctx context.Context, request DeleteProxyConfigRequestObject) (DeleteProxyConfigResponseObject, error)
+	// Get the current proxy configuration
+	// (GET /proxy/config)
+	GetProxyConfig(ctx context.Context, request GetProxyConfigRequestObject) (GetProxyConfigResponseObject, error)
+	// Set the proxy configuration
+	// (PUT /proxy/config)
+	SetProxyConfig(ctx context.Context, request SetProxyConfigRequestObject) (SetProxyConfigResponseObject, error)
 	// Delete a previously recorded video file
 	// (POST /recording/delete)
 	DeleteRecording(ctx context.Context, request DeleteRecordingRequestObject) (DeleteRecordingResponseObject, error)
@@ -11665,6 +12238,85 @@ func (sh *strictHandler) ProcessStdoutStream(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// DeleteProxyConfig operation middleware
+func (sh *strictHandler) DeleteProxyConfig(w http.ResponseWriter, r *http.Request) {
+	var request DeleteProxyConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProxyConfig(ctx, request.(DeleteProxyConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProxyConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProxyConfigResponseObject); ok {
+		if err := validResponse.VisitDeleteProxyConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProxyConfig operation middleware
+func (sh *strictHandler) GetProxyConfig(w http.ResponseWriter, r *http.Request) {
+	var request GetProxyConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProxyConfig(ctx, request.(GetProxyConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProxyConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProxyConfigResponseObject); ok {
+		if err := validResponse.VisitGetProxyConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProxyConfig operation middleware
+func (sh *strictHandler) SetProxyConfig(w http.ResponseWriter, r *http.Request) {
+	var request SetProxyConfigRequestObject
+
+	var body SetProxyConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProxyConfig(ctx, request.(SetProxyConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProxyConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProxyConfigResponseObject); ok {
+		if err := validResponse.VisitSetProxyConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DeleteRecording operation middleware
 func (sh *strictHandler) DeleteRecording(w http.ResponseWriter, r *http.Request) {
 	var request DeleteRecordingRequestObject
@@ -11811,133 +12463,139 @@ func (sh *strictHandler) StopRecording(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"UuHutxmfFmld/eBC/l8AAAD//90+RAzopgAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
