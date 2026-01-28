@@ -3,6 +3,7 @@
   "AutofillCreditCardEnabled": false,
   "TranslateEnabled": false,
   "DefaultNotificationsSetting": 2,
+  "DefaultGeolocationSetting": 2,
   "DefaultSearchProviderEnabled": true,
   "DefaultSearchProviderName": "DuckDuckGo",
   "DefaultSearchProviderSearchURL": "https://duckduckgo.com/?q={searchTerms}",
